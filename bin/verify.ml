@@ -36,7 +36,7 @@ let just_verify maildir new_line message =
     Fmt.pr "%a %a: %s.\n%!" (Fmt.styled `Red p_error) () Maildir.pp_message message err ;
     error_msg err
 
-let run maildir_path host verify_only_new_messages new_line =
+let run () maildir_path host verify_only_new_messages new_line =
   let maildir = Maildir.create ~pid:(Unix.getpid ()) ~host ~random:Random.bits maildir_path in
 
   match Maildir_unix.(verify fs maildir) with
@@ -77,5 +77,5 @@ let command =
   let man =
     [ `S Manpage.s_description
     ; `P "Verify mails from a <maildir> directory." ] in
-  Term.(const run $ maildir_path $ host $ verify $ Arguments.new_line),
+  Term.(pure run $ Arguments.setup_fmt_and_logs $ maildir_path $ host $ verify $ Arguments.new_line),
   Term.info "verify" ~doc ~exits ~man

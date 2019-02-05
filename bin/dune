@@ -1,4 +1,4 @@
 (executable
  (name mti_gf)
  (public_name ptt.mti-gf)
- (libraries fpath cmdliner unix maildir.unix mrmime))
+ (libraries fmt.tty fmt.cli logs.fmt logs.cli fpath cmdliner unix maildir.unix mrmime))

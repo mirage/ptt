@@ -58,10 +58,28 @@ module Conv = struct
   Arg.conv ~docv:"<host>" (parser, pp)
 end
 
+module Commands = struct
+  let setup_fmt_and_logs style_renderer log_level =
+    Fmt_tty.setup_std_outputs ?style_renderer () ;
+    Logs.set_level log_level ;
+    Logs.set_reporter (Logs_fmt.reporter ~app:Fmt.stdout ()) ;
+    Logs.info (fun m -> m "ptt %%VERSION%% running.") ;
+    `Ok ()
+end
+
 module Arguments = struct
   let new_line =
     let doc = "Kind of new line (RFC 822 or UNIX)." in
     Arg.(value & opt Conv.new_line LF & info [ "n"; "newline" ] ~docv:"<newline>" ~doc)
+
+  let setup_fmt_and_logs =
+    let style_renderer =
+      let env = Arg.env_var "PTT_COLOR" in
+      Fmt_cli.style_renderer ~docs:Manpage.s_common_options ~env () in
+    let log_level =
+      let env = Arg.env_var "PTT_VERBOSITY" in
+      Logs_cli.level ~docs:Manpage.s_common_options ~env () in
+    Term.(ret (const Commands.setup_fmt_and_logs $ style_renderer $ log_level))
 end
 
 let sub_string_and_replace_new_line chunk len =
