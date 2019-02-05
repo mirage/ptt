@@ -1,3 +1,5 @@
+let () = Printexc.record_backtrace true
+
 open Cmdliner
 
 let commands = [ Verify.command ]
