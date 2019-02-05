@@ -41,6 +41,7 @@ let run maildir_path host verify_only_new_messages new_line =
 
   match Maildir_unix.(verify fs maildir) with
   | false ->
+    Fmt.pr "%a Invalid Maildir directory.\n%!" (Fmt.styled `Red p_error) () ;
     Rresult.R.error_msgf "%a is not a valid Maildir directory." Fpath.pp maildir_path
   | true ->
     let cons =
