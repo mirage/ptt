@@ -17,15 +17,17 @@ let parse_in_channel new_line ic =
       let raw = sanitize_input new_line raw len in
       let res = if len = 0 then continue `Eof else continue (`String raw) in
       go res
-    | Done (_, _) -> Ok ()
-    | Fail (_, _, err) -> Error (`Msg err) in
+    | Done (_, _) -> close_in ic ; Ok ()
+    | Fail (_, _, err) -> close_in ic ; Error (`Msg err) in
   go (parse Mrmime.Mail.mail)
 
 let p_ok = Fmt.const Fmt.string "[OK]"
 let p_error = Fmt.const Fmt.string "[ERROR]"
+let p_wait = Fmt.const Fmt.string "[...]"
 
 let just_verify maildir new_line message =
   let open Rresult.R in
+  Fmt.pr "%a %a.\n%!" (Fmt.styled `Yellow p_wait) () Maildir.pp_message message ;
   in_channel_of_message maildir message >>= fun ic ->
   parse_in_channel new_line ic |> function
   | Ok _ as v ->
