@@ -1,5 +1,7 @@
 open Common
 
+let (<.>) f g = fun x -> f (g x)
+
 let in_channel_of_message maildir message =
   let m = Maildir.to_fpath maildir message in
   if Sys.file_exists (Fpath.to_string m)
@@ -37,7 +39,7 @@ let just_verify maildir new_line message =
     error_msg err
 
 let run () maildir_path host verify_only_new_messages new_line =
-  let maildir = Maildir.create ~pid:(Unix.getpid ()) ~host ~random:Random.bits maildir_path in
+  let maildir = Maildir.create ~pid:(Unix.getpid ()) ~host ~random:(Int64.of_int <.> Random.bits) maildir_path in
 
   match Maildir_unix.(verify fs maildir) with
   | false ->
