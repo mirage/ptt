@@ -1,0 +1,34 @@
+opam-version: "2.0"
+name:         "ptt"
+version:      "dev"
+maintainer:   "Romain Calascibetta <romain.calascibetta@gmail.com>"
+authors:      "Romain Calascibetta <romain.calascibetta@gmail.com>"
+homepage:     "https://github.com/dinosaure/ptt"
+bug-reports:  "https://github.com/dinosaure/ptt/issues"
+dev-repo:     "git+https://github.com/dinosaure/ptt.git"
+license:      "MIT"
+synopsis:     "Postes, Télégraphes et Téléphones"
+
+build: [
+  ["dune" "build" "-p" name "-j" jobs]
+  ["dune" "runtest" "-p" name "-j" jobs] {with-test}
+]
+
+pin-depends: [
+ [ "base64.dev" "git+https://github.com/mirage/ocaml-base64.git"]
+ [ "pecu.dev" "git+https://github.com/dinosaure/pecu.git"]
+ [ "mrmime.dev" "git+https://github.com/mirage/mrmime.git"]
+ [ "maildir.dev" "git+https://github.com/dinosaure/ocaml-maildir.git"]
+]
+
+depends: [
+  "ocaml"    {>= "4.03.0"}
+  "dune"     {build}
+  "mrmime"   {>= "dev"}
+  "maildir"  {>= "dev"}
+  "fpath"
+  "cmdliner"
+  "base-unix"
+  "rresult"
+  "fmt"
+]
