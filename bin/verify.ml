@@ -2,6 +2,9 @@ open Common
 
 let (<.>) f g = fun x -> f (g x)
 
+let src = Logs.Src.create "mti-gf.verify" ~doc:"logs mti-gf's verify event"
+module Log = (val Logs.src_log src : Logs.LOG)
+
 let in_channel_of_message maildir message =
   let m = Maildir.to_fpath maildir message in
   if Sys.file_exists (Fpath.to_string m)
@@ -56,8 +59,10 @@ let run () maildir_path host verify_only_new_messages new_line =
     |> List.map (function Error err -> err | _ -> assert false)
     |> function
     | [] -> Rresult.R.ok ()
-    | [ error ] -> Rresult.R.error error
-    | errors -> Rresult.R.error (`Some errors)
+    | [ `Msg err ] -> Rresult.R.error_msg err
+    | errors ->
+      List.iter (fun (`Msg err) -> Log.err @@ fun m -> m "Retrieve an error: %s." err) errors ;
+      Rresult.R.error (`Some errors)
 
 open Cmdliner
 
