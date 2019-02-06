@@ -39,7 +39,7 @@ let just_verify maildir new_line message =
     Fmt.pr "%a %a.\n%!" (Fmt.styled `Green p_ok) () Maildir.pp_message message ; v
   | Error (`Msg err) ->
     Fmt.pr "%a %a: %s.\n%!" (Fmt.styled `Red p_error) () Maildir.pp_message message err ;
-    error_msg err
+    error_msgf "On %a: %s" Maildir.pp_message message err
 
 let run () maildir_path host verify_only_new_messages new_line =
   let maildir = Maildir.create ~pid:(Unix.getpid ()) ~host ~random:(Int64.of_int <.> Random.bits) maildir_path in
