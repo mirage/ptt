@@ -1,4 +1,17 @@
+(library
+ (name common)
+ (public_name ptt.common)
+ (modules common)
+ (libraries fmt.tty fmt.cli logs.fmt logs.cli fpath cmdliner unix maildir.unix mrmime))
+
 (executable
  (name mti_gf)
  (public_name ptt.mti-gf)
- (libraries fmt.tty fmt.cli logs.fmt logs.cli fpath cmdliner unix maildir.unix mrmime))
+ (modules mti_gf verify)
+ (libraries ptt.common))
+
+(executable
+ (name ttf_solystic)
+ (public_name ptt.ttf-solystic)
+ (modules ttf_solystic commit)
+ (libraries ptt.common))

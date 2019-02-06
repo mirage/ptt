@@ -1,7 +1,5 @@
 open Common
 
-let (<.>) f g = fun x -> f (g x)
-
 let src = Logs.Src.create "mti-gf.verify" ~doc:"logs mti-gf's verify event"
 module Log = (val Logs.src_log src : Logs.LOG)
 
@@ -26,27 +24,29 @@ let parse_in_channel new_line ic =
     | Fail (_, _, err) -> close_in ic ; Error (`Msg err) in
   go (parse Mrmime.Mail.mail)
 
-let p_ok = Fmt.const Fmt.string "[OK]"
-let p_error = Fmt.const Fmt.string "[ERROR]"
-let p_wait = Fmt.const Fmt.string "[...]"
+module Status = struct
+  let ok = Fmt.const Fmt.string "[OK]" |> Fmt.styled `Green
+  let error = Fmt.const Fmt.string "[ERROR]" |> Fmt.styled `Red
+  let wait = Fmt.const Fmt.string "[...]" |> Fmt.styled `Yellow
+end
 
 let just_verify maildir new_line message =
   let open Rresult.R in
-  Fmt.pr "%a %a.\n%!" (Fmt.styled `Yellow p_wait) () Maildir.pp_message message ;
+  Fmt.pr "%a %a.%!" Status.wait () Maildir.pp_message message ;
   in_channel_of_message maildir message >>= fun ic ->
   parse_in_channel new_line ic |> function
   | Ok _ as v ->
-    Fmt.pr "%a %a.\n%!" (Fmt.styled `Green p_ok) () Maildir.pp_message message ; v
+    Fmt.pr "\r%a %a.\n%!" Status.ok () Maildir.pp_message message ; v
   | Error (`Msg err) ->
-    Fmt.pr "%a %a: %s.\n%!" (Fmt.styled `Red p_error) () Maildir.pp_message message err ;
+    Fmt.pr "\r%a %a: %s.\n%!" Status.error () Maildir.pp_message message err ;
     error_msgf "On %a: %s" Maildir.pp_message message err
 
 let run () maildir_path host verify_only_new_messages new_line =
-  let maildir = Maildir.create ~pid:(Unix.getpid ()) ~host ~random:(Int64.of_int <.> Random.bits) maildir_path in
+  let maildir = Maildir.create ~pid:(Unix.getpid ()) ~host ~random maildir_path in
 
   match Maildir_unix.(verify fs maildir) with
   | false ->
-    Fmt.pr "%a Invalid Maildir directory.\n%!" (Fmt.styled `Red p_error) () ;
+    Fmt.pr "%a Invalid Maildir directory.\n%!" Status.error () ;
     Rresult.R.error_msgf "%a is not a valid Maildir directory." Fpath.pp maildir_path
   | true ->
     let cons =

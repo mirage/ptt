@@ -102,3 +102,7 @@ let sub_string_and_replace_new_line chunk len =
 let sanitize_input new_line chunk len = match new_line with
   | CRLF -> Bytes.sub_string chunk 0 len
   | LF -> sub_string_and_replace_new_line chunk len
+
+let (<.>) f g = fun x -> f (g x)
+let random = Int64.of_int <.> Random.bits
+
