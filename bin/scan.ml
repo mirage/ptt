@@ -74,6 +74,10 @@ let get_fields fields header =
 let pp_value_of_field : type a. a Mrmime.Header.field -> a Fmt.t = function
   | Mrmime.Header.From -> Fmt.(list ~sep:(const string ", ") Pp.pp_mailbox)
   | Mrmime.Header.Date -> Pp.pp_date
+  | Mrmime.Header.To -> Fmt.(list ~sep:(const string ", ") Pp.pp_address)
+  | Mrmime.Header.Cc -> Fmt.(list ~sep:(const string ", ") Pp.pp_address)
+  | Mrmime.Header.Bcc -> Fmt.(list ~sep:(const string ", ") Pp.pp_address)
+  | Mrmime.Header.Subject -> Pp.pp_unstructured
   | field -> Mrmime.Header.pp_value_of_field field
 
 let pp_binding ppf (Mrmime.Header.B (field, v, _)) =

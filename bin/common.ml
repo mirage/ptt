@@ -94,6 +94,17 @@ module Commands = struct
 end
 
 module Pp = struct
+  let pp_phrase =
+    let pp_word ppf = function `Atom x -> Fmt.string ppf x | `String x -> Fmt.pf ppf "%S" x in
+    let pp_elt ppf = function
+      | `Dot -> Fmt.string ppf "."
+      | `Word x -> pp_word ppf x
+      | `Encoded { Mrmime.Encoded_word.data = Ok raw; _ } ->
+        (* Handle output, UTF-8, ISO-8859? *)
+        Fmt.string ppf raw
+      | `Encoded _ -> Fmt.string ppf "<?>" in
+    Fmt.(list ~sep:(const string " ") pp_elt)
+
   let pp_mailbox ppf mailbox =
     let open Mrmime.Mailbox in
     let pp_word ppf = function `Atom x -> Fmt.string ppf x | `String x -> Fmt.pf ppf "%S" x in
@@ -106,14 +117,6 @@ module Pp = struct
       | `Literal x -> Fmt.pf ppf "[%s]" x
       | `Addr x -> pp_literal_domain ppf x in
     let pp_local = Fmt.(list ~sep:(const string ".") pp_word) in
-    let pp_elt ppf = function
-      | `Dot -> Fmt.string ppf "."
-      | `Word x -> pp_word ppf x
-      | `Encoded { Mrmime.Encoded_word.data = Ok raw; _ } ->
-        (* Handle output, UTF-8, ISO-8859? *)
-        Fmt.string ppf raw
-      | `Encoded _ -> Fmt.string ppf "<?>" in
-    let pp_phrase = Fmt.(list ~sep:(const string " ") pp_elt) in
     match mailbox.name, mailbox.domain with
     | Some name, (domain, []) ->
       Fmt.pf ppf "%a <%a@%a>" pp_phrase name pp_local mailbox.local pp_domain domain
@@ -148,6 +151,24 @@ module Pp = struct
         dd Month.pp mm pp_year yy h m Fmt.(option (prefix (const string ":") (Fmt.fmt "%02d"))) s
         (Zone.to_string date.zone)
 
+  let pp_group ppf group =
+    let open Mrmime.Group in
+    Fmt.pf ppf "%a: %a" pp_phrase group.name Fmt.(list ~sep:(const string ", ") pp_mailbox) group.mailboxes
+
+  let pp_address ppf = function
+    | `Group group -> pp_group ppf group
+    | `Mailbox mailbox -> pp_mailbox ppf mailbox
+
+  let pp_unstructured ppf x =
+    let pp_elt ppf = function
+      | `Text x -> Fmt.quote Fmt.string ppf x
+      | `WSP _ -> Fmt.string ppf " "
+      | `CRLF | `CR _ | `LF _ -> Fmt.nop ppf ()
+      | `Encoded { Mrmime.Encoded_word.data = Ok raw; _ } ->
+        (* Handle output, UTF-8, ISO-8859? *)
+        Fmt.string ppf raw
+      | `Encoded _ -> Fmt.string ppf "<?>" in
+    Fmt.list pp_elt ppf x
 end
 
 module Arguments = struct
