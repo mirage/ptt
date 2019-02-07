@@ -161,7 +161,7 @@ module Pp = struct
 
   let pp_unstructured ppf x =
     let pp_elt ppf = function
-      | `Text x -> Fmt.quote Fmt.string ppf x
+      | `Text x -> Fmt.string ppf x
       | `WSP _ -> Fmt.string ppf " "
       | `CRLF | `CR _ | `LF _ -> Fmt.nop ppf ()
       | `Encoded { Mrmime.Encoded_word.data = Ok raw; _ } ->
