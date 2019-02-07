@@ -140,13 +140,13 @@ module Pp = struct
       else Fmt.pf ppf "%d" x in
     match date.day with
     | Some day ->
-      Fmt.pf ppf "%a %02d %a %a %02d:%02d%a %a"
+      Fmt.pf ppf "%a %02d %a %a %02d:%02d%a %s"
         Day.pp day dd Month.pp mm pp_year yy h m Fmt.(option (prefix (const string ":") (Fmt.fmt "%02d"))) s
-        Zone.pp date.zone
+        (Zone.to_string date.zone)
     | None ->
-      Fmt.pf ppf "%02d %a %a %02d:%02d%a %a"
+      Fmt.pf ppf "%02d %a %a %02d:%02d%a %s"
         dd Month.pp mm pp_year yy h m Fmt.(option (prefix (const string ":") (Fmt.fmt "%02d"))) s
-        Zone.pp date.zone
+        (Zone.to_string date.zone)
 
 end
 
