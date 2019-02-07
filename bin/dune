@@ -7,8 +7,8 @@
 (executable
  (name mti_gf)
  (public_name ptt.mti-gf)
- (modules mti_gf verify)
- (libraries ptt.common))
+ (modules mti_gf verify describe scan)
+ (libraries ptime ptt.common))
 
 (executable
  (name ttf_solystic)

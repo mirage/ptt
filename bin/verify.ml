@@ -3,14 +3,6 @@ open Common
 let src = Logs.Src.create "mti-gf.verify" ~doc:"logs mti-gf's verify event"
 module Log = (val Logs.src_log src : Logs.LOG)
 
-let in_channel_of_message maildir message =
-  let m = Maildir.to_fpath maildir message in
-  if Sys.file_exists (Fpath.to_string m)
-  then if not (Sys.is_directory (Fpath.to_string m))
-    then Rresult.R.ok (open_in (Fpath.to_string m))
-    else Rresult.R.error_msgf "%a is a directory, expected a file." Fpath.pp m
-  else Rresult.R.error_msgf "%a does not exists" Fpath.pp m
-
 let parse_in_channel new_line ic =
   let open Angstrom.Buffered in
   let raw = Bytes.create 4096 in
@@ -44,31 +36,22 @@ let just_verify maildir new_line message =
 let run () maildir_path host verify_only_new_messages new_line =
   let maildir = Maildir.create ~pid:(Unix.getpid ()) ~host ~random maildir_path in
 
-  match Maildir_unix.(verify fs maildir) with
-  | false ->
-    Fmt.pr "%a Invalid Maildir directory.\n%!" Status.error () ;
-    Rresult.R.error_msgf "%a is not a valid Maildir directory." Fpath.pp maildir_path
-  | true ->
-    let cons =
-      if verify_only_new_messages
-      then (fun a x -> if Maildir.is_new x then x :: a else a)
-      else (fun a x -> x :: a) in
-    let to_verify = Maildir_unix.(fold cons [] fs maildir) in
-    List.map (just_verify maildir new_line) to_verify
-    |> List.filter (function Error _ -> true | _ -> false)
-    |> List.map (function Error err -> err | _ -> assert false)
-    |> function
-    | [] -> Rresult.R.ok ()
-    | [ `Msg err ] -> Rresult.R.error_msg err
-    | errors ->
-      List.iter (fun (`Msg err) -> Log.err @@ fun m -> m "Retrieve an error: %s." err) errors ;
-      Rresult.R.error (`Some errors)
+  let cons =
+    if verify_only_new_messages
+    then (fun a x -> if Maildir.is_new x then x :: a else a)
+    else (fun a x -> x :: a) in
+  let to_verify = Maildir_unix.(fold cons [] fs maildir) in
+  List.map (just_verify maildir new_line) to_verify
+  |> List.filter (function Error _ -> true | _ -> false)
+  |> List.map (function Error err -> err | _ -> assert false)
+  |> function
+  | [] -> Rresult.R.ok ()
+  | [ `Msg err ] -> Rresult.R.error_msg err
+  | errors ->
+    List.iter (fun (`Msg err) -> Log.err @@ fun m -> m "Retrieve an error: %s." err) errors ;
+    Rresult.R.error (`Some errors)
 
 open Cmdliner
-
-let maildir_path =
-  let doc = "Path of <maildir> directory." in
-  Arg.(required & opt (some Conv.existing_directory) None & info [ "m"; "maildir" ] ~docv:"<maildir>" ~doc)
 
 let host =
   let doc = "Hostname of machine." in
@@ -84,5 +67,10 @@ let command =
   let man =
     [ `S Manpage.s_description
     ; `P "Verify mails from a <maildir> directory." ] in
-  Term.(pure run $ Arguments.setup_fmt_and_logs $ maildir_path $ host $ verify $ Arguments.new_line),
+  Term.(pure run
+        $ Arguments.setup_fmt_and_logs
+        $ Arguments.maildir_path
+        $ host
+        $ verify
+        $ Arguments.new_line),
   Term.info "verify" ~doc ~exits ~man
