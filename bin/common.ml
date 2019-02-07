@@ -93,6 +93,63 @@ module Commands = struct
       `Error (false, err)
 end
 
+module Pp = struct
+  let pp_mailbox ppf mailbox =
+    let open Mrmime.Mailbox in
+    let pp_word ppf = function `Atom x -> Fmt.string ppf x | `String x -> Fmt.pf ppf "%S" x in
+    let pp_literal_domain ppf = function
+      | IPv4 x -> Fmt.pf ppf "[%a]" Ipaddr.V4.pp x
+      | IPv6 x -> Fmt.pf ppf "[IPv6:%a]" Ipaddr.V6.pp x
+      | Ext (ldh, v) -> Fmt.pf ppf "[%s:%s]" ldh v in
+    let pp_domain ppf = function
+      | `Domain lst -> Fmt.(list ~sep:(const string ".") string) ppf lst
+      | `Literal x -> Fmt.pf ppf "[%s]" x
+      | `Addr x -> pp_literal_domain ppf x in
+    let pp_local = Fmt.(list ~sep:(const string ".") pp_word) in
+    let pp_elt ppf = function
+      | `Dot -> Fmt.string ppf "."
+      | `Word x -> pp_word ppf x
+      | `Encoded { Mrmime.Encoded_word.data = Ok raw; _ } ->
+        (* Handle output, UTF-8, ISO-8859? *)
+        Fmt.string ppf raw
+      | `Encoded _ -> Fmt.string ppf "<?>" in
+    let pp_phrase = Fmt.(list ~sep:(const string " ") pp_elt) in
+    match mailbox.name, mailbox.domain with
+    | Some name, (domain, []) ->
+      Fmt.pf ppf "%a <%a@%a>" pp_phrase name pp_local mailbox.local pp_domain domain
+    | Some name, (domain, rest) ->
+      Fmt.pf ppf "%a <%a:%a@%a>"
+        pp_phrase name
+        Fmt.(list ~sep:(const string ",") (prefix (const string "@") pp_domain)) rest
+        pp_local mailbox.local
+        pp_domain domain
+    | None, (domain, []) ->
+      Fmt.pf ppf "<%a@%a>" pp_local mailbox.local pp_domain domain
+    | None, (domain, rest) ->
+      Fmt.pf ppf "<%a:%a@%a>"
+        Fmt.(list ~sep:(const string ",") (prefix (const string "@") pp_domain)) rest
+        pp_local mailbox.local
+        pp_domain domain
+
+  let pp_date ppf date =
+    let open Mrmime.Date in
+    let (dd, mm, yy) = date.date in
+    let (h, m, s) = date.time in
+    let pp_year ppf x =
+      if x < 1000 then Fmt.pf ppf "%02d" x
+      else Fmt.pf ppf "%d" x in
+    match date.day with
+    | Some day ->
+      Fmt.pf ppf "%a %02d %a %a %02d:%02d%a %a"
+        Day.pp day dd Month.pp mm pp_year yy h m Fmt.(option (prefix (const string ":") (Fmt.fmt "%02d"))) s
+        Zone.pp date.zone
+    | None ->
+      Fmt.pf ppf "%02d %a %a %02d:%02d%a %a"
+        dd Month.pp mm pp_year yy h m Fmt.(option (prefix (const string ":") (Fmt.fmt "%02d"))) s
+        Zone.pp date.zone
+
+end
+
 module Arguments = struct
   let new_line =
     let doc = "Kind of new line (RFC 822 or UNIX)." in
