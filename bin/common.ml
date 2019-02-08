@@ -163,7 +163,7 @@ module Pp = struct
     let pp_elt ppf = function
       | `Text x -> Fmt.string ppf x
       | `WSP _ -> Fmt.string ppf " "
-      | `CRLF | `CR _ | `LF _ -> Fmt.nop ppf ()
+      | `CRLF | `CR _ | `LF _ -> ()
       | `Encoded { Mrmime.Encoded_word.data = Ok raw; _ } ->
         (* Handle output, UTF-8, ISO-8859? *)
         Fmt.string ppf raw
