@@ -16,21 +16,15 @@ let parse_in_channel new_line ic =
     | Fail (_, _, err) -> close_in ic ; Error (`Msg err) in
   go (parse Mrmime.Mail.mail)
 
-module Status = struct
-  let ok = Fmt.const Fmt.string "[OK]" |> Fmt.styled `Green
-  let error = Fmt.const Fmt.string "[ERROR]" |> Fmt.styled `Red
-  let wait = Fmt.const Fmt.string "[...]" |> Fmt.styled `Yellow
-end
-
 let just_verify maildir new_line message =
   let open Rresult.R in
-  Fmt.pr "%a %a.%!" Status.wait () Maildir.pp_message message ;
+  Fmt.pr "%a %a.%!" Pretty_printer.pp_wait () Maildir.pp_message message ;
   in_channel_of_message maildir message >>= fun ic ->
   parse_in_channel new_line ic |> function
   | Ok _ as v ->
-    Fmt.pr "\r%a %a.\n%!" Status.ok () Maildir.pp_message message ; v
+    Fmt.pr "\r%a %a.\n%!" Pretty_printer.pp_ok () Maildir.pp_message message ; v
   | Error (`Msg err) ->
-    Fmt.pr "\r%a %a: %s.\n%!" Status.error () Maildir.pp_message message err ;
+    Fmt.pr "\r%a %a: %s.\n%!" Pretty_printer.pp_error () Maildir.pp_message message err ;
     error_msgf "On %a: %s" Maildir.pp_message message err
 
 let run () maildir_path host verify_only_new_messages new_line =
@@ -68,9 +62,9 @@ let command =
     [ `S Manpage.s_description
     ; `P "Verify mails from a <maildir> directory." ] in
   Term.(pure run
-        $ Arguments.setup_fmt_and_logs
-        $ Arguments.maildir_path
+        $ Argument.setup_fmt_and_logs
+        $ Argument.maildir_path
         $ host
         $ verify
-        $ Arguments.new_line),
+        $ Argument.new_line),
   Term.info "verify" ~doc ~exits ~man

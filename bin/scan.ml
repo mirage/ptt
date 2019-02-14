@@ -72,24 +72,18 @@ let get_fields fields header =
   List.fold_left f (Ok []) fields
 
 let pp_value_of_field : type a. a Mrmime.Header.field -> a Fmt.t = function
-  | Mrmime.Header.From -> Fmt.(list ~sep:(const string ", ") Pp.pp_mailbox)
-  | Mrmime.Header.Date -> Pp.pp_date
-  | Mrmime.Header.To -> Fmt.(list ~sep:(const string ", ") Pp.pp_address)
-  | Mrmime.Header.Cc -> Fmt.(list ~sep:(const string ", ") Pp.pp_address)
-  | Mrmime.Header.Bcc -> Fmt.(list ~sep:(const string ", ") Pp.pp_address)
-  | Mrmime.Header.Subject -> Pp.pp_unstructured
+  | Mrmime.Header.From -> Fmt.(list ~sep:(const string ", ") Pretty_printer.pp_mailbox)
+  | Mrmime.Header.Date -> Pretty_printer.pp_date
+  | Mrmime.Header.To -> Fmt.(list ~sep:(const string ", ") Pretty_printer.pp_address)
+  | Mrmime.Header.Cc -> Fmt.(list ~sep:(const string ", ") Pretty_printer.pp_address)
+  | Mrmime.Header.Bcc -> Fmt.(list ~sep:(const string ", ") Pretty_printer.pp_address)
+  | Mrmime.Header.Subject -> Pretty_printer.pp_unstructured
   | field -> Mrmime.Header.pp_value_of_field field
 
 let pp_binding ppf (Mrmime.Header.B (field, v, _)) =
   Fmt.pf ppf "%a @[<hov>%a@]"
     (pp_pad 15 Fmt.(suffix (const string ":") (using Mrmime.Header.field_to_string string))) field
     (pp_value_of_field field) v
-
-module Status = struct
-  let ok = Fmt.const Fmt.string "[OK]" |> Fmt.styled `Green
-  let error = Fmt.const Fmt.string "[ERROR]" |> Fmt.styled `Red
-  let wait = Fmt.const Fmt.string "[...]" |> Fmt.styled `Yellow
-end
 
 let print_fields maildir new_line message fields =
   let open Rresult.R in
@@ -112,15 +106,15 @@ let print_fields maildir new_line message fields =
     List.iter
       (function
         | Ok bindings -> List.iter (Fmt.pr "%a\n%!" pp_binding) bindings
-        | Error (`Msg err) -> Fmt.pr "%a: %s.\n%!" Status.error () err
+        | Error (`Msg err) -> Fmt.pr "%a: %s.\n%!" Pretty_printer.pp_error () err
         | Error (`Not_found (Mrmime.Header.V field)) ->
           Fmt.pr "%a: %s not found.\n%!"
-            Status.error ()
+            Pretty_printer.pp_error ()
             (Mrmime.Header.field_to_string field))
       bindings
   | Error _ ->
     Fmt.pr "%a: header of %a can not be parser"
-      Status.error () Maildir.pp_message message
+      Pretty_printer.pp_error () Maildir.pp_message message
 
 let print maildir new_line fields () message =
   let path = Maildir_unix.get maildir message in
@@ -166,10 +160,10 @@ let command =
     [ `S Manpage.s_description
     ; `P "Lists mails available on <maildir> database." ] in
   Term.(pure run
-        $ Arguments.setup_fmt_and_logs
-        $ Arguments.maildir_path
+        $ Argument.setup_fmt_and_logs
+        $ Argument.maildir_path
         $ host
         $ only_new
-        $ Arguments.new_line
+        $ Argument.new_line
         $ fields),
   Term.info "scan" ~doc ~exits ~man

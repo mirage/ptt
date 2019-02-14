@@ -21,5 +21,5 @@ let command =
   let man =
     [ `S Manpage.s_description
     ; `P "Describe specified mail." ] in
-  Term.(pure run $ Arguments.setup_fmt_and_logs $ Arguments.maildir_path $ host $ message),
+  Term.(pure run $ Argument.setup_fmt_and_logs $ Argument.maildir_path $ host $ message),
   Term.info "describe" ~doc ~exits ~man

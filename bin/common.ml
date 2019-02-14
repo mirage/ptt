@@ -71,7 +71,7 @@ module Conv = struct
     Arg.conv ~docv:"<message>" (parser, pp)
 end
 
-module Commands = struct
+module Command = struct
   let setup_fmt_and_logs style_renderer log_level =
     Fmt_tty.setup_std_outputs ?style_renderer () ;
     Logs.set_level log_level ;
@@ -93,7 +93,7 @@ module Commands = struct
       `Error (false, err)
 end
 
-module Pp = struct
+module Pretty_printer = struct
   let pp_phrase =
     let pp_word ppf = function `Atom x -> Fmt.string ppf x | `String x -> Fmt.pf ppf "%S" x in
     let pp_elt ppf = function
@@ -168,10 +168,14 @@ module Pp = struct
         (* Handle output, UTF-8, ISO-8859? *)
         Fmt.string ppf raw
       | `Encoded _ -> Fmt.string ppf "<?>" in
-    Fmt.list pp_elt ppf x
+    Fmt.list ~sep:Fmt.nop pp_elt ppf x
+
+  let pp_ok = Fmt.const Fmt.string "[OK]" |> Fmt.styled `Green
+  let pp_error = Fmt.const Fmt.string "[ERROR]" |> Fmt.styled `Red
+  let pp_wait = Fmt.const Fmt.string "[...]" |> Fmt.styled `Yellow
 end
 
-module Arguments = struct
+module Argument = struct
   let new_line =
     let doc = "Kind of new line (RFC 822 or UNIX)." in
     Arg.(value & opt Conv.new_line LF & info [ "n"; "newline" ] ~docv:"<newline>" ~doc)
@@ -183,7 +187,7 @@ module Arguments = struct
     let log_level =
       let env = Arg.env_var "PTT_VERBOSITY" in
       Logs_cli.level ~docs:Manpage.s_common_options ~env () in
-    Term.(ret (const Commands.setup_fmt_and_logs $ style_renderer $ log_level))
+    Term.(ret (const Command.setup_fmt_and_logs $ style_renderer $ log_level))
 
   let maildir_path =
     let maildir_path =
@@ -192,7 +196,7 @@ module Arguments = struct
       Arg.(required
            & opt (some Conv.existing_directory) None
            & info [ "m"; "maildir" ] ~docv:"<maildir>" ~doc ~env) in
-    Term.(ret (const Commands.maildir_verify $ maildir_path))
+    Term.(ret (const Command.maildir_verify $ maildir_path))
 end
 
 let sub_string_and_replace_new_line chunk len =
