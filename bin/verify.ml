@@ -11,7 +11,7 @@ let parse_in_channel new_line ic =
       let len = input ic raw 0 (Bytes.length raw) in
       let raw = sanitize_input new_line raw len in
       let res = if len = 0 then continue `Eof else continue (`String raw) in
-      go res
+      (go[@tailcall]) res
     | Done (_, _) -> close_in ic ; Ok ()
     | Fail (_, _, err) -> close_in ic ; Error (`Msg err) in
   go (parse Mrmime.Mail.mail)
