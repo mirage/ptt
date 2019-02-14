@@ -81,7 +81,7 @@ let pp_value_of_field : type a. a Mrmime.Header.field -> a Fmt.t = function
   | field -> Mrmime.Header.pp_value_of_field field
 
 let pp_binding ppf (Mrmime.Header.B (field, v, _)) =
-  Fmt.pf ppf "%a %a"
+  Fmt.pf ppf "%a @[<hov>%a@]"
     (pp_pad 15 Fmt.(suffix (const string ":") (using Mrmime.Header.field_to_string string))) field
     (pp_value_of_field field) v
 
