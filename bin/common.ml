@@ -18,8 +18,8 @@ module Conv = struct
     Arg.conv ~docv:"<newline>" (parser, pp)
 
   let field =
-    let parser = Mrmime.Header.Field.of_string in
-    let pp = Mrmime.Header.Field.pp in
+    let parser = Mrmime.Field.of_string in
+    let pp = Mrmime.Field.pp in
     Arg.conv ~docv:"<field>" (parser, pp)
 
   let path =
