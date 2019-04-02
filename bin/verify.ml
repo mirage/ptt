@@ -18,14 +18,14 @@ let parse_in_channel new_line ic =
 
 let just_verify maildir new_line message =
   let open Rresult.R in
-  Fmt.pr "%a %a.%!" Pretty_printer.pp_wait () Maildir.pp_message message ;
+  Fmt.pr "%a %a.%!" Pretty_printer.pp_wait () Fmt.(using Maildir.value Maildir.pp_message) message ;
   in_channel_of_message maildir message >>= fun ic ->
   parse_in_channel new_line ic |> function
   | Ok _ as v ->
-    Fmt.pr "\r%a %a.\n%!" Pretty_printer.pp_ok () Maildir.pp_message message ; v
+    Fmt.pr "\r%a %a.\n%!" Pretty_printer.pp_ok () Fmt.(using Maildir.value Maildir.pp_message) message ; v
   | Error (`Msg err) ->
-    Fmt.pr "\r%a %a: %s.\n%!" Pretty_printer.pp_error () Maildir.pp_message message err ;
-    error_msgf "On %a: %s" Maildir.pp_message message err
+    Fmt.pr "\r%a %a: %s.\n%!" Pretty_printer.pp_error () Fmt.(using Maildir.value Maildir.pp_message) message err ;
+    error_msgf "On %a: %s" Fmt.(using Maildir.value Maildir.pp_message) message err
 
 let run () maildir_path host verify_only_new_messages new_line =
   let maildir = Maildir.create ~pid:(Unix.getpid ()) ~host ~random maildir_path in

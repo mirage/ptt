@@ -75,7 +75,7 @@ let print_fields maildir new_line message fields =
       values
   | Error _ ->
     Fmt.pr "%a: header of %a can not be parser"
-      Pretty_printer.pp_error () Maildir.pp_message message
+      Pretty_printer.pp_error () Fmt.(using Maildir.value Maildir.pp_message) message
 
 let print maildir new_line fields () message =
   let path = Maildir_unix.get maildir message in
@@ -87,7 +87,7 @@ let print maildir new_line fields () message =
     (pp_pad 10 pp_group) stat
     (pp_pad 10 pp_size) stat
     pp_time stat.Unix.st_mtime
-    Maildir.pp_message message ;
+    Fmt.(using Maildir.value Maildir.pp_message) message ;
   if List.length fields > 0
   then print_fields maildir new_line message fields ; ()
 

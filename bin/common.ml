@@ -67,7 +67,7 @@ module Conv = struct
 
   let message =
     let parser = Maildir.of_filename in
-    let pp = Maildir.pp_message in
+    let pp = Fmt.using Maildir.value Maildir.pp_message in
     Arg.conv ~docv:"<message>" (parser, pp)
 end
 
