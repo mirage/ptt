@@ -30,6 +30,8 @@ let just_verify maildir new_line message =
 let run () maildir_path host verify_only_new_messages new_line =
   let maildir = Maildir.create ~pid:(Unix.getpid ()) ~host ~random maildir_path in
 
+  (* XXX(dinosaure): stack overflow here. *)
+
   let cons =
     if verify_only_new_messages
     then (fun a x -> if Maildir.is_new x then x :: a else a)
