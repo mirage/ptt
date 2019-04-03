@@ -40,8 +40,6 @@ let process verify_only_new_messages maildir new_line acc message =
 let run () maildir_path host verify_only_new_messages new_line =
   let maildir = Maildir.create ~pid:(Unix.getpid ()) ~host ~random maildir_path in
 
-  (* XXX(dinosaure): stack overflow here. *)
-
   let res = Maildir_unix.(fold (process verify_only_new_messages maildir new_line) true fs maildir) in
   if res then Ok () else Rresult.R.error (`Msg "Retrieve an invalid e-mail")
 
