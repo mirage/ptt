@@ -27,25 +27,23 @@ let just_verify maildir new_line message =
     Fmt.pr "\r%a %a: %s.\n%!" Pretty_printer.pp_error () Fmt.(using Maildir.value Maildir.pp_message) message err ;
     error_msgf "On %a: %s" Fmt.(using Maildir.value Maildir.pp_message) message err
 
+let process verify_only_new_messages maildir new_line acc message =
+  if Maildir.is_new message || not verify_only_new_messages
+  then
+    match just_verify maildir new_line message with
+    | Error (`Msg err) ->
+      Log.err (fun m -> m "Retrieve an error: %s." err) ;
+      false && acc
+    | Ok () -> true && acc
+  else acc
+
 let run () maildir_path host verify_only_new_messages new_line =
   let maildir = Maildir.create ~pid:(Unix.getpid ()) ~host ~random maildir_path in
 
   (* XXX(dinosaure): stack overflow here. *)
 
-  let cons =
-    if verify_only_new_messages
-    then (fun a x -> if Maildir.is_new x then x :: a else a)
-    else (fun a x -> x :: a) in
-  let to_verify = Maildir_unix.(fold cons [] fs maildir) in
-  List.map (just_verify maildir new_line) to_verify
-  |> List.filter (function Error _ -> true | _ -> false)
-  |> List.map (function Error err -> err | _ -> assert false)
-  |> function
-  | [] -> Rresult.R.ok ()
-  | [ `Msg err ] -> Rresult.R.error_msg err
-  | errors ->
-    List.iter (fun (`Msg err) -> Log.err @@ fun m -> m "Retrieve an error: %s." err) errors ;
-    Rresult.R.error (`Some errors)
+  let res = Maildir_unix.(fold (process verify_only_new_messages maildir new_line) true fs maildir) in
+  if res then Ok () else Rresult.R.error (`Msg "Retrieve an invalid e-mail")
 
 open Cmdliner
 
