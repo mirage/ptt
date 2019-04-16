@@ -66,7 +66,10 @@ let print_fields maildir new_line message fields =
     let values = List.map (fun field -> field, get_field field header) fields in
     List.iter
       (function
-        | field, Ok values -> List.iter (Fmt.pr "@[<1>%a:@ %a@]\n%!" Mrmime.Field.pp field Mrmime.Header.Value.pp) values
+        | field, Ok values ->
+          List.iter
+            (Fmt.pr "@[<1>%a:@ %a@]\n%!" Mrmime.Field.pp field Mrmime.Header.Value.pp)
+            values
         | _, Error (`Msg err) -> Fmt.pr "%a: %s.\n%!" Pretty_printer.pp_error () err
         | field, Error `Not_found ->
           Fmt.pr "%a: %a not found.\n%!"
@@ -77,7 +80,7 @@ let print_fields maildir new_line message fields =
     Fmt.pr "%a: header of %a can not be parser"
       Pretty_printer.pp_error () Fmt.(using Maildir.value Maildir.pp_message) message
 
-let print maildir new_line fields () message =
+let pp maildir new_line fields () message =
   let path = Maildir_unix.get maildir message in
   let stat = Unix.stat (Fpath.to_string path) in
   Fmt.pr "%a%a %a %a %a %a %a\n%!"
@@ -95,8 +98,8 @@ let run () maildir_path host only_new new_line fields =
   let maildir = Maildir.create ~pid:(Unix.getpid ()) ~host ~random maildir_path in
 
   if only_new
-  then Maildir_unix.scan_only_new (print maildir new_line fields) () Maildir_unix.fs maildir
-  else Maildir_unix.fold (print maildir new_line fields) () Maildir_unix.fs maildir ;
+  then Maildir_unix.scan_only_new (pp maildir new_line fields) () Maildir_unix.fs maildir
+  else Maildir_unix.fold (pp maildir new_line fields) () Maildir_unix.fs maildir ;
 
   Ok ()
 

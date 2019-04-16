@@ -1,0 +1,4 @@
+(library
+ (name ptt_dkim)
+ (public_name ptt.dkim)
+ (libraries unix udns-client-unix hxd.string dkim))

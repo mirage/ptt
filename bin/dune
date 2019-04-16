@@ -8,7 +8,7 @@
  (name mti_gf)
  (public_name ptt.mti-gf)
  (modules mti_gf verify describe scan)
- (libraries ptime ptt.common))
+ (libraries digestif.c ptime ptt.common ptt.dkim))
 
 (executable
  (name ttf_solystic)

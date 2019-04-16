@@ -16,31 +16,44 @@ let parse_in_channel new_line ic =
     | Fail (_, _, err) -> close_in ic ; Error (`Msg err) in
   go (parse Mrmime.Mail.mail)
 
-let just_verify maildir new_line message =
+let verify_dkim maildir new_line message =
   let open Rresult.R in
-  Fmt.pr "%a %a.%!" Pretty_printer.pp_wait () Fmt.(using Maildir.value Maildir.pp_message) message ;
+  match in_channel_of_message maildir message
+    >>= fun ic -> Ptt_dkim.verify ic new_line with
+  | Error (`Msg err) ->
+    Fmt.pr "[err]dkim %a: %s.\n%!" Fmt.(using Maildir.value Maildir.pp_message) message err
+  | Ok lst ->
+    List.iter
+      (fun (domain, verified) -> match verified with
+         | true -> Fmt.pr "[ok]dkim %a.\n%!" Domain_name.pp domain
+         | false -> Fmt.pr "[err]dkim %a.\n%!" Domain_name.pp domain)
+      lst
+
+let just_verify maildir dkim new_line message =
+  let open Rresult.R in
+  Fmt.pr "processing %a.\n%!" Fmt.(using Maildir.value Maildir.pp_message) message ;
   in_channel_of_message maildir message >>= fun ic ->
   parse_in_channel new_line ic |> function
   | Ok _ as v ->
-    Fmt.pr "\r%a %a.\n%!" Pretty_printer.pp_ok () Fmt.(using Maildir.value Maildir.pp_message) message ; v
+    Fmt.pr "[ok]mrmime %a.\n%!" Fmt.(using Maildir.value Maildir.pp_message) message ;
+    if dkim then verify_dkim maildir (match new_line with CRLF -> `CRLF | LF -> `LF) message ; v
   | Error (`Msg err) ->
-    Fmt.pr "\r%a %a: %s.\n%!" Pretty_printer.pp_error () Fmt.(using Maildir.value Maildir.pp_message) message err ;
+    Fmt.pr "[err]mrmime %a: %s.\n%!" Fmt.(using Maildir.value Maildir.pp_message) message err ;
     error_msgf "On %a: %s" Fmt.(using Maildir.value Maildir.pp_message) message err
 
-let process verify_only_new_messages maildir new_line acc message =
+let process verify_only_new_messages dkim maildir new_line acc message =
   if Maildir.is_new message || not verify_only_new_messages
   then
-    match just_verify maildir new_line message with
+    match just_verify maildir dkim new_line message with
     | Error (`Msg err) ->
       Log.err (fun m -> m "Retrieve an error: %s." err) ;
       false && acc
     | Ok () -> true && acc
   else acc
 
-let run () maildir_path host verify_only_new_messages new_line =
+let run () maildir_path host verify_only_new_messages dkim new_line =
   let maildir = Maildir.create ~pid:(Unix.getpid ()) ~host ~random maildir_path in
-
-  let res = Maildir_unix.(fold (process verify_only_new_messages maildir new_line) true fs maildir) in
+  let res = Maildir_unix.(fold (process verify_only_new_messages dkim maildir new_line) true fs maildir) in
   if res then Ok () else Rresult.R.error (`Msg "Retrieve an invalid e-mail")
 
 open Cmdliner
@@ -53,6 +66,10 @@ let verify =
   let doc = "Verify only new messages." in
   Arg.(value & flag & info [ "only-new" ] ~doc)
 
+let dkim =
+  let doc = "Verify DKIM signatures." in
+  Arg.(value & flag & info [ "dkim" ] ~doc)
+
 let command =
   let doc = "Verify tool." in
   let exits = Term.default_exits in
@@ -64,5 +81,6 @@ let command =
         $ Argument.maildir_path
         $ host
         $ verify
+        $ dkim
         $ Argument.new_line),
   Term.info "verify" ~doc ~exits ~man
