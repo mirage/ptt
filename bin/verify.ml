@@ -19,26 +19,26 @@ let parse_in_channel new_line ic =
 let verify_dkim maildir new_line message =
   let open Rresult.R in
   match in_channel_of_message maildir message
-    >>= fun ic -> Ptt_dkim.verify ic new_line with
+    >>= fun ic -> let res = Ptt_dkim.verify ic new_line in close_in ic ; res with
   | Error (`Msg err) ->
-    Fmt.pr "[err]dkim %a: %s.\n%!" Fmt.(using Maildir.value Maildir.pp_message) message err
+    Fmt.pr "- dkim error: %s.\n%!" err
   | Ok lst ->
     List.iter
       (fun (domain, verified) -> match verified with
-         | true -> Fmt.pr "[ok]dkim %a.\n%!" Domain_name.pp domain
-         | false -> Fmt.pr "[err]dkim %a.\n%!" Domain_name.pp domain)
+         | true -> Fmt.pr "- dkim on %a ok.\n%!" Domain_name.pp domain
+         | false -> Fmt.pr "- dkim on %a error.\n%!" Domain_name.pp domain)
       lst
 
 let just_verify maildir dkim new_line message =
   let open Rresult.R in
-  Fmt.pr "processing %a.\n%!" Fmt.(using Maildir.value Maildir.pp_message) message ;
+  Fmt.pr "%a.\n%!" Fmt.(using Maildir.value Maildir.pp_message) message ;
   in_channel_of_message maildir message >>= fun ic ->
   parse_in_channel new_line ic |> function
   | Ok _ as v ->
-    Fmt.pr "[ok]mrmime %a.\n%!" Fmt.(using Maildir.value Maildir.pp_message) message ;
+    Fmt.pr "- mrmime ok.\n%!" ;
     if dkim then verify_dkim maildir (match new_line with CRLF -> `CRLF | LF -> `LF) message ; v
   | Error (`Msg err) ->
-    Fmt.pr "[err]mrmime %a: %s.\n%!" Fmt.(using Maildir.value Maildir.pp_message) message err ;
+    Fmt.pr "- mrmime error: %s.\n%!" err ;
     error_msgf "On %a: %s" Fmt.(using Maildir.value Maildir.pp_message) message err
 
 let process verify_only_new_messages dkim maildir new_line acc message =
