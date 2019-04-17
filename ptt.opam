@@ -19,6 +19,7 @@ pin-depends: [
  [ "pecu.dev" "git+https://github.com/dinosaure/pecu.git"]
  [ "mrmime.dev" "git+https://github.com/mirage/mrmime.git"]
  [ "maildir.dev" "git+https://github.com/dinosaure/ocaml-maildir.git"]
+ [ "dkim.dev" "git+https://github.com/dinosaure/ocaml-dkim.git"]
 ]
 
 depends: [
@@ -26,6 +27,7 @@ depends: [
   "dune"     {build}
   "mrmime"   {>= "dev"}
   "maildir"  {>= "dev"}
+  "dkim"     {>= "dev"}
   "fpath"
   "cmdliner"
   "base-unix"
