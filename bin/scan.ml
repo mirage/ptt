@@ -53,28 +53,28 @@ let parse_header new_line ic =
   go (parse Mrmime.Mail.header)
 
 let get_field
-  : Mrmime.Field.t -> Mrmime.Header.t -> (Mrmime.Header.Value.t list, [ `Not_found | Rresult.R.msg ]) result
+  : Mrmime.Field_name.t -> Mrmime.Header.t -> (Mrmime.Header.value list, [ `Not_found | Rresult.R.msg ]) result
   = fun field header ->
     match Mrmime.Header.get field header with
     | [] -> Error `Not_found
-    | lst -> Ok (List.map fst lst)
+    | lst -> Ok (List.map (fun (_, v, _) -> v) lst)
 
 let print_fields maildir new_line message fields =
   let open Rresult.R in
   match in_channel_of_message maildir message >>= parse_header new_line with
-  | Ok (_content, header, _rest) ->
+  | Ok (_content, header, _resents, _traces, _rest) ->
     let values = List.map (fun field -> field, get_field field header) fields in
     List.iter
       (function
         | field, Ok values ->
           List.iter
-            (Fmt.pr "@[<1>%a:@ %a@]\n%!" Mrmime.Field.pp field Mrmime.Header.Value.pp)
+            (Fmt.pr "@[<1>%a:@ %a@]\n%!" Mrmime.Field_name.pp field Mrmime.Header.pp_value)
             values
         | _, Error (`Msg err) -> Fmt.pr "%a: %s.\n%!" Pretty_printer.pp_error () err
         | field, Error `Not_found ->
           Fmt.pr "%a: %a not found.\n%!"
             Pretty_printer.pp_error ()
-            Mrmime.Field.pp field)
+            Mrmime.Field_name.pp field)
       values
   | Error _ ->
     Fmt.pr "%a: header of %a can not be parser"
