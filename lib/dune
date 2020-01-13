@@ -1,0 +1,3 @@
+(library
+ (name ptt)
+ (libraries sendmail.tls emile ke psq logs colombe))
