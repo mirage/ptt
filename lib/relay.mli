@@ -1,4 +1,5 @@
 open Colombe.Sigs
+open Rresult
 open Sigs
 
 module Make
@@ -8,14 +9,20 @@ module Make
     module Md : module type of Messaged.Make(Scheduler)(IO)
 
     type 'r resolver =
-      { gethostbyname : 'a. 'r -> [ `host ] Domain_name.t -> (Ipaddr.V4.t, [> Rresult.R.msg ] as 'a) result IO.t
-      ; extension : 'a. string -> string -> (Ipaddr.t, [> Rresult.R.msg ] as 'a) result IO.t }
+      { gethostbyname : 'a. 'r -> [ `host ] Domain_name.t -> (Ipaddr.V4.t, [> R.msg ] as 'a) result IO.t
+      ; getmxbyname : 'a. 'r -> [ `host ] Domain_name.t -> (Dns.Rr_map.Mx_set.t, [> R.msg ] as 'a) result IO.t
+      ; extension : 'a. string -> string -> (Ipaddr.V4.t, [> R.msg ] as 'a) result IO.t }
+
     type 'r server
+
     type info = SMTP.info =
-      { domain : Colombe.Domain.t
+      { domain : [ `host ] Domain_name.t
       ; ipv4 : Ipaddr.V4.t
       ; tls : Tls.Config.server
       ; size : int64 }
+
+    val info : 'r server -> info
+    val resolver : 'r server -> 'r resolver
 
     type error
 

@@ -31,3 +31,9 @@ module Lwt_io = struct
   let bind = Lwt.bind
   let return = Lwt.return
 end
+
+let lwt =
+  let open Lwt.Infix in
+  let open Lwt_scheduler in
+  { Colombe.Sigs.bind= (fun x f -> inj (prj x >>= fun x -> prj (f x)))
+  ; Colombe.Sigs.return= (fun x -> inj (Lwt.return x)) }

@@ -1,5 +1,6 @@
 open Colombe.Sigs
 open Sigs
+open Rresult
 
 let ( <.> ) f g = fun x -> f (g  x)
 
@@ -12,9 +13,13 @@ module Make
 
   let ( >>= ) = IO.bind
 
+  let src = Logs.Src.create "ptt-relay"
+  module Log = (val Logs.src_log src : Logs.LOG)
+
   type 'w resolver =
-    { gethostbyname : 'a. 'w -> [ `host ] Domain_name.t -> (Ipaddr.V4.t, [> Rresult.R.msg ] as 'a) result IO.t
-    ; extension : 'a. string -> string -> (Ipaddr.t, [> Rresult.R.msg ] as 'a) result IO.t }
+    { gethostbyname : 'a. 'w -> [ `host ] Domain_name.t -> (Ipaddr.V4.t, [> R.msg ] as 'a) result IO.t
+    ; getmxbyname : 'a. 'w -> [ `host ] Domain_name.t -> (Dns.Rr_map.Mx_set.t, [> R.msg ] as 'a) result IO.t
+    ; extension : 'a. string -> string -> (Ipaddr.V4.t, [> R.msg ] as 'a) result IO.t }
 
   type 'w server =
     { info : info
@@ -22,10 +27,13 @@ module Make
     ; resolver : 'w resolver
     ; mutable count : int64 }
   and info = SMTP.info =
-    { domain : Colombe.Domain.t
+    { domain : [ `host ] Domain_name.t
     ; ipv4 : Ipaddr.V4.t
     ; tls : Tls.Config.server
     ; size : int64 }
+
+  let info { info; _ } = info
+  let resolver { resolver; _ } = resolver
 
   let create ~info resolver =
     { info
@@ -67,34 +75,61 @@ module Make
     | Ok v -> f v
     | Error err -> IO.return (Error err)
 
-  let resolve_recipients s w recipients =
+  let io_fold_list ~f a l =
+    let rec go a = function
+      | [] -> IO.return a
+      | x :: r -> f x a >>= fun a -> go a r in
+    go a l
+
+  (* XXX(dinosaure): this function checks only if domains have a reachable Mail Exchange service. *)
+  let recipients_are_reachable s w recipients =
     let open Colombe in
-    let resolver = s.resolver in
+    let fold { Dns.Mx.mail_exchange; Dns.Mx.preference; } m =
+      s.resolver.gethostbyname w mail_exchange >>= function
+      | Ok mx_ipaddr ->
+        let mx_ipaddr = Ipaddr.V4 mx_ipaddr in (* TODO: [gethostbyname] should return a [Ipaddr.t]. *)
+        IO.return (Mxs.add { Mxs.preference; Mxs.mx_ipaddr; Mxs.mx_domain= Some mail_exchange; } m)
+      | Error (`Msg err) ->
+        Log.warn (fun m -> m "Impossible to reach the Mail Exchange service %a: %s" Domain_name.pp mail_exchange err) ;
+        IO.return m in
     let rec go acc = function
-      | [] -> IO.return (Ok (List.rev acc))
+      | [] -> IO.return acc
       | Forward_path.Postmaster :: r ->
-        go (Ipaddr.V4 s.info.ipv4 :: acc) r
+        go (Mxs.(singleton (v ~preference:0 (Ipaddr.V4 s.info.ipv4))) :: acc) r
       | Forward_path.Forward_path { Path.domain= Domain.Domain v; _ } :: r
       | Forward_path.Domain (Domain.Domain v) :: r ->
-        let domain =
-          let open Rresult in
-          Domain_name.of_strings v >>= Domain_name.host in
-        IO.return domain
-        >>- resolver.gethostbyname w
-        >>- fun v -> go (Ipaddr.V4 v :: acc) r
-      | Forward_path.Forward_path { Path.domain= Domain.IPv4 v; _ } :: r
-      | Forward_path.Domain (Domain.IPv4 v) :: r ->
-        go (Ipaddr.V4 v :: acc) r
+        ( try
+            let domain = Domain_name.(host_exn <.> of_strings_exn) v in
+            s.resolver.getmxbyname w domain
+            >>= function
+            | Ok m ->
+              io_fold_list ~f:fold Mxs.empty (Dns.Rr_map.Mx_set.elements m) >>= fun s ->
+              go (s :: acc) r
+            | Error (`Msg err) ->
+              Log.warn (fun m -> m "Got an error while resolving %a: %s" Domain_name.pp domain err) ;
+              go acc r
+          with _exn ->
+            Log.err (fun m -> m "%a is an invalid-domain." Domain.pp (Domain.Domain v)) ;
+            go (Mxs.empty :: acc) r )
+      | Forward_path.Forward_path { Path.domain= Domain.IPv4 mx_ipaddr; _ } :: r
+      | Forward_path.Domain (Domain.IPv4 mx_ipaddr) :: r ->
+        go (Mxs.(singleton (v ~preference:0 (Ipaddr.V4 mx_ipaddr))) :: acc) r
       | Forward_path.Forward_path { Path.domain= Domain.IPv6 v; _ } :: r
       | Forward_path.Domain (Domain.IPv6 v) :: r ->
-        go (Ipaddr.V6 v :: acc) r
+        Log.err (fun m -> m "Impossible to resolve an IPv6 domain: %a" Ipaddr.V6.pp v) ;
+        go acc r
       | Forward_path.Forward_path { Path.domain= Domain.Extension (ldh, v); _ } :: r
       | Forward_path.Domain (Domain.Extension (ldh, v)) :: r ->
-        resolver.extension ldh v >>- fun v -> go (v :: acc) r in
-    go [] recipients
+        s.resolver.extension ldh v >>= function
+        | Ok mx_ipaddr -> go (Mxs.(singleton (v ~preference:0 (Ipaddr.V4 mx_ipaddr))) :: acc) r
+        | Error (`Msg err) ->
+          Log.warn (fun m -> m "Got an error while resolving [%s:%s]: %s" ldh v err) ;
+          go acc r in
+    go [] recipients >>= (IO.return <.> List.for_all (fun m -> not (Mxs.is_empty m)))
+
+  let dot = Some (".\r\n", 0, 3)
 
   let receive_mail rdwr flow ctx producer =
-    let dot = Some (".\r\n", 0, 3) in
     let m ctx = let open SMTP in Monad.recv ctx Value.Payload in
     (* TODO: limit! *)
     let rec go () =
@@ -113,10 +148,9 @@ module Make
       | `Quit -> IO.return (Ok ())
       | `Submission { SMTP.tls= false; _ } -> assert false (* TODO *)
       | `Submission { SMTP.domain_from; from; recipients; tls= true; _ } ->
-        resolve_recipients server resolver (List.map fst recipients) >>= function
-        | Ok targets ->
+        recipients_are_reachable server resolver (List.map fst recipients) >>= function
+        | true ->
           let id = succ server in
-          let recipients = List.map2 (fun (x, args) v -> (v, x, args)) recipients targets in
           let key = Messaged.v ~domain_from ~from ~recipients id in
           Md.push server.messaged key >>= fun producer ->
           let m = SMTP.m_mail ctx in
@@ -125,8 +159,8 @@ module Make
           let m = SMTP.m_end ctx in
           run rdwr flow m >>- fun `Quit ->
           IO.return (Ok ())
-        | Error _ ->
+        | false ->
           let e = `Protocol `Invalid_recipients in
-          let m = SMTP.properly_close_and_fail ctx ~message:"No valid recipients" e in
+          let m = SMTP.m_properly_close_and_fail ctx ~message:"No valid recipients" e in
           run rdwr flow m
 end

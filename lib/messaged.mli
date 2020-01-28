@@ -2,7 +2,7 @@ open Sigs
 open Colombe
 
 type from = Reverse_path.t * (string * string option) list
-type recipient = Ipaddr.t * Forward_path.t * (string * string option) list
+type recipient = Forward_path.t * (string * string option) list
 
 type key
 
