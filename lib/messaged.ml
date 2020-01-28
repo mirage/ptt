@@ -4,7 +4,7 @@ open Colombe
 module Ke = Ke.Rke.Weighted
 
 type from = Reverse_path.t * (string * string option) list
-type recipient = Ipaddr.t * Forward_path.t * (string * string option) list
+type recipient = Forward_path.t * (string * string option) list
 
 type key =
   { domain_from : Domain.t
@@ -77,7 +77,7 @@ module Make
         return ()
       | Some (buf, off, len) as v ->
         Mutex.lock mutex >>= fun () ->
-        if !close then return ()
+        if !close then ( Mutex.unlock mutex ; return () )
         else match Ke.N.push queue ~blit:blit_of_string ~length:String.length ~off ~len buf with
         | None ->
           Condition.signal condition ; Mutex.unlock mutex ; producer v

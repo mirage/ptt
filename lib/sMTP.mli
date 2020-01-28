@@ -62,7 +62,7 @@ module Monad : module type of State.Scheduler(Sendmail_with_tls.Context_with_tls
 type context = Sendmail_with_tls.Context_with_tls.t
 
 type info =
-  { domain : Domain.t
+  { domain : [ `host ] Domain_name.t
   ; ipv4 : Ipaddr.V4.t
   ; tls : Tls.Config.server
   ; size : int64 }
@@ -78,8 +78,8 @@ type error = Value_with_tls.error
 
 val pp_error : error Fmt.t
 
-val properly_close_and_fail : context -> ?code:int -> message:string -> error -> (unit, error) Colombe.State.t
-val politely_close : context -> ([> `Quit ], error) Colombe.State.t
+val m_properly_close_and_fail : context -> ?code:int -> message:string -> error -> (unit, error) Colombe.State.t
+val m_politely_close : context -> ([> `Quit ], error) Colombe.State.t
 
 val m_relay : context -> domain_from:Domain.t -> ([> `Quit | `Submission of submission ], error) Colombe.State.t
 val m_mail  : context -> (unit, error) Colombe.State.t

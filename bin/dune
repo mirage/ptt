@@ -1,3 +1,3 @@
 (executable
  (name mti_pf)
- (libraries sage.lwt nocrypto.lwt logs.fmt fpath bos rresult mtime mtime.clock.os lwt.unix dns-client.lwt lwt ptt))
+ (libraries mrmime tcpip.stack-socket tuyau.mirage.tcp tuyau.mirage.tls logs.fmt colombe.emile colombe.received fpath bos rresult ptime ptime.clock.os mtime mtime.clock.os dns-client.mirage nocrypto.lwt lwt ptt))

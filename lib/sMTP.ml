@@ -122,7 +122,7 @@ module Monad = State.Scheduler(Sendmail_with_tls.Context_with_tls)(Value_with_tl
 type context = Sendmail_with_tls.Context_with_tls.t
 
 type info =
-  { domain : Domain.t
+  { domain : [ `host ] Domain_name.t
   ; ipv4 : Ipaddr.V4.t
   ; tls : Tls.Config.server
   ; size : int64 }
@@ -140,16 +140,17 @@ let pp_error = Value_with_tls.pp_error
 
 let politely ~domain ~ipv4 =
   Fmt.strf "%a at your service, [%s]"
-    Domain.pp domain (Ipaddr.V4.to_string ipv4)
+    Domain_name.pp domain (Ipaddr.V4.to_string ipv4)
 
-let properly_close_and_fail ctx ?(code= 554) ~message err =
+let m_properly_close_and_fail ctx ?(code= 554) ~message err =
   let open Monad in
   let* () = send ctx Value.Code (code, [ message ]) in
   fail err
 
-let politely_close ctx =
+let m_politely_close ctx =
   let open Monad in
   let* () = send ctx Value.PP_220 [ "Bye, buddy!" ] in
+  let* () = Value_with_tls.close (Sendmail_with_tls.Context_with_tls.encoder ctx) in
   return `Quit
 
 let m_relay ctx ~domain_from =
@@ -162,7 +163,7 @@ let m_relay ctx ~domain_from =
   and recipients ~from acc =
     if !reset >= 25 || !bad >= 25
     then
-      properly_close_and_fail ctx
+      m_properly_close_and_fail ctx
         ~message:"You reached the limit buddy!"
         (`Protocol `Too_many_bad_commands)
     else
@@ -171,7 +172,7 @@ let m_relay ctx ~domain_from =
       | `Data ->
         ( match acc with
           | [] ->
-            properly_close_and_fail ctx
+            m_properly_close_and_fail ctx
               ~message:"No recipients"
               (`Protocol `No_recipients)
           | acc ->
@@ -182,7 +183,7 @@ let m_relay ctx ~domain_from =
                                 ; domain_from
                                 ; tls= Sendmail_with_tls.Context_with_tls.tls ctx }) )
       | `Recipient v ->
-        (* XXX(dinosaure): the minimum totla number of recipients that MUST be
+        (* XXX(dinosaure): the minimum number of recipients that MUST be
            buffered is 100 recipients. *)
         if List.length acc < 100
         then send ctx Value.PP_250 [ "Ok buddy!" ] >>= fun () ->
@@ -193,7 +194,7 @@ let m_relay ctx ~domain_from =
         incr reset ;
         send ctx Value.PP_250 [ "Yes buddy!" ] >>= fun () ->
         mail_from ()
-      | `Quit -> politely_close ctx
+      | `Quit -> m_politely_close ctx
       | v ->
         incr bad ;
         Log.warn (fun m -> m "%a sended a bad command: %a"
@@ -210,9 +211,7 @@ let m_end ctx =
   let open Monad in
   let* () = send ctx Value.PP_250 [ "Mail sended, buddy!" ] in
   let* () = recv ctx Value.Quit in
-  let* () = send ctx Value.PP_221 [ "Bye, bye buddy!" ] in
-  let* () = Value_with_tls.close (Sendmail_with_tls.Context_with_tls.encoder ctx) in
-  return `Quit
+  m_politely_close ctx
 
 let m_init_with_tls ctx s =
   let open Monad in
@@ -230,7 +229,7 @@ let () = Colombe.Request.Decoder.add_extension "STARTTLS"
 
 let m_init ctx s =
   let open Monad in
-  let* _from_domain = send ctx Value.PP_220 [ Domain.to_string s.domain ] >>= fun () -> recv ctx Value.Helo in
+  let* _from_domain = send ctx Value.PP_220 [ Domain_name.to_string s.domain ] >>= fun () -> recv ctx Value.Helo in
   let* () = send ctx Value.PP_250
       [ politely ~domain:s.domain ~ipv4:s.ipv4
       ; "8BITMIME"
@@ -240,7 +239,7 @@ let m_init ctx s =
   let reset = ref 0 and bad = ref 0 in
   let rec go () =
     if !reset >= 25 && !bad >= 25
-    then properly_close_and_fail ctx
+    then m_properly_close_and_fail ctx
         ~message:"You reached the limit buddy!"
         (`Protocol `Too_many_bad_commands)
     else
@@ -255,7 +254,7 @@ let m_init ctx s =
         incr reset ;
         let* () = send ctx Value.PP_250 [ "Yes buddy!" ] in
         go ()
-      | `Quit -> politely_close ctx
+      | `Quit -> m_politely_close ctx
       | _ ->
         incr bad ;
         let* () = send ctx Value.PN_530 [ "Must issue a STARTTLS command first." ] in
