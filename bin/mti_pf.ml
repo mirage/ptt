@@ -163,29 +163,17 @@ module Make (Random : Mirage_random.S) (Mclock : Mirage_clock.MCLOCK) (Pclock : 
           | _ -> received None in
         let stream = received <+> stream in
         let rec go = function
-          | [] ->
-            Log.err (fun m -> m "Impossible to send the email %Ld to %a." id Colombe.Domain.pp mx_domain) ;
-            Lwt.return ()
-          | { Ptt.Mxs.mx_ipaddr= Ipaddr.V6 _; _ } :: rest ->
-            (* XXX(dinosaure): we completely ignore IPv6 when the current stack is only for V4. *)
-            go rest
+          | [] -> Lwt.return ()
+          | { Ptt.Mxs.mx_ipaddr= Ipaddr.V6 _; _ } :: rest -> go rest
           | { Ptt.Mxs.mx_ipaddr= Ipaddr.V4 mx_ipaddr; _ } :: rest ->
-            Log.info (fun m -> m "Start to send the email %Ld to %a [%a]." id Colombe.Domain.pp mx_domain Ipaddr.V4.pp mx_ipaddr) ;
             sendmail stack conf_server mx_ipaddr emitter stream recipients >>= function
-            | Ok () ->
-              Log.info (fun m -> m "Email %Ld correctly sended to domain %a [%a]" id Colombe.Domain.pp mx_domain Ipaddr.V4.pp mx_ipaddr) ;
-              Lwt.return ()
-            | Error err ->
-              Log.err (fun m -> m "Got an error while sending email %Ld to %a: %a" id Ipaddr.V4.pp mx_ipaddr Tuyau_mirage.pp_error err) ;
-              go rest in
+            | Ok () -> Lwt.return ()
+            | Error _ -> go rest in
         let sort = List.sort (fun { Ptt.Mxs.preference= a; _ } { Ptt.Mxs.preference= b; _ } -> Int.compare a b) in
         let sorted = Ptt.Mxs.elements mxs |> sort in
-        Log.debug (fun m -> m "Mail exchange services available for %a: @[<hov>%a@]"
-                  Colombe.Domain.pp mx_domain Fmt.(Dump.list Ptt.Mxs.pp_elt) sorted) ;
         go sorted in
       List.map sendmail targets in
     Lwt.join (List.map (apply ()) (transmit :: sendmails)) >>= fun () ->
-    Log.info (fun m -> m "Transmission of the mail %Ld correctly done." id ) ;
     Relay.Md.close queue
 
   let smtp_relay_service resolver conf conf_server =
@@ -194,9 +182,10 @@ module Make (Random : Mirage_random.S) (Mclock : Mirage_clock.MCLOCK) (Pclock : 
     let handle ip port (Tuyau_mirage.Flow (flow, (module Flow))) () =
       let rdwr = rdwr_of_flow (module Flow) in
       Lwt.catch
-        (fun () -> Relay.accept rdwr flow resolver conf_server >|= R.reword_error (R.msgf "%a" Relay.pp_error) >>? fun () ->
-          (* TODO(dinosaure): [Flow.close] is called only if [Relay.accept] returns [Ok]. *)
-          Flow.close flow >|= R.reword_error (R.msgf "%a" Flow.pp_error) )
+        (fun () -> Relay.accept rdwr flow resolver conf_server >|= R.reword_error (R.msgf "%a" Relay.pp_error) >>= fun res ->
+          Flow.close flow >>= function
+          | Error err -> Lwt.return (R.error_msgf "%a" Flow.pp_error err)
+          | Ok () -> Lwt.return res)
         (function Failure err -> Lwt.return (R.error_msg err)
                 | exn -> Lwt.return (Error (`Exn exn))) >>= function
       | Ok () ->
