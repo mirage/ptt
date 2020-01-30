@@ -19,6 +19,7 @@ module Make
       { domain : [ `host ] Domain_name.t
       ; ipv4 : Ipaddr.V4.t
       ; tls : Tls.Config.server
+      ; zone : Mrmime.Date.Zone.t
       ; size : int64 }
 
     val info : 'r server -> info
@@ -27,6 +28,11 @@ module Make
     type error
 
     val pp_error : error Fmt.t
+
+    val recipients_are_reachable : 'r server -> 'r -> Colombe.Forward_path.t list -> bool IO.t
+    val resolve_recipients : 'r server -> 'r -> Relay_map.t -> Colombe.Forward_path.t list ->
+      ([ `Domain of ([ `host ] Domain_name.t * Mxs.t)
+       | `Ipaddr of Ipaddr.t ] * Aggregate.resolved_elt) list IO.t
 
     val create : info:info -> 'r resolver -> 'r server
     val messaged : 'r server -> Md.t

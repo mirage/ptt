@@ -9,6 +9,8 @@ type elt =
   ; mx_domain : [ `host ] Domain_name.t option }
 (** Type of a MX value. *)
 
+val pp_elt : elt Fmt.t
+
 val v : preference:int -> ?domain:[ `host ] Domain_name.t -> Ipaddr.t -> elt
 (** [v ~preference ?domain mx_ipaddr] returns an MX value. *)
 

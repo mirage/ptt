@@ -16,33 +16,7 @@ open Lwt.Infix
 
 module Relay = Ptt.Relay.Make(Lwt_scheduler)(Lwt_io)
 
-module Relay_map = struct
-end
-
-module Mxs = Ptt.Mxs
-module By_domain = Ptt.Aggregate.By_domain
-module By_ipaddr = Ptt.Aggregate.By_ipaddr
-
-type resolved =
-  | Ipaddr of Ipaddr.t
-  | Domain of [ `host ] Domain_name.t * Mxs.t
-
-module Mclock = struct
-  let elapsed_ns = Mtime_clock.elapsed_ns
-  let period_ns = Mtime_clock.period_ns
-end
-
-module Random = struct
-  type g = unit
-
-  let generate ?g:_ len =
-    let ic = open_in "/dev/urandom" in
-    let rs = Bytes.create len in
-    really_input ic rs 0 len ; close_in ic ;
-    Cstruct.of_bytes rs
-end
-
-module Make (StackV4 : Mirage_stack.V4) = struct
+module Make (Random : Mirage_random.S) (Mclock : Mirage_clock.MCLOCK) (Pclock : Mirage_clock.PCLOCK) (StackV4 : Mirage_stack.V4) = struct
   module TCP = Tuyau_mirage_tcp.Make(StackV4)
   module TLS = Tuyau_mirage_tls
   module DNS = Dns_client_mirage.Make(Random)(Mclock)(StackV4)
@@ -133,88 +107,50 @@ module Make (StackV4 : Mirage_stack.V4) = struct
       Log.err (fun m -> m "Got an exception: %s" (Printexc.to_string exn)) ;
       Lwt.return (Error (`Msg "Unknown exception"))
 
-  let resolve_recipients ~domain dns resolver relay_map recipients =
-    let module Resolved = Map.Make(struct
-        type t = [ `Ipaddr of Ipaddr.t | `Domain of ([ `host ] Domain_name.t * Mxs.t) ]
-
-        let compare a b = match a, b with
-          | `Ipaddr a, `Ipaddr b -> Ipaddr.compare a b
-          | `Domain (_, mxs_a), `Domain (_, mxs_b) ->
-            let { Mxs.mx_ipaddr= a; _ } = Mxs.choose mxs_a in
-            let { Mxs.mx_ipaddr= b; _ } = Mxs.choose mxs_b in
-            Ipaddr.compare a b
-          | `Ipaddr a, `Domain (_, mxs) ->
-            let { Mxs.mx_ipaddr= b; _ } = Mxs.choose mxs in
-            Ipaddr.compare a b
-          | `Domain (_, mxs), `Ipaddr b ->
-            let { Mxs.mx_ipaddr= a; _ } = Mxs.choose mxs in
-            Ipaddr.compare a b
-      end) in
-    let postmaster = [ `Atom "Postmaster" ] in
-    let unresolved, resolved = Ptt.Aggregate.aggregate_by_domains ~domain recipients in
-    let unresolved, resolved = Ptt.Relay_map.expand relay_map unresolved resolved in
-    let fold resolved (domain, recipients) =
-      dns.Relay.getmxbyname resolver domain >>= function
-      | Error (`Msg err) ->
-        Log.err (fun m -> m "Domain %a does not have a Mail Exchange service: %s" Domain_name.pp domain err) ;
-        Lwt.return resolved
-      | Ok mxs ->
-        let fold mxs { Dns.Mx.mail_exchange; Dns.Mx.preference; } =
-          dns.Relay.gethostbyname resolver mail_exchange >>= function
-          | Ok mx_ipaddr ->
-            let mxs = Mxs.(add (v ~preference ~domain:mail_exchange (Ipaddr.V4 mx_ipaddr)) mxs) in
-            Lwt.return mxs
-          | Error (`Msg err) ->
-            Log.warn (fun m -> m "Impossible to reach the Mail Exchange service %a: %s" Domain_name.pp mail_exchange err ) ;
-            Lwt.return mxs in
-        Lwt_list.fold_left_s fold Mxs.empty (Dns.Rr_map.Mx_set.elements mxs) >>= fun mxs ->
-        if Mxs.is_empty mxs
-        then ( Log.err (fun m -> m "Domain %a does not have a reachable Mail Exchange server." Domain_name.pp domain)
-             ; Lwt.return resolved )
-        else
-          let { Mxs.mx_ipaddr; _ } = Mxs.choose mxs in
-          match recipients with
-          | `All -> Lwt.return (Resolved.add (`Domain (domain, mxs)) `All resolved)
-          | `Local l0 ->
-            ( match Resolved.find_opt (`Ipaddr mx_ipaddr) resolved with
-              | None -> Lwt.return (Resolved.add (`Domain (domain, mxs)) (`Local l0) resolved)
-              | Some `All -> Lwt.return resolved
-              | Some (`Local l1) ->
-                let vs = List.sort_uniq (Emile.compare_local ~case_sensitive:true) (l0 @ l1) in
-                Lwt.return (Resolved.add (`Domain (domain, mxs)) (`Local vs) resolved)
-              | Some `Postmaster ->
-                Lwt.return (Resolved.add (`Domain (domain, mxs)) (`Local (postmaster :: l0)) resolved) )
-          | `Postmaster -> match Resolved.find_opt (`Ipaddr mx_ipaddr) resolved with
-            | Some `Postmaster | Some `All -> Lwt.return resolved
-            | Some (`Local l0) ->
-              if List.exists (Emile.equal_local ~case_sensitive:true postmaster) l0
-              then Lwt.return resolved
-              else Lwt.return (Resolved.add (`Domain (domain, mxs)) (`Local (postmaster :: l0)) resolved)
-            | None ->
-              Lwt.return (Resolved.add (`Domain (domain, mxs)) (`Local [ postmaster ]) resolved) in
-    let resolved = By_ipaddr.fold (fun k v m -> Resolved.add (`Ipaddr k) v m) resolved Resolved.empty in
-    Lwt_list.fold_left_s fold resolved (By_domain.bindings unresolved) >|= fun resolved ->
-    Resolved.bindings resolved
+  let ( <+> ) s0 s1 =
+    let current = ref s0 in
+    let rec next () =
+      let tmp = Lwt_scheduler.prj (!current ()) in
+      let res = tmp >>= function
+        | Some _ -> tmp
+        | None ->
+          if !current == s1
+          then Lwt.return None
+          else ( current := s1 ; Lwt_scheduler.prj (next ()) ) in
+      Lwt_scheduler.inj res in
+    next
 
   let transmit stack resolver conf_server relay_map (key, queue, consumer) =
-    let info = Relay.info conf_server in
-    let impl = Relay.resolver conf_server in
-    resolve_recipients ~domain:info.Ptt.SMTP.domain impl resolver relay_map (List.map fst (Ptt.Messaged.recipients key)) >>= fun resolved ->
+    Relay.resolve_recipients conf_server resolver relay_map (List.map fst (Ptt.Messaged.recipients key)) >>= fun resolved ->
     let producers, targets =
       List.fold_left (fun (producers, targets) target ->
           let stream, producer = Lwt_stream.create () in
           let stream () = Lwt_scheduler.inj (Lwt_stream.get stream) in
           (producer :: producers), (stream, target) :: targets)
         ([], []) resolved in
-    let transmit = plug_consumer_to_producers consumer producers in
     let emitter, _ = Ptt.Messaged.from key and id = Ptt.Messaged.id key in
+    let received recipient =
+      let by = Domain_name.to_strings (Relay.info conf_server).domain in
+      let id =
+        let open Mrmime.Mailbox in
+        Local.(v [ w (Fmt.strf "%08LX" id) ]), `Domain by in
+      let received = Received.make
+        ~from:(Received.Only (Ptt.Messaged.domain_from key))
+        ~by:(Received.Only (Colombe.Domain.Domain by))
+        ~via:Received.tcp
+        ~protocol:Received.esmtp
+        ~id ~zone:(Relay.info conf_server).Ptt.SMTP.zone recipient (Ptime.v (Pclock.now_d_ps ())) in
+      let stream = Prettym.to_stream Received.Encoder.as_field received in
+      let stream = Lwt_stream.from (Lwt.return <.> stream) |> Lwt_stream.map (fun s -> s, 0, String.length s) in
+      (Lwt_scheduler.inj <.> (fun () -> Lwt_stream.get stream)) in
+    let transmit = plug_consumer_to_producers consumer producers in
     let sendmails =
       let sendmail (stream, (k, vs)) () =
         let open Colombe in
         let open Forward_path in
         let mx_domain, mxs = match k with
-          | `Ipaddr ((Ipaddr.V4 v4) as mx_ipaddr) -> Domain.IPv4 v4, Mxs.(singleton (v ~preference:0 mx_ipaddr))
-          | `Ipaddr ((Ipaddr.V6 v6) as mx_ipaddr) -> Domain.IPv6 v6, Mxs.(singleton (v ~preference:0 mx_ipaddr))
+          | `Ipaddr ((Ipaddr.V4 v4) as mx_ipaddr) -> Domain.IPv4 v4, Ptt.Mxs.(singleton (v ~preference:0 mx_ipaddr))
+          | `Ipaddr ((Ipaddr.V6 v6) as mx_ipaddr) -> Domain.IPv6 v6, Ptt.Mxs.(singleton (v ~preference:0 mx_ipaddr))
           | `Domain (mx_domain, mxs) -> Domain.Domain (Domain_name.to_strings mx_domain), mxs in
         let recipients = match vs with
           | `All -> [ Domain mx_domain ]
@@ -222,26 +158,22 @@ module Make (StackV4 : Mirage_stack.V4) = struct
             List.map (fun local ->
                 let local = `Dot_string (List.map (function `Atom x -> x | `String x -> x) local) in
                 Forward_path { Path.local= local; Path.domain= mx_domain; Path.rest= []; }) vs in
+        let received = match recipients with
+          | [ Forward_path path ] -> received (Some path)
+          | _ -> received None in
+        let stream = received <+> stream in
         let rec go = function
-          | [] ->
-            Log.err (fun m -> m "Impossible to send the email %Ld to %a." id Colombe.Domain.pp mx_domain) ;
-            Lwt.return ()
-          | { Mxs.mx_ipaddr= Ipaddr.V6 _; _ } :: rest ->
-            (* XXX(dinosaure): we completely ignore IPv6 when the current stack is only for V4. *)
-            go rest
-          | { Mxs.mx_ipaddr= Ipaddr.V4 mx_ipaddr; _ } :: rest ->
+          | [] -> Lwt.return ()
+          | { Ptt.Mxs.mx_ipaddr= Ipaddr.V6 _; _ } :: rest -> go rest
+          | { Ptt.Mxs.mx_ipaddr= Ipaddr.V4 mx_ipaddr; _ } :: rest ->
             sendmail stack conf_server mx_ipaddr emitter stream recipients >>= function
-            | Ok () ->
-              Log.info (fun m -> m "Email %Ld correctly sended to domain %a [%a]" id Colombe.Domain.pp mx_domain Ipaddr.V4.pp mx_ipaddr) ;
-              Lwt.return ()
-            | Error err ->
-              Log.err (fun m -> m "Got an error while sending email %Ld to %a: %a" id Ipaddr.V4.pp mx_ipaddr Tuyau_mirage.pp_error err) ;
-              go rest in
-        let sorted = List.sort (fun { Mxs.preference= a; _ } { Mxs.preference= b; _ } -> Int.compare a b) in
-        go (Mxs.elements mxs |> sorted) in
+            | Ok () -> Lwt.return ()
+            | Error _ -> go rest in
+        let sort = List.sort (fun { Ptt.Mxs.preference= a; _ } { Ptt.Mxs.preference= b; _ } -> Int.compare a b) in
+        let sorted = Ptt.Mxs.elements mxs |> sort in
+        go sorted in
       List.map sendmail targets in
     Lwt.join (List.map (apply ()) (transmit :: sendmails)) >>= fun () ->
-    Log.info (fun m -> m "Transmission of the mail %Ld correctly done." id ) ;
     Relay.Md.close queue
 
   let smtp_relay_service resolver conf conf_server =
@@ -250,9 +182,10 @@ module Make (StackV4 : Mirage_stack.V4) = struct
     let handle ip port (Tuyau_mirage.Flow (flow, (module Flow))) () =
       let rdwr = rdwr_of_flow (module Flow) in
       Lwt.catch
-        (fun () -> Relay.accept rdwr flow resolver conf_server >|= R.reword_error (R.msgf "%a" Relay.pp_error) >>? fun () ->
-          (* TODO(dinosaure): [Flow.close] is called only if [Relay.accept] returns [Ok]. *)
-          Flow.close flow >|= R.reword_error (R.msgf "%a" Flow.pp_error) )
+        (fun () -> Relay.accept rdwr flow resolver conf_server >|= R.reword_error (R.msgf "%a" Relay.pp_error) >>= fun res ->
+          Flow.close flow >>= function
+          | Error err -> Lwt.return (R.error_msgf "%a" Flow.pp_error err)
+          | Ok () -> Lwt.return res)
         (function Failure err -> Lwt.return (R.error_msg err)
                 | exn -> Lwt.return (Error (`Exn exn))) >>= function
       | Ok () ->
@@ -294,7 +227,17 @@ module Make (StackV4 : Mirage_stack.V4) = struct
              ; Nocrypto_entropy_lwt.initialize () ]
 end
 
-module Server = Make(Tcpip_stack_socket)
+module Random = struct
+  type g = unit
+
+  let generate ?g:_ len =
+    let ic = open_in "/dev/urandom" in
+    let rs = Bytes.create len in
+    really_input ic rs 0 len ; close_in ic ;
+    Cstruct.of_bytes rs
+end
+
+module Server = Make(Random)(Mclock)(Pclock)(Tcpip_stack_socket)
 
 let load_file filename =
   let open Rresult in
@@ -327,6 +270,7 @@ let fiber ~domain map =
     { Relay.domain
     ; Relay.ipv4= Ipaddr.V4.any
     ; Relay.tls= Tls.Config.server ~certificates:(`Single ([ cert ], private_key)) ~authenticator:X509.Authenticator.null ()
+    ; Relay.zone= Mrmime.Date.Zone.GMT
     ; Relay.size= 0x1000000L } in
   let resolver = Server.DNS.create stackv4 in
   Server.fiber stackv4 resolver conf map info

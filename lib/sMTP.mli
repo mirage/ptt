@@ -65,6 +65,7 @@ type info =
   { domain : [ `host ] Domain_name.t
   ; ipv4 : Ipaddr.V4.t
   ; tls : Tls.Config.server
+  ; zone : Mrmime.Date.Zone.t
   ; size : int64 }
 
 type submission =
