@@ -39,3 +39,27 @@ module type IO = sig
   val bind : 'a t -> ('a -> 'b t) -> 'b t
   val return : 'a -> 'a t
 end
+
+module type RESOLVER = sig
+  type t
+  type +'a s
+
+  val gethostbyname : t -> [ `host ] Domain_name.t -> (Ipaddr.V4.t, [> Rresult.R.msg ]) result s
+  val getmxbyname : t -> [ `host ] Domain_name.t -> (Dns.Rr_map.Mx_set.t, [> Rresult.R.msg ]) result s
+  val extension : t -> string -> string -> (Ipaddr.V4.t, [> Rresult.R.msg ]) result s
+end
+
+module type RANDOM = sig
+  type g
+  type +'a s
+
+  val generate : ?g:g -> bytes -> unit s
+end
+
+module type FLOW = sig
+  type t
+  type +'a s
+
+  val recv : t -> bytes -> int -> int -> int s
+  val send : t -> string -> int -> int -> unit s
+end

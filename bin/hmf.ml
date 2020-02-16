@@ -1,17 +1,8 @@
-let () = Printexc.record_backtrace true
-let reporter = Logs_fmt.reporter ()
-let () = Fmt.set_utf_8 Fmt.stdout true
-let () = Fmt.set_utf_8 Fmt.stderr true
-let () = Fmt.set_style_renderer Fmt.stdout `Ansi_tty
-let () = Fmt.set_style_renderer Fmt.stderr `Ansi_tty
-let () = Logs.set_level ~all:true (Some Logs.Debug)
-let () = Logs.set_reporter reporter
+open Rresult
+open Lwt.Infix
 
 let ( <.> ) f g = fun x -> f (g x)
 let apply x f = f x
-
-open Rresult
-open Lwt.Infix
 
 module Make
     (Random : Mirage_random.S)
@@ -20,12 +11,16 @@ module Make
     (StackV4 : Mirage_stack.V4)
 = struct
   module TCP = Tuyau_mirage_tcp.Make(StackV4)
+  module TLS = Tuyau_mirage_tls
   module DNS = Dns_client_mirage.Make(Random)(Mclock)(StackV4)
 
   open Lwt_backend
 
-  let src = Logs.Src.create "MTI-PF"
+  let src = Logs.Src.create "HMF"
   module Log = ((val Logs.src_log src) : Logs.LOG)
+
+  let tls_endpoint, tls_protocol = TLS.protocol_with_tls ~key:TCP.endpoint TCP.protocol
+  let tls_configuration, tls_service = TLS.service_with_tls ~key:TCP.configuration TCP.service tls_protocol
 
   module type FLOW = Ptt.Sigs.FLOW with type +'a s = 'a Lwt.t
   let failwithf fmt = Fmt.kstrf (fun err -> Failure err) fmt
@@ -89,7 +84,7 @@ module Make
 
     { Colombe.Sigs.rd; Colombe.Sigs.wr; }
 
-  module Flow = (val (flow (Tuyau_mirage.impl_of_flow TCP.protocol)))
+  module Flow = (val (flow (Tuyau_mirage.impl_of_flow tls_protocol)))
 
   module Resolver = struct
     type t = DNS.t
@@ -116,7 +111,7 @@ module Make
       Lwt.return ()
   end
 
-  module Relay = Ptt.Relay.Make(Lwt_scheduler)(Lwt_io)(Flow)(Resolver)(Random)
+  module Submission = Ptt.Submission.Make(Lwt_scheduler)(Lwt_io)(Flow)(Resolver)(Random)
 
   let ( >>? ) x f = x >>= function
     | Ok x -> f x
@@ -143,7 +138,7 @@ module Make
     let rdwr = rdwr (Tuyau_mirage.impl_of_flow TCP.protocol) in
     let tls = Tls.Config.client ~authenticator:X509.Authenticator.null () in
     let domain =
-      let vs = Domain_name.to_strings (Relay.info conf_server).Ptt.SMTP.domain in
+      let vs = Domain_name.to_strings (Submission.info conf_server).Ptt.SMTP.domain in
       Colombe.Domain.Domain vs in
     Lwt.catch
       (fun () ->
@@ -174,7 +169,7 @@ module Make
     next
 
   let transmit stack resolver conf_server relay_map (key, queue, consumer) =
-    Relay.resolve_recipients ~domain:(Relay.info conf_server).domain resolver relay_map
+    Submission.resolve_recipients ~domain:(Submission.info conf_server).domain resolver relay_map
       (List.map fst (Ptt.Messaged.recipients key)) >>= fun resolved ->
     let producers, targets =
       List.fold_left (fun (producers, targets) target ->
@@ -184,7 +179,7 @@ module Make
         ([], []) resolved in
     let emitter, _ = Ptt.Messaged.from key and id = Ptt.Messaged.id key in
     let received recipient =
-      let by = Domain_name.to_strings (Relay.info conf_server).domain in
+      let by = Domain_name.to_strings (Submission.info conf_server).domain in
       let id =
         let open Mrmime.Mailbox in
         Local.(v [ w (Fmt.strf "%08LX" id) ]), `Domain by in
@@ -193,7 +188,7 @@ module Make
         ~by:(Received.Only (Colombe.Domain.Domain by))
         ~via:Received.tcp
         ~protocol:Received.esmtp
-        ~id ~zone:(Relay.info conf_server).Ptt.SMTP.zone recipient (Ptime.v (Pclock.now_d_ps ())) in
+        ~id ~zone:(Submission.info conf_server).Ptt.SSMTP.zone recipient (Ptime.v (Pclock.now_d_ps ())) in
       let stream = Prettym.to_stream Received.Encoder.as_field received in
       let stream = Lwt_stream.from (Lwt.return <.> stream) |> Lwt_stream.map (fun s -> s, 0, String.length s) in
       (Lwt_scheduler.inj <.> (fun () -> Lwt_stream.get stream)) in
@@ -228,16 +223,17 @@ module Make
         go sorted in
       List.map sendmail targets in
     Lwt.join (List.map (apply ()) (transmit :: sendmails)) >>= fun () ->
-    Relay.Md.close queue
+    Submission.Md.close queue
 
-  let smtp_relay_service resolver conf conf_server =
-    Tuyau_mirage.impl_of_service ~key:TCP.configuration TCP.service |> Lwt.return >>? fun (module Server) ->
-    Tuyau_mirage.serve ~key:TCP.configuration conf ~service:TCP.service >>? fun (t, protocol) ->
+  let smtp_submission_service resolver random hash conf conf_server =
+    let tls = (Submission.info conf_server).Ptt.SSMTP.tls in
+    Tuyau_mirage.impl_of_service ~key:tls_endpoint tls_service |> Lwt.return >>? fun (module Server) ->
+    Tuyau_mirage.serve ~key:tls_configuration (conf, tls) ~service:tls_service >>? fun (t, protocol) ->
     let module Flow = (val (Tuyau_mirage.impl_of_flow protocol)) in
     let handle ip port flow () =
       Lwt.catch
-        (fun () -> Relay.accept flow resolver conf_server
-          >|= R.reword_error (R.msgf "%a" Relay.pp_error) >>= fun res ->
+        (fun () -> Submission.accept flow resolver random hash conf_server
+          >|= R.reword_error (R.msgf "%a" Submission.pp_error) >>= fun res ->
           Flow.close flow >>= function
           | Error err -> Lwt.return (R.error_msgf "%a" Flow.pp_error err)
           | Ok () -> Lwt.return res)
@@ -254,12 +250,12 @@ module Make
         Lwt.return () in
     let rec go () =
       Server.accept t >>? fun flow ->
-      let ip, port = TCP.dst flow in
+      let ip, port = (TCP.dst <.> TLS.underlying) flow in
       Lwt.async (handle ip port flow) ; Lwt.pause () >>= go in
     go () >|= R.reword_error (R.msgf "%a" Server.pp_error)
 
-  let smtp_relay_service resolver conf conf_server =
-    smtp_relay_service resolver conf conf_server >>= function
+  let smtp_submission_service resolver random hash conf conf_server =
+    smtp_submission_service resolver random hash conf conf_server >>= function
     | Ok () -> Lwt.return ()
     | Error err ->
       Log.err (fun m -> m "%a" Tuyau_mirage.pp_error err) ;
@@ -267,78 +263,16 @@ module Make
 
   let smtp_logic stack resolver conf_server messaged map =
     let rec go () =
-      Relay.Md.await messaged >>= fun () ->
-      Relay.Md.pop messaged >>= function
+      Submission.Md.await messaged >>= fun () ->
+      Submission.Md.pop messaged >>= function
       | None -> Lwt.pause () >>= go
       | Some v -> Lwt.async (fun () -> transmit stack resolver conf_server map v) ; Lwt.pause () >>= go in
     go ()
 
-  let fiber stack resolver conf map info =
-    let conf_server = Relay.create ~info in
-    let messaged = Relay.messaged conf_server in
-    Lwt.join [ smtp_relay_service resolver conf conf_server
+  let fiber stack resolver random hash conf map info authenticator mechanisms =
+    let conf_server = Submission.create ~info ~authenticator mechanisms in
+    let messaged = Submission.messaged conf_server in
+    Lwt.join [ smtp_submission_service resolver random hash conf conf_server
              ; smtp_logic stack resolver conf_server messaged map
              ; Nocrypto_entropy_lwt.initialize () ]
 end
-
-module Random = struct
-  type g = unit
-
-  let generate ?g:_ len =
-    let ic = open_in "/dev/urandom" in
-    let rs = Bytes.create len in
-    really_input ic rs 0 len ; close_in ic ;
-    Cstruct.of_bytes rs
-end
-
-module Server = Make(Random)(Mclock)(Pclock)(Tcpip_stack_socket)
-
-let load_file filename =
-  let open Rresult in
-  Bos.OS.File.read filename >>= fun contents ->
-  R.ok (Cstruct.of_string contents)
-
-let cert =
-  let open Rresult in
-  load_file (Fpath.v "ptt.pem") >>= fun raw ->
-  X509.Certificate.decode_pem raw
-
-let cert = Rresult.R.get_ok cert
-
-let private_key =
-  let open Rresult in
-  load_file (Fpath.v "ptt.key") >>= fun raw ->
-  X509.Private_key.decode_pem raw >>= fun (`RSA v) -> R.ok v
-
-let private_key = Rresult.R.get_ok private_key
-
-let fiber ~domain map =
-  Tcpip_stack_socket.TCPV4.connect None >>= fun tcpv4 ->
-  Tcpip_stack_socket.UDPV4.connect None >>= fun udpv4 ->
-  Tcpip_stack_socket.connect [] udpv4 tcpv4 >>= fun stackv4 ->
-  let conf =
-    { Tuyau_mirage_tcp.stack= stackv4
-    ; Tuyau_mirage_tcp.keepalive= None
-    ; Tuyau_mirage_tcp.port= 4242 } in
-  let info =
-    { Ptt.SMTP.domain
-    ; Ptt.SMTP.ipv4= Ipaddr.V4.any
-    ; Ptt.SMTP.tls= Tls.Config.server ~certificates:(`Single ([ cert ], private_key)) ~authenticator:X509.Authenticator.null ()
-    ; Ptt.SMTP.zone= Mrmime.Date.Zone.GMT
-    ; Ptt.SMTP.size= 0x1000000L } in
-  let resolver = Server.DNS.create stackv4 in
-  Server.fiber stackv4 resolver conf map info
-
-let romain_calascibetta =
-  let open Mrmime.Mailbox in
-  Local.[ w "romain"; w "calascibetta" ] @ Domain.(domain, [ a "gmail"; a "com" ])
-
-let () =
-  let domain = Domain_name.(host_exn <.> of_string_exn) "x25519.net" in
-  let map = Ptt.Relay_map.empty ~postmaster:romain_calascibetta ~domain in
-  let map =
-    let open Mrmime.Mailbox in
-    Ptt.Relay_map.add
-      ~local:(Local.(v [ w "romain"; w "calascibetta" ]))
-      romain_calascibetta map in
-  Lwt_main.run (fiber ~domain map)

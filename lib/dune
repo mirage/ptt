@@ -1,3 +1,11 @@
 (library
  (name ptt)
- (libraries mrmime colombe.emile domain-name dns sendmail.tls emile ke psq logs colombe))
+ (libraries digestif
+            mrmime
+            colombe.emile
+            domain-name
+            dns
+            sendmail.tls
+            emile
+            ke psq logs
+            colombe))
