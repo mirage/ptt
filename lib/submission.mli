@@ -10,16 +10,16 @@ module Make
   : sig
     module Md : module type of Messaged.Make(Scheduler)(IO)
 
-    type server
+    type 'k server
 
-    type info = SMTP.info =
+    type info = SSMTP.info =
       { domain : [ `host ] Domain_name.t
       ; ipv4 : Ipaddr.V4.t
       ; tls : Tls.Config.server
       ; zone : Mrmime.Date.Zone.t
       ; size : int64 }
 
-    val info : server -> info
+    val info : 'k server -> info
 
     type error
 
@@ -33,7 +33,7 @@ module Make
       -> ([ `Domain of [ `host ] Domain_name.t * Mxs.t
           | `Ipaddr of Ipaddr.t ] * Aggregate.resolved_elt) list IO.t
 
-    val create : info:info -> server
-    val messaged : server -> Md.t
-    val accept : Flow.t -> Resolver.t -> server -> (unit, error) result IO.t
+    val create : info:info -> authenticator:(Scheduler.t, 'k) Authentication.t -> Mechanism.t list -> 'k server
+    val messaged : 'k server -> Md.t
+    val accept : Flow.t -> Resolver.t -> Random.g -> 'k Digestif.hash -> 'k server -> (unit, error) result IO.t
   end

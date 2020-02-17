@@ -1,3 +1,24 @@
 (executable
- (name mti_pf)
- (libraries mrmime tcpip.stack-socket tuyau.mirage.tcp tuyau.mirage.tls logs.fmt colombe.emile colombe.received fpath bos rresult mirage-clock-unix dns-client.mirage nocrypto.lwt lwt ptt))
+ (name mti_gf)
+ (modules mti_gf)
+ (libraries
+  bos
+  mirage-clock-unix
+  dns-client.lwt
+  tcpip.stack-socket
+  ptt.mti-gf
+  logs.fmt
+  nocrypto.lwt))
+
+(executable
+ (name lipap)
+ (modules lipap)
+ (libraries
+  digestif.c
+  bos
+  mirage-clock-unix
+  dns-client.lwt
+  tcpip.stack-socket
+  ptt.lipap
+  logs.fmt
+  nocrypto.lwt))

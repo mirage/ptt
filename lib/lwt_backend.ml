@@ -37,3 +37,9 @@ let lwt =
   let open Lwt_scheduler in
   { Colombe.Sigs.bind= (fun x f -> inj (prj x >>= fun x -> prj (f x)))
   ; Colombe.Sigs.return= (fun x -> inj (Lwt.return x)) }
+
+let ( >>? ) x f =
+  let open Lwt.Infix in
+  x >>= function
+  | Ok x -> f x
+  | Error err -> Lwt.return (Error err)

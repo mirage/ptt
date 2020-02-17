@@ -4,24 +4,20 @@ open Colombe
 module Value : sig
   include module type of Logic.Value
 
-  val encode_without_tls : Encoder.encoder -> 'x send -> 'x -> (unit, [> `Protocol of SSMTP.Value.error ]) t
-  val decode_without_tls : Decoder.decoder -> 'x recv -> ('x, [> `Protocol of SSMTP.Value.error ]) t
+  type decoder = Decoder.decoder
+  type encoder = Encoder.encoder
+
+  val encode : encoder -> 'x send -> 'x -> (unit, [> Reply.Encoder.error ]) t
+  val decode : decoder -> 'x recv -> ('x, [> Request.Decoder.error ]) t
 end
 
-module Value_with_tls : module type of Sendmail_with_tls.Make_with_tls(Value)
-module Monad : module type of State.Scheduler(Sendmail_with_tls.Context_with_tls)(Value_with_tls)
+module Monad : module type of State.Scheduler(Context)(Value)
 
-type context = Sendmail_with_tls.Context_with_tls.t
+type context = Context.t
 type error =
-  [ `Tls of [ `Protocol of Value.error
-            | `Tls_alert of Tls.Packet.alert_type
-            | `Tls_failure of Tls.Engine.failure ]
-  | `Protocol of [ `Protocol of Value.error
-                 | `Tls_alert of Tls.Packet.alert_type
-                 | `Tls_failure of Tls.Engine.failure ]
-  | `No_recipients
-  | `Invalid_recipients
+  [ `Protocol of Value.error
   | `Too_many_bad_commands
+  | `No_recipients
   | `Too_many_recipients ]
 
 val pp_error : error Fmt.t

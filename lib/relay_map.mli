@@ -16,7 +16,7 @@ type t
 val postmaster : t -> Emile.mailbox
 (** [postmaster m] returns the {i postmaster} of the map which {b is} the postmaster
    of {!domain}'s [m]. *)
-                        
+
 val domain : t -> [ `host ] Domain_name.t
 (** [domain m] returns the domain handled by [m]. *)
 
@@ -32,5 +32,8 @@ val recipients : local:Emile.local -> t -> Colombe.Forward_path.t list
 val all : t -> Colombe.Forward_path.t list
 (** [all m] returns all deliver mailboxes registered into [m]. *)
 
-val expand : t -> Aggregate.unresolved_elt Aggregate.By_domain.t -> Aggregate.resolved_elt Aggregate.By_ipaddr.t ->
-  (Aggregate.unresolved_elt Aggregate.By_domain.t * Aggregate.resolved_elt Aggregate.By_ipaddr.t)
+val expand
+  :  t
+  -> Aggregate.unresolved_elt Aggregate.By_domain.t
+  -> Aggregate.resolved_elt Aggregate.By_ipaddr.t
+  -> (Aggregate.unresolved_elt Aggregate.By_domain.t * Aggregate.resolved_elt Aggregate.By_ipaddr.t)

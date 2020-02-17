@@ -1,3 +1,36 @@
 (library
  (name ptt)
- (libraries mrmime colombe.emile domain-name dns sendmail.tls emile ke psq logs colombe))
+ (public_name ptt)
+ (modules
+   ptt
+   aggregate authentication
+   common
+   logic
+   mechanism messaged mxs
+   relay_map relay
+   sigs sMTP sSMTP submission)
+ (libraries digestif mrmime colombe.emile domain-name dns sendmail.tls logs))
+
+(library
+ (name ptt_tuyau)
+ (public_name ptt.tuyau)
+ (modules ptt_tuyau lwt_backend)
+ (libraries mirage-stack tuyau.mirage tuyau.mirage.tcp ptt))
+
+(library
+ (name ptt_transmit)
+ (public_name ptt.transmit)
+ (modules ptt_transmit)
+ (libraries ptt.tuyau colombe.received))
+
+(library
+ (name lipap)
+ (public_name ptt.lipap)
+ (modules lipap)
+ (libraries ptt.transmit tuyau.mirage.tls))
+
+(library
+ (name mti_gf)
+ (public_name ptt.mti-gf)
+ (modules mti_gf)
+ (libraries ptt.transmit))
