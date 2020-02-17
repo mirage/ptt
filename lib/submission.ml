@@ -1,8 +1,6 @@
 open Sigs
 open Rresult
 
-let ( <.> ) f g = fun x -> f (g x)
-
 module Make
     (Scheduler : SCHEDULER)
     (IO : IO with type 'a t = 'a Scheduler.s)

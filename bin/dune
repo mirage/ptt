@@ -1,32 +1,24 @@
-(library
- (name lwt_backend)
- (modules lwt_backend)
- (libraries lwt ptt))
+(executable
+ (name mti_gf)
+ (modules mti_gf)
+ (libraries
+  bos
+  mirage-clock-unix
+  dns-client.lwt
+  tcpip.stack-socket
+  ptt.mti-gf
+  logs.fmt
+  nocrypto.lwt))
 
 (executable
- (name mti_pf)
- (modules mti_pf)
- (libraries mrmime
-            tcpip.stack-socket
-            tuyau.mirage.tcp
-            logs.fmt
-            colombe.received
-            fpath bos rresult
-            mirage-clock-unix
-            dns-client.mirage
-            nocrypto.lwt
-            lwt_backend))
-
-(executable
- (name hmf)
- (modules hmf)
- (libraries mrmime
-            tcpip.stack-socket
-            tuyau.mirage.tcp tuyau.mirage.tls
-            logs.fmt
-            colombe.received
-            fpath bos rresult
-            mirage-clock-unix
-            dns-client.mirage
-            nocrypto.lwt
-            lwt_backend))
+ (name lipap)
+ (modules lipap)
+ (libraries
+  digestif.c
+  bos
+  mirage-clock-unix
+  dns-client.lwt
+  tcpip.stack-socket
+  ptt.lipap
+  logs.fmt
+  nocrypto.lwt))

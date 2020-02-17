@@ -23,10 +23,29 @@ let v ~domain_from ~from ~recipients id =
   ; recipients
   ; id }
 
+module type S = sig
+  type +'a s
+
+  type queue
+  type 'a producer = 'a option -> unit s
+  type 'a consumer = unit -> 'a option s
+  type chunk = string * int * int
+
+  type t
+
+  val create : unit -> t
+  val close : queue -> unit s
+  val push : ?chunk:int -> t -> key -> chunk producer s
+  val await : t -> unit s
+  val pop : t -> (key * queue * chunk consumer) option s
+end
+
 module Make
     (Scheduler : SCHEDULER)
     (IO : IO with type 'a t = 'a Scheduler.s)
 = struct
+  type +'a s = 'a IO.t
+
   open IO
 
   let ( >>= ) = bind

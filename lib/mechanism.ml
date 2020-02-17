@@ -4,7 +4,7 @@ type t =
 let pp ppf = function
   | PLAIN -> Fmt.string ppf "PLAIN"
 
-let of_string x = match String.lowercase_ascii x with
+let of_string_exn x = match String.lowercase_ascii x with
   | "plain" -> PLAIN
   | m -> Fmt.invalid_arg "Invalid mechanism: %s" m
 

@@ -141,7 +141,9 @@ module Make (Monad : MONAD) = struct
   let m_politely_close ctx =
     let open Monad in
     let* () = send ctx Value.PP_220 [ "Bye, buddy!" ] in
-    (* TODO(dinosaure): properly close when we use a STARTTLS context. *)
+    (* TODO(dinosaure): properly close when we use a STARTTLS context.
+       Currently fixed into [SMTP]: when we want to [`Quit], we properly
+       close the TLS connection. *)
     return `Quit
 
   let m_submit ctx ~domain_from =
@@ -208,7 +210,7 @@ module Make (Monad : MONAD) = struct
         match command with
         | `Verb ("AUTH", [ mechanism ]) ->
           ( try
-              let mechanism = Mechanism.of_string mechanism in
+              let mechanism = Mechanism.of_string_exn mechanism in
               if List.exists (Mechanism.equal mechanism) ms
               then return (`Authentication (domain_from, mechanism))
               else raise Unrecognized_authentication
