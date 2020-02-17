@@ -5,6 +5,8 @@ let unix =
   { Colombe.Sigs.bind= (fun x f -> f (prj x))
   ; Colombe.Sigs.return= (fun x -> inj x) }
 
+let ( <.> ) f g = fun x -> f (g x)
+
 let mechanism = Alcotest.testable Ptt.Mechanism.pp Ptt.Mechanism.equal
 let msg = Alcotest.testable Rresult.R.pp_msg (fun (`Msg a) (`Msg b) -> String.equal a b)
 
@@ -66,7 +68,52 @@ let authentication_test_0 =
     (auth Digestif.SHA1 plain_none auth0 "\000\000%s" "tutu") ;
 ;;
 
+let x25519 = Domain_name.(host_exn <.> of_string_exn) "x25519.net"
+let gmail = Domain_name.(host_exn <.> of_string_exn) "gmail.com"
+let recoil = Domain_name.(host_exn <.> of_string_exn) "recoil.org"
+let nqsb = Domain_name.(host_exn <.> of_string_exn) "nqsb.io"
+let gazagnaire = Domain_name.(host_exn <.> of_string_exn) "gazagnaire.org"
+
+let pp_unresolved ppf = function
+  | `All -> Fmt.string ppf "<all>"
+  | `Postmaster -> Fmt.string ppf "<postmaster>"
+  | `Local vs -> Fmt.Dump.list Emile.pp_local ppf vs
+
+let equal_unresolved a b = match a, b with
+  | `All, `All -> true
+  | `Postmaster, `Postmaster -> true
+  | `Local a, `Local b ->
+    let a = List.sort (Emile.compare_local ~case_sensitive:true) a in
+    let b = List.sort (Emile.compare_local ~case_sensitive:true) b in
+    ( try List.for_all2 (Emile.equal_local ~case_sensitive:true) a b
+      with _ -> false )
+  | _, _ -> false
+
+let unresolved = Alcotest.testable pp_unresolved equal_unresolved
+
+let aggregate_test_0 =
+  Alcotest.test_case "aggregate 0" `Quick @@ fun () ->
+  let open Mrmime.Mailbox in
+  let m0 = Local.[ w "romain"; w "calascibetta" ] @ Domain.(domain, [ a "gmail"; a "com" ]) in
+  let m1 = Local.[ w "thomas" ] @ Domain.(domain, [ a "gazagnaire"; a "org" ]) in
+  let m2 = Local.[ w "anil" ] @ Domain.(domain, [ a "recoil"; a "org" ]) in
+  let m3 = Local.[ w "gemma"; w "d"; w "gordon" ] @ Domain.(domain, [ a "gmail"; a "com" ]) in
+  let ms = List.map (Rresult.R.get_ok <.> Colombe_emile.to_forward_path) [ m0; m1; m2; m3; ] in
+  let ms = Colombe.Forward_path.Domain ((Rresult.R.get_ok <.> Colombe_emile.to_domain) Domain.(v domain [ a "nqsb"; a "io" ])) :: ms in
+  let u, r = Ptt.Aggregate.aggregate_by_domains ~domain:x25519 ms in
+  Alcotest.(check bool) "resolved is empty" true (Ptt.Aggregate.By_ipaddr.is_empty r) ;
+  Alcotest.(check unresolved) "unresolved gmail.com" (`Local [ Local.(v [ w "romain"; w "calascibetta" ])
+                                                             ; Local.(v [ w "gemma"; w "d"; w "gordon" ])])
+    (Ptt.Aggregate.By_domain.find gmail u) ;
+  Alcotest.(check unresolved) "unresolved recoil.org" (`Local [ Local.(v [ w "anil" ])])
+    (Ptt.Aggregate.By_domain.find recoil u) ;
+  Alcotest.(check unresolved) "unresolved gazagnaire.org" (`Local [ Local.(v [ w "thomas" ])])
+    (Ptt.Aggregate.By_domain.find gazagnaire u) ;
+  Alcotest.(check unresolved) "unresolved nqsb.io" `All (Ptt.Aggregate.By_domain.find nqsb u) ;
+;;
+
 let () =
   Alcotest.run "ptt"
     [ "mechanism", [ mechanism_test_0 ]
-    ; "authentication", [ authentication_test_0 ]]
+    ; "authentication", [ authentication_test_0 ]
+    ; "aggregate", [ aggregate_test_0 ] ]
