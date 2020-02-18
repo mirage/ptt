@@ -5,6 +5,33 @@ let unix =
   { Colombe.Sigs.bind= (fun x f -> f (prj x))
   ; Colombe.Sigs.return= (fun x -> inj x) }
 
+module IO = struct
+  type +'a t = 'a
+
+  module Mutex = struct
+    type +'a fiber = 'a
+    type t = Mutex.t
+
+    let create () = Mutex.create ()
+    let lock t = Mutex.lock t
+    let unlock t = Mutex.unlock t
+  end
+
+  module Condition = struct
+    type +'a fiber = 'a
+    type mutex = Mutex.t
+    type t = Condition.t
+
+    let create () = Condition.create ()
+    let wait mutex t = Condition.wait mutex t
+    let signal t = Condition.signal t
+    let broadcast t = Condition.broadcast t
+  end
+
+  let bind x f = f x
+  let return x = x
+end
+
 let ( <.> ) f g = fun x -> f (g x)
 
 let mechanism = Alcotest.testable Ptt.Mechanism.pp Ptt.Mechanism.equal
@@ -112,8 +139,123 @@ let aggregate_test_0 =
   Alcotest.(check unresolved) "unresolved nqsb.io" `All (Ptt.Aggregate.By_domain.find nqsb u) ;
 ;;
 
+module Md = Ptt.Messaged.Make(Unix_scheduler)(IO)
+
+let stream_of_string_list l =
+  let l = ref l in
+  let stream () = match !l with
+    | [] -> None
+    | x :: r ->
+      l := r ; Some x in
+  stream
+
+let hello_world = stream_of_string_list ["Hello", 0, 5; " ", 0, 1; "World!", 0, 6]
+let hello_buddy = stream_of_string_list ["Hello", 0, 5; " ", 0, 1; "buddy!", 0, 6]
+let hello_guy = stream_of_string_list ["Hello", 0, 5; " ", 0, 1; "guy!", 0, 4]
+
+let messaged_test_0 =
+  Alcotest.test_case "messaged 0" `Quick @@ fun () ->
+  let md = Md.create () in
+  let do0 ~domain_from ~from v () =
+    let key =
+      Ptt.Messaged.v
+        ~domain_from:((Rresult.R.get_ok <.> Colombe_emile.to_domain) domain_from)
+        ~from:((Rresult.R.get_ok <.> Colombe_emile.to_reverse_path) from, [])
+        ~recipients:[] 0L in
+    let producer = Md.push md key in
+    let rec consume () =
+      match v () with
+      | Some chunk -> producer (Some chunk) ; consume ()
+      | None -> producer None in
+    consume () in
+  let contents = ref "" in
+  let do1 () =
+    Md.await md ; (* XXX(dinosaure): schedule [do1] __after__ [do0]. *)
+    match Md.pop md with
+    | Some (_, _, v) ->
+      let buf = Buffer.create 0x100 in
+      let rec consume () = match v () with
+        | Some (str, off, len) ->
+          Buffer.add_substring buf str off len ;
+          consume ()
+        | None -> contents := Buffer.contents buf in
+      consume ()
+    | None -> assert false in
+  let domain_from = Mrmime.Mailbox.Domain.(v domain [ a "x25519"; a "net" ]) in
+  let from =
+    let open Mrmime.Mailbox in
+    Local.[ w "romain"; w "calascibetta" ] @ Domain.(domain, [ a "gmail"; a "com" ]) in
+
+  let th0 = Thread.create (do0 ~domain_from ~from hello_world) () in
+  let th1 = Thread.create do1 () in
+  Thread.join th0 ;
+  Thread.join th1 ;
+  Alcotest.(check string) "(random schedule) payload" !contents "Hello World!" ;
+  let th1 = Thread.create do1 () in
+  Unix.sleep 1 ;
+  let th0 = Thread.create (do0 ~domain_from ~from hello_buddy) () in
+  Thread.join th0 ;
+  Thread.join th1 ;
+  Alcotest.(check string) "(consumer & producer) payload" !contents "Hello buddy!" ;
+  let th0 = Thread.create (do0 ~domain_from ~from hello_guy) () in
+  Unix.sleep 1 ;
+  let th1 = Thread.create do1 () in
+  Thread.join th0 ;
+  Thread.join th1 ;
+  Alcotest.(check string) "(producer & consumer) payload" !contents "Hello guy!" ;
+;;
+
+let messaged_test_1 =
+  Alcotest.test_case "messaged 1" `Quick @@ fun () ->
+  let md = Md.create () in
+  let last = ref 0 in
+  let do0 ~domain_from ~from v () =
+    last := 0 ;
+    let key =
+      Ptt.Messaged.v
+        ~domain_from:((Rresult.R.get_ok <.> Colombe_emile.to_domain) domain_from)
+        ~from:((Rresult.R.get_ok <.> Colombe_emile.to_reverse_path) from, [])
+        ~recipients:[] 0L in
+    let producer = Md.push md key in
+    let rec consume () =
+      match v () with
+      | Some chunk -> producer (Some chunk) ; consume ()
+      | None -> producer None in
+    consume () in
+  let do1 () =
+    last := 1 ;
+    Md.await md ; (* XXX(dinosaure): schedule [do1] __after__ [do0]. *)
+    match Md.pop md with
+    | Some (_, q, _) -> Md.close q
+    | None -> assert false in
+  let domain_from = Mrmime.Mailbox.Domain.(v domain [ a "x25519"; a "net" ]) in
+  let from =
+    let open Mrmime.Mailbox in
+    Local.[ w "romain"; w "calascibetta" ] @ Domain.(domain, [ a "gmail"; a "com" ]) in
+
+  let th0 = Thread.create (do0 ~domain_from ~from hello_world) () in
+  let th1 = Thread.create do1 () in
+  Thread.join th0 ;
+  Thread.join th1 ;
+  Alcotest.(check pass) "random schedule" () () ;
+  let th1 = Thread.create do1 () in
+  Unix.sleep 1 ;
+  let th0 = Thread.create (do0 ~domain_from ~from hello_buddy) () in
+  Thread.join th0 ;
+  Thread.join th1 ;
+  Alcotest.(check int) "(consumer & producer)" !last 0 ;
+  let th0 = Thread.create (do0 ~domain_from ~from hello_guy) () in
+  Unix.sleep 1 ;
+  let th1 = Thread.create do1 () in
+  Thread.join th0 ;
+  Thread.join th1 ;
+  Alcotest.(check int) "(producer & consumer)" !last 1 ;
+;;
+
 let () =
   Alcotest.run "ptt"
     [ "mechanism", [ mechanism_test_0 ]
     ; "authentication", [ authentication_test_0 ]
-    ; "aggregate", [ aggregate_test_0 ] ]
+    ; "aggregate", [ aggregate_test_0 ]
+    ; "messaged", [ messaged_test_0
+                  ; messaged_test_1 ] ]
