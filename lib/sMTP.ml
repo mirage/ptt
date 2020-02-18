@@ -47,7 +47,19 @@ type error =
   | `Too_many_bad_commands
   | `Too_many_recipients ]
 
-let pp_error _ppf = fun _ -> ()
+let pp_error ppf = function
+  | `Tls (`Protocol (#Value.error as err))
+  | `Protocol (`Protocol (#Value.error as err)) -> Value.pp_error ppf err
+  | `Protocol (`Tls_alert alert)
+  | `Tls (`Tls_alert alert) ->
+    Fmt.pf ppf "TLS alert: %s" (Tls.Packet.alert_type_to_string alert)
+  | `Protocol (`Tls_failure failure)
+  | `Tls (`Tls_failure failure) ->
+    Fmt.pf ppf "TLS failure: %s" (Tls.Engine.string_of_failure failure)
+  | `No_recipients -> Fmt.string ppf "No recipients"
+  | `Invalid_recipients -> Fmt.string ppf "Invalid recipients"
+  | `Too_many_bad_commands -> Fmt.string ppf "Too many bad commands"
+  | `Too_many_recipients -> Fmt.string ppf "Too many recipients"
 
 type info = Logic.info =
   { domain : [ `host ] Domain_name.t

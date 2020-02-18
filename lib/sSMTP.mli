@@ -39,7 +39,7 @@ val m_properly_close_and_fail
   -> ?code:int
   -> message:string
   -> ([> error ] as 'err)
-  -> (unit, 'err) Colombe.State.t
+  -> ('v, 'err) Colombe.State.t
 
 val m_politely_close
   :  context
@@ -53,7 +53,7 @@ val m_submission
       |  `Authentication of (Domain.t * Mechanism.t) ],
       [> error ]) Colombe.State.t
 
-val m_submit
+val m_relay
   :  context
   -> domain_from:Domain.t
   -> ([> `Quit

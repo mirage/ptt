@@ -264,10 +264,281 @@ let messaged_test_1 =
   Alcotest.(check int) "(producer & consumer)" !last 1 ;
 ;;
 
+let put_crlf x = x ^ "\r\n"
+
+let rdwr_from_flows inputs outputs =
+  let inputs = ref (List.map put_crlf inputs) in
+  let outputs = ref (List.map put_crlf outputs) in
+  let open Unix_scheduler in
+  let rd () bytes off len =
+    match !inputs with
+    | [] -> inj 0
+    | x :: r ->
+      let len = min (String.length x) len in
+      Bytes.blit_string x 0 bytes off len ;
+      Fmt.epr "[rd] >>> %S\n%!" (String.sub x 0 len) ;
+      if len = String.length x
+      then ( inputs := r )
+      else ( inputs := String.sub x len (String.length x - len) :: r ) ;
+      inj len in
+  let rec wr () bytes off len =
+    match !outputs with
+    | [] ->
+      Fmt.failwith "Unexpected output: %S" (String.sub bytes off len)
+    | x :: r ->
+      let max = len in
+      let len = min (String.length x) len in
+      Fmt.epr "[wr] <<< %S\n%!" (String.sub x 0 len) ;
+      if String.sub x 0 len <> String.sub bytes off len
+      then Fmt.failwith "Expected %S, have %S" (String.sub x 0 len) (String.sub bytes off len) ;
+      if String.length x = len
+      then ( outputs := r )
+      else ( outputs := String.sub x len (String.length x - len) :: r ) ;
+      if len < max then wr () bytes (off + len) (max - len) else inj () in
+  { Colombe.Sigs.rd; Colombe.Sigs.wr; },
+  (fun () -> match !inputs, !outputs with
+     | [], [] -> ()
+     | r, w -> Fmt.failwith "inputs or outputs are not empty: @[<hov>%a@] and @[<hov>%a@]"
+                 Fmt.(Dump.list string) r Fmt.(Dump.list string) w)
+
+let run m rdwr () =
+  let rec go = function
+    | Colombe.State.Write { buffer; off; len; k; } ->
+      let () = rdwr.Colombe.Sigs.wr () buffer off len |> Unix_scheduler.prj in
+      go (k len)
+    | Colombe.State.Return v -> Ok v
+    | Colombe.State.Error err -> Error (`Error err)
+    | Colombe.State.Read { buffer; off; len; k; } ->
+      match rdwr.Colombe.Sigs.rd () buffer off len |> Unix_scheduler.prj with
+      | 0 -> Rresult.R.error `Connection_close
+      | n -> (go <.> k) n in
+  go m
+
+let load_file filename =
+  let open Rresult in
+  Bos.OS.File.read filename >>= fun contents ->
+  R.ok (Cstruct.of_string contents)
+
+let cert =
+  let open Rresult in
+  load_file (Fpath.v "server.pem") >>= fun raw ->
+  X509.Certificate.decode_pem raw
+
+let cert = Rresult.R.get_ok cert
+
+let private_key =
+  let open Rresult in
+  load_file (Fpath.v "server.key") >>= fun raw ->
+  X509.Private_key.decode_pem raw >>= fun (`RSA v) -> R.ok v
+
+let private_key = Rresult.R.get_ok private_key
+
+let fake_tls_config = Tls.Config.server
+    ~certificates:(`Single ([ cert ], private_key))
+    ~authenticator:X509.Authenticator.null ()
+
+let smtp_test_0 =
+  Alcotest.test_case "SMTP (relay) 0" `Quick @@ fun () ->
+  let rdwr, check = rdwr_from_flows [ ] [ "220 x25519.net" ] in
+  let ctx = Colombe.State.Context.make () in
+  let info =
+    { Ptt.SSMTP.domain= x25519
+    ; ipv4= Ipaddr.V4.localhost
+    ; tls= fake_tls_config
+    ; zone= Mrmime.Date.Zone.gmt
+    ; size= 0L } in
+  match run (Ptt.SSMTP.m_relay_init ctx info) rdwr () with
+  | Ok _ -> Alcotest.fail "Unexpected good result"
+  | Error (`Error _) -> Alcotest.fail "Unexpected protocol error"
+  | Error `Connection_close ->
+    Alcotest.(check unit) "empty stream" (check ()) () ;
+    Alcotest.(check pass) "connection close" () ()
+
+let smtp_test_1 =
+  Alcotest.test_case "SMTP (relay) 1" `Quick @@ fun () ->
+  let rdwr, check = rdwr_from_flows
+      [ "EHLO gmail.com"
+      ; "QUIT" ]
+      [ "220 x25519.net"
+      ; "250-x25519.net at your service, [127.0.0.1]"
+      ; "250-8BITMIME"
+      ; "250-SMTPUTF8"
+      ; "250 SIZE 16777216"
+      ; "220 Bye, buddy!" ] in
+  let ctx = Colombe.State.Context.make () in
+  let info =
+    { Ptt.SSMTP.domain= x25519
+    ; ipv4= Ipaddr.V4.localhost
+    ; tls= fake_tls_config
+    ; zone= Mrmime.Date.Zone.gmt
+    ; size= 16777216L } in
+  match run (Ptt.SSMTP.m_relay_init ctx info) rdwr () with
+  | Ok `Quit ->
+    Alcotest.(check unit) "empty stream" (check ()) () ;
+    Alcotest.(check pass) "quit" () ()
+  | Ok (`Submission _) ->
+    Alcotest.fail "Unexpected submission"
+  | Error (`Error err) ->
+    Alcotest.failf "Unexpected protocol error: %a" Ptt.SSMTP.pp_error err
+  | Error `Connection_close ->
+    Alcotest.fail "Unexpected connection close"
+
+let smtp_test_2 =
+  Alcotest.test_case "SMTP (relay) 2" `Quick @@ fun () ->
+  let rdwr, check = rdwr_from_flows
+      [ "EHLO gmail.com"
+      ; "RSET"
+      ; "QUIT" ]
+      [ "220 x25519.net"
+      ; "250-x25519.net at your service, [127.0.0.1]"
+      ; "250-8BITMIME"
+      ; "250-SMTPUTF8"
+      ; "250 SIZE 16777216"
+      ; "250 Yes buddy!"
+      ; "220 Bye, buddy!" ] in
+  let ctx = Colombe.State.Context.make () in
+  let info =
+    { Ptt.SSMTP.domain= x25519
+    ; ipv4= Ipaddr.V4.localhost
+    ; tls= fake_tls_config
+    ; zone= Mrmime.Date.Zone.gmt
+    ; size= 16777216L } in
+  match run (Ptt.SSMTP.m_relay_init ctx info) rdwr () with
+  | Ok `Quit ->
+    Alcotest.(check unit) "empty stream" (check ()) () ;
+    Alcotest.(check pass) "quit" () ()
+  | Ok (`Submission _) ->
+    Alcotest.fail "Unexpected submission"
+  | Error (`Error err) ->
+    Alcotest.failf "Unexpected protocol error: %a" Ptt.SSMTP.pp_error err
+  | Error `Connection_close ->
+    Alcotest.fail "Unexpected connection close"
+
+let smtp_test_3 =
+  Alcotest.test_case "SMTP (relay) 3" `Quick @@ fun () ->
+  let rdwr, check = rdwr_from_flows
+      [ "EHLO gmail.com"
+      ; "RSET"; "RSET"; "RSET"; "RSET"; "RSET"; "RSET"; "RSET"; "RSET"; "RSET"; "RSET"
+      ; "RSET"; "RSET"; "RSET"; "RSET"; "RSET"; "RSET"; "RSET"; "RSET"; "RSET"; "RSET"
+      ; "RSET"; "RSET"; "RSET"; "RSET"; "RSET" ]
+      [ "220 x25519.net"
+      ; "250-x25519.net at your service, [127.0.0.1]"
+      ; "250-8BITMIME"
+      ; "250-SMTPUTF8"
+      ; "250 SIZE 16777216"
+      ; "250 Yes buddy!"; "250 Yes buddy!"; "250 Yes buddy!"; "250 Yes buddy!"; "250 Yes buddy!"
+      ; "250 Yes buddy!"; "250 Yes buddy!"; "250 Yes buddy!"; "250 Yes buddy!"; "250 Yes buddy!"
+      ; "250 Yes buddy!"; "250 Yes buddy!"; "250 Yes buddy!"; "250 Yes buddy!"; "250 Yes buddy!"
+      ; "250 Yes buddy!"; "250 Yes buddy!"; "250 Yes buddy!"; "250 Yes buddy!"; "250 Yes buddy!"
+      ; "250 Yes buddy!"; "250 Yes buddy!"; "250 Yes buddy!"; "250 Yes buddy!"; "250 Yes buddy!"
+      ; "554 You reached the limit buddy!" ] in
+  let ctx = Colombe.State.Context.make () in
+  let info =
+    { Ptt.SSMTP.domain= x25519
+    ; ipv4= Ipaddr.V4.localhost
+    ; tls= fake_tls_config
+    ; zone= Mrmime.Date.Zone.gmt
+    ; size= 16777216L } in
+  match run (Ptt.SSMTP.m_relay_init ctx info) rdwr () with
+  | Ok (`Quit | `Submission _) ->
+    Alcotest.fail "Unexpected quit or submission"
+  | Error (`Error `Too_many_bad_commands) ->
+    Alcotest.(check unit) "empty stream" (check ()) () ;
+    Alcotest.(check pass) "too many bad commands" () ()
+  | Error (`Error err) ->
+    Alcotest.failf "Unexpected protocol error: %a" Ptt.SSMTP.pp_error err
+  | Error `Connection_close ->
+    Alcotest.fail "Unexpected connection close"
+
+let smtp_test_4 =
+  Alcotest.test_case "SMTP (relay) 4" `Quick @@ fun () ->
+  let rdwr, check = rdwr_from_flows
+      [ "EHLO gmail.com"
+      ; "MAIL FROM:<romain.calascibetta@gmail.com>"
+      ; "DATA" ]
+      [ "220 x25519.net"
+      ; "250-x25519.net at your service, [127.0.0.1]"
+      ; "250-8BITMIME"
+      ; "250-SMTPUTF8"
+      ; "250 SIZE 16777216"
+      ; "250 Ok, buddy!"
+      ; "554 No recipients" ] in
+  let ctx = Colombe.State.Context.make () in
+  let info =
+    { Ptt.SSMTP.domain= x25519
+    ; ipv4= Ipaddr.V4.localhost
+    ; tls= fake_tls_config
+    ; zone= Mrmime.Date.Zone.gmt
+    ; size= 16777216L } in
+  match run (Ptt.SSMTP.m_relay_init ctx info) rdwr () with
+  | Ok _ ->
+    Alcotest.fail "Unexpected quit or submission"
+  | Error (`Error `No_recipients) ->
+    Alcotest.(check unit) "empty stream" (check ()) () ;
+    Alcotest.(check pass) "no recipients" () ()
+  | Error (`Error err) ->
+    Alcotest.failf "Unexpected protocol error: %a" Ptt.SSMTP.pp_error err
+  | Error `Connection_close ->
+    Alcotest.fail "Unexpected connection close"
+
+let reverse_path = Alcotest.testable Colombe.Reverse_path.pp Colombe.Reverse_path.equal
+let forward_path = Alcotest.testable Colombe.Forward_path.pp Colombe.Forward_path.equal
+let domain = Alcotest.testable Colombe.Domain.pp Colombe.Domain.equal
+
+let smtp_test_5 =
+  Alcotest.test_case "SMTP (relay) 5" `Quick @@ fun () ->
+  let rdwr, check = rdwr_from_flows
+      [ "EHLO gmail.com"
+      ; "MAIL FROM:<romain.calascibetta@gmail.com>"
+      ; "RCPT TO:<anil@recoil.org>"
+      ; "DATA" ]
+      [ "220 x25519.net"
+      ; "250-x25519.net at your service, [127.0.0.1]"
+      ; "250-8BITMIME"
+      ; "250-SMTPUTF8"
+      ; "250 SIZE 16777216"
+      ; "250 Ok, buddy!"
+      ; "250 Ok, buddy!" ] in
+  let ctx = Colombe.State.Context.make () in
+  let info =
+    { Ptt.SSMTP.domain= x25519
+    ; ipv4= Ipaddr.V4.localhost
+    ; tls= fake_tls_config
+    ; zone= Mrmime.Date.Zone.gmt
+    ; size= 16777216L } in
+  match run (Ptt.SSMTP.m_relay_init ctx info) rdwr () with
+  | Ok (`Submission { Ptt.SSMTP.from; Ptt.SSMTP.recipients; Ptt.SSMTP.domain_from; }) ->
+    let romain_calascibetta =
+      let open Mrmime.Mailbox in
+      Local.[ w "romain"; w "calascibetta" ] @ Domain.(domain, [ a "gmail"; a "com" ]) in
+    let anil =
+      let open Mrmime.Mailbox in
+      Local.[ w "anil" ] @ Domain.(domain, [ a "recoil"; a "org" ]) in
+    let gmail =
+      let open Mrmime.Mailbox in
+      Domain.(v domain [ a "gmail"; a "com" ]) in
+    Alcotest.(check reverse_path) "from" (fst from) ((Rresult.R.get_ok <.> Colombe_emile.to_reverse_path) romain_calascibetta) ;
+    Alcotest.(check (list forward_path)) "recipients" (List.map fst recipients) [ (Rresult.R.get_ok <.> Colombe_emile.to_forward_path) anil ] ;
+    Alcotest.(check domain) "domain" domain_from ((Rresult.R.get_ok <.> Colombe_emile.to_domain) gmail) ;
+    Alcotest.(check unit) "empty stream" (check ()) () ;
+    Alcotest.(check pass) "submission" () ()
+  | Ok `Quit ->
+    Alcotest.fail "Unexpected quit"
+  | Error (`Error err) ->
+    Alcotest.failf "Unexpected protocol error: %a" Ptt.SSMTP.pp_error err
+  | Error `Connection_close ->
+    Alcotest.fail "Unexpected connection close"
+
 let () =
   Alcotest.run "ptt"
     [ "mechanism", [ mechanism_test_0 ]
     ; "authentication", [ authentication_test_0 ]
     ; "aggregate", [ aggregate_test_0 ]
     ; "messaged", [ messaged_test_0
-                  ; messaged_test_1 ] ]
+                  ; messaged_test_1 ]
+    ; "SMTP", [ smtp_test_0
+              ; smtp_test_1
+              ; smtp_test_2
+              ; smtp_test_3
+              ; smtp_test_4
+              ; smtp_test_5 ] ]
