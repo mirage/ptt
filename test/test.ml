@@ -149,9 +149,14 @@ let stream_of_string_list l =
       l := r ; Some x in
   stream
 
-let hello_world = stream_of_string_list ["Hello", 0, 5; " ", 0, 1; "World!", 0, 6]
-let hello_buddy = stream_of_string_list ["Hello", 0, 5; " ", 0, 1; "buddy!", 0, 6]
-let hello_guy = stream_of_string_list ["Hello", 0, 5; " ", 0, 1; "guy!", 0, 4]
+let stream_is_empty s =
+  match s () with
+  | Some _ -> false
+  | None -> true
+
+let hello_world () = stream_of_string_list ["Hello", 0, 5; " ", 0, 1; "World!", 0, 6]
+let hello_buddy () = stream_of_string_list ["Hello", 0, 5; " ", 0, 1; "buddy!", 0, 6]
+let hello_guy () = stream_of_string_list ["Hello", 0, 5; " ", 0, 1; "guy!", 0, 4]
 
 let messaged_test_0 =
   Alcotest.test_case "messaged 0" `Quick @@ fun () ->
@@ -163,6 +168,7 @@ let messaged_test_0 =
         ~from:((Rresult.R.get_ok <.> Colombe_emile.to_reverse_path) from, [])
         ~recipients:[] 0L in
     let producer = Md.push md key in
+    let v = v () (* XXX(dinosaure): really create the stream. *) in
     let rec consume () =
       match v () with
       | Some chunk -> producer (Some chunk) ; consume ()
@@ -226,29 +232,35 @@ let messaged_test_1 =
     last := 1 ;
     Md.await md ; (* XXX(dinosaure): schedule [do1] __after__ [do0]. *)
     match Md.pop md with
-    | Some (_, q, _) -> Md.close q
+    | Some (_, q, _) -> Md.close q (* XXX(dinosaure): unlock [do0]. *)
     | None -> assert false in
   let domain_from = Mrmime.Mailbox.Domain.(v domain [ a "x25519"; a "net" ]) in
   let from =
     let open Mrmime.Mailbox in
     Local.[ w "romain"; w "calascibetta" ] @ Domain.(domain, [ a "gmail"; a "com" ]) in
 
-  let th0 = Thread.create (do0 ~domain_from ~from hello_world) () in
+  let stream = hello_world () in
+  let th0 = Thread.create (do0 ~domain_from ~from stream) () in
   let th1 = Thread.create do1 () in
   Thread.join th0 ;
   Thread.join th1 ;
+  Alcotest.(check bool) "stream consumed" (stream_is_empty stream) true ;
   Alcotest.(check pass) "random schedule" () () ;
   let th1 = Thread.create do1 () in
   Unix.sleep 1 ;
-  let th0 = Thread.create (do0 ~domain_from ~from hello_buddy) () in
+  let stream = hello_buddy () in
+  let th0 = Thread.create (do0 ~domain_from ~from stream) () in
   Thread.join th0 ;
   Thread.join th1 ;
+  Alcotest.(check bool) "stream consumed" (stream_is_empty stream) true ;
   Alcotest.(check int) "(consumer & producer)" !last 0 ;
-  let th0 = Thread.create (do0 ~domain_from ~from hello_guy) () in
+  let stream = hello_guy () in
+  let th0 = Thread.create (do0 ~domain_from ~from stream) () in
   Unix.sleep 1 ;
   let th1 = Thread.create do1 () in
   Thread.join th0 ;
   Thread.join th1 ;
+  Alcotest.(check bool) "stream consumed" (stream_is_empty stream) true ;
   Alcotest.(check int) "(producer & consumer)" !last 1 ;
 ;;
 
