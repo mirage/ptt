@@ -16,6 +16,7 @@ run-test: [ "dune" "runtest" "-p" name "-j" jobs ]
 
 pin-depends: [
   [ "tuyau.dev" "git+https://github.com/dinosaure/tuyau.git" ]
+  [ "colombe.dev" "git+https://github.com/mirage/colombe.git" ]
 ]
 
 depends: [
