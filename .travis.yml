@@ -5,6 +5,8 @@ install:
 script: bash -ex .travis-opam.sh
 sudo: true
 env:
+  global:
+  -PINS="colombe.~dev:https://github.com/mirage/colombe.git tuyau.~dev:https://github.com/dinosaure/tuyau.git tuyau-mirage.~dev:https://github.com/dinosaure/tuyau.git"
   matrix:
   - PACKAGE="ptt" OCAML_VERSION=4.07 TESTS=true
   - PACKAGE="ptt" OCAML_VERSION=4.08 TESTS=true

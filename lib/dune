@@ -15,7 +15,7 @@
  (name ptt_tuyau)
  (public_name ptt.tuyau)
  (modules ptt_tuyau lwt_backend)
- (libraries mirage-stack tuyau.mirage tuyau.mirage.tcp ptt))
+ (libraries mirage-stack tuyau-mirage tuyau-mirage.tcp ptt))
 
 (library
  (name ptt_transmit)
@@ -27,7 +27,7 @@
  (name lipap)
  (public_name ptt.lipap)
  (modules lipap)
- (libraries ptt.transmit tuyau.mirage.tls))
+ (libraries ptt.transmit tuyau-mirage.tls))
 
 (library
  (name mti_gf)
