@@ -5,7 +5,7 @@ install:
 script: bash -ex .travis-opam.sh
 env:
   global:
-  - PINS="colombe.dev:https://github.com/mirage/colombe.git sendmail.dev:https://github.com/mirage/colombe.git sendmail-lwt:https://github.com/mirage/colombe.git tuyau.dev:https://github.com/dinosaure/tuyau.git tuyau-mirage.dev:https://github.com/dinosaure/tuyau.git"
+  - PINS="colombe.dev:https://github.com/mirage/colombe.git sendmail.dev:https://github.com/mirage/colombe.git sendmail-lwt.dev:https://github.com/mirage/colombe.git tuyau.dev:https://github.com/dinosaure/tuyau.git tuyau-mirage.dev:https://github.com/dinosaure/tuyau.git"
   jobs:
   - PACKAGE="ptt" OCAML_VERSION=4.07 TESTS=true
   - PACKAGE="ptt" OCAML_VERSION=4.08 TESTS=true
