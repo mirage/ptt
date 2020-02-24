@@ -6,7 +6,6 @@ let ( <.> ) f g = fun x -> f (g x)
 module Value = struct
   include Logic.Value
 
-  type error = Logic.Value.error
   type decoder = Decoder.decoder
   type encoder = Encoder.encoder
 
@@ -77,7 +76,14 @@ type error =
   | `No_recipients
   | `Too_many_recipients ]
 
-let pp_error _ppf = fun _ -> ()
+let pp_error ppf = function
+  | `Protocol err -> Value.pp_error ppf err
+  | `Too_many_bad_commands ->
+    Fmt.string ppf "Too many bad commands"
+  | `No_recipients ->
+    Fmt.string ppf "No recipients"
+  | `Too_many_recipients ->
+    Fmt.string ppf "Too many recipients"
 
 type info = Logic.info =
   { domain : [ `host ] Domain_name.t
@@ -92,3 +98,13 @@ type submission = Logic.submission =
   ; domain_from : Domain.t }
 
 include Logic.Make(Monad)
+
+let m_submission_init ctx info ms =
+  let open Monad in
+  let* () = send ctx Value.PP_220 [ Domain_name.to_string info.Logic.domain ] in
+  m_submission_init ctx info ms
+
+let m_relay_init ctx info =
+  let open Monad in
+  let* () = send ctx Value.PP_220 [ Domain_name.to_string info.Logic.domain ] in
+  m_relay_init ctx info

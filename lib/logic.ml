@@ -136,7 +136,7 @@ module Make (Monad : MONAD) = struct
   let m_properly_close_and_fail ctx ?(code= 554) ~message err =
     let open Monad in
     let* () = send ctx Value.Code (code, [ message ]) in
-    fail err
+    Error err
 
   let m_politely_close ctx =
     let open Monad in
@@ -146,13 +146,31 @@ module Make (Monad : MONAD) = struct
        close the TLS connection. *)
     return `Quit
 
-  let m_submit ctx ~domain_from =
+  let m_relay ctx ~domain_from =
     let open Monad in
     let reset = ref 0 and bad = ref 0 in
     let rec mail_from () =
-      let* from = recv ctx Value.Mail_from in
-      let* () = send ctx Value.PP_250 [ "Ok, buddy!" ] in
-      recipients ~from []
+      if !reset >= 25 || !bad >= 25
+      then
+        m_properly_close_and_fail ctx
+          ~message:"You reached the limit buddy!"
+          `Too_many_bad_commands
+      else
+        let* command = recv ctx Value.Any in
+        match command with
+        | `Quit -> m_politely_close ctx
+        | `Mail from ->
+          let* () = send ctx Value.PP_250 [ "Ok, buddy!" ] in
+          recipients ~from []
+        | `Reset ->
+          incr reset ;
+          send ctx Value.PP_250 [ "Yes buddy!" ] >>= fun () -> mail_from ()
+        | v ->
+          incr bad ;
+          Log.warn (fun m -> m "%a sended a bad command: %a"
+                       Domain.pp domain_from Request.pp v) ;
+          send ctx Value.PN_503 [ "Command out of sequence" ] >>= fun () ->
+          mail_from ()
     and recipients ~from acc =
       if !reset >= 25 || !bad >= 25
       then
@@ -177,7 +195,7 @@ module Make (Monad : MONAD) = struct
           (* XXX(dinosaure): the minimum number of recipients that MUST be
              buffered is 100 recipients. *)
           if List.length acc < 100
-          then send ctx Value.PP_250 [ "Ok buddy!" ] >>= fun () ->
+          then send ctx Value.PP_250 [ "Ok, buddy!" ] >>= fun () ->
             recipients ~from (v :: acc)
           else send ctx Value.Code (452, [ "Too many recipients, buddy! "]) >>= fun () ->
             fail `Too_many_recipients
@@ -253,7 +271,7 @@ module Make (Monad : MONAD) = struct
         ; "8BITMIME"
         ; "SMTPUTF8"
         ; Fmt.strf "SIZE %Ld" info.size ] in
-    m_submit ctx ~domain_from
+    m_relay ctx ~domain_from
 
   let m_submission_init ctx info ms =
     let open Monad in

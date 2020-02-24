@@ -1,0 +1,37 @@
+opam-version: "2.0"
+name:         "ptt"
+maintainer:   "Romain Calascibetta <romain.calascibetta@gmail.com>"
+authors:      "Romain Calascibetta <romain.calascibetta@gmail.com>"
+homepage:     "https://github.com/dinosaure/ptt"
+bug-reports:  "https://github.com/dinosaure/ptt/issues"
+dev-repo:     "git+https://github.com/dinosaure/ptt.git"
+doc:          "https://dinosaure.github.io/ptt/"
+license:      "MIT"
+synopsis:     "Postes, Télégraphes et Téléphones, SMTP servers"
+description: """PTT aggregate some SMTP servers like a relay or
+a submission server. It can be use as an UNIX service or an MirageOS unikernel."""
+
+build: [ "dune" "build" "-p" name "-j" jobs ]
+run-test: [ "dune" "runtest" "-p" name "-j" jobs ]
+
+depends: [
+  "ocaml"        {>= "4.07.0"}
+  "dune"
+  "mrmime"
+  "digestif"
+  "colombe"
+  "sendmail"
+  "sendmail-lwt"
+  "domain-name"
+  "dns"
+  "logs"
+  "tls"
+  "mirage-stack" "tcpip" "ke" "bigstringaf"
+  "tuyau"
+  "tuyau-tls"
+  "tuyau-mirage"
+  "ocaml-syntax-shims"
+  "alcotest"     {with-test}
+  "base-threads" {with-test}
+  "bos"          {with-test}
+]

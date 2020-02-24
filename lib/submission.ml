@@ -17,7 +17,7 @@ module Make
     ; mechanisms : Mechanism.t list
     ; authenticator : (Scheduler.t, 'k) Authentication.t
     ; mutable count : int64 }
-  and info = SMTP.info =
+  and info = SSMTP.info =
     { domain : [ `host ] Domain_name.t
     ; ipv4 : Ipaddr.V4.t
     ; tls : Tls.Config.server
@@ -43,28 +43,33 @@ module Make
   module Log = (val Logs.src_log src : Logs.LOG)
 
   type error =
-    [ `Error of SMTP.error
+    [ `Error of [ SSMTP.error
+                | `Invalid_recipients
+                | `Too_many_tries ]
     | `Connection_close
-    | `Too_big_data
-    | `Too_many_tries ]
+    | `Too_big_data ]
 
   let pp_error ppf = function
-    | `Error err -> SMTP.pp_error ppf err
+    | `Error (#SSMTP.error as err) -> SSMTP.pp_error ppf err
+    | `Error `Invalid_recipients -> Fmt.pf ppf "Invalid recipients"
+    | `Error `Too_many_tries -> Fmt.pf ppf "Too many tries"
     | `Connection_close -> Fmt.pf ppf "Connection close"
     | `Too_big_data -> Fmt.pf ppf "Too big data"
-    | `Too_many_tries -> Fmt.pf ppf "Too many tries"
 
   let authentication ctx ~domain_from flow random hash server mechanism =
     let rec go limit m =
       if limit >= 3
-      then IO.return (Error `Too_many_tries)
+      then
+        let e = `Too_many_tries in
+        let m = SSMTP.m_properly_close_and_fail ctx ~message:"Too many tries" e in
+        run flow m
       else match m with
       | Mechanism.PLAIN ->
         let stamp = Bytes.create 0x10 in
         generate ~g:random stamp >>= fun () ->
         let stamp = Bytes.unsafe_to_string stamp in
         let m =
-          let open SMTP in
+          let open SSMTP in
           let open Monad in
           send ctx Value.TP_354 [ Base64.encode_string stamp ] >>= fun () ->
           recv ctx Value.Payload in
@@ -73,7 +78,7 @@ module Make
         |> Scheduler.prj >>= function
         | Ok true -> IO.return (Ok `Authenticated)
         | Error _ | Ok false ->
-          let m = SMTP.m_submission ctx ~domain_from server.mechanisms in
+          let m = SSMTP.m_submission ctx ~domain_from server.mechanisms in
           run flow m >>? function
           | `Quit -> IO.return (Ok `Quit)
           | `Authentication (_domain_from, m) ->
@@ -84,15 +89,15 @@ module Make
   let accept
     : Flow.t -> Resolver.t -> Random.g -> 'k Digestif.hash -> 'k server -> (unit, error) result IO.t
     = fun flow resolver random hash server ->
-      let ctx = Sendmail_with_tls.Context_with_tls.make () in
-      let m = SMTP.m_submission_init ctx server.info server.mechanisms in
+      let ctx = Colombe.State.Context.make () in
+      let m = SSMTP.m_submission_init ctx server.info server.mechanisms in
       run flow m >>? function
       | `Quit -> IO.return (Ok ())
       | `Authentication (domain_from, m) ->
         authentication ctx ~domain_from flow random hash server m >>? function
         | `Quit -> IO.return (Ok ())
         | `Authenticated ->
-          let m = SMTP.m_submit ctx ~domain_from in
+          let m = SSMTP.m_relay ctx ~domain_from in
           run flow m >>? function
           | `Quit -> IO.return (Ok ())
           | `Submission { domain_from; from; recipients; _ } ->
@@ -101,14 +106,14 @@ module Make
               let id = succ server in
               let key = Messaged.v ~domain_from ~from ~recipients id in
               Md.push server.messaged key >>= fun producer ->
-              let m = SMTP.m_mail ctx in
+              let m = SSMTP.m_mail ctx in
               run flow m >>? fun () ->
-              receive_mail ~limit:(Int64.to_int server.info.size) flow ctx SMTP.(fun ctx -> Monad.recv ctx Value.Payload) producer >>? fun () ->
-              let m = SMTP.m_end ctx in
+              receive_mail ~limit:(Int64.to_int server.info.size) flow ctx SSMTP.(fun ctx -> Monad.recv ctx Value.Payload) producer >>? fun () ->
+              let m = SSMTP.m_end ctx in
               run flow m >>? fun `Quit ->
               IO.return (Ok ())
             | false ->
               let e = `Invalid_recipients in
-              let m = SMTP.m_properly_close_and_fail ctx ~message:"No valid recipients" e in
+              let m = SSMTP.m_properly_close_and_fail ctx ~message:"No valid recipients" e in
               run flow m
 end

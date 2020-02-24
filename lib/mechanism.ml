@@ -6,7 +6,7 @@ let pp ppf = function
 
 let of_string_exn x = match String.lowercase_ascii x with
   | "plain" -> PLAIN
-  | m -> Fmt.invalid_arg "Invalid mechanism: %s" m
+  | _ -> Fmt.invalid_arg "Invalid mechanism: %s" x
 
 let equal a b = match a, b with
   | PLAIN, PLAIN -> true

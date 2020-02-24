@@ -1,0 +1,8 @@
+(executable
+ (name test)
+ (libraries bos threads mrmime ptt alcotest))
+
+(rule
+ (alias runtest)
+ (deps (:test test.exe) server.key server.pem)
+ (action (run %{test} --color=always)))
