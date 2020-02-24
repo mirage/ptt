@@ -26,8 +26,9 @@ depends: [
   "dns"
   "logs"
   "tls"
-  "tcpip"
+  "mirage-stack" "tcpip" "ke" "bigstringaf"
   "tuyau"
+  "tuyau-tls"
   "tuyau-mirage"
   "ocaml-syntax-shims"
 ]
