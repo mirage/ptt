@@ -89,7 +89,7 @@ module Make
             sendmail ~info stack mx_ipaddr emitter stream recipients >>= function
             | Ok () -> Lwt.return ()
             | Error _ -> go rest in
-        let sort = List.sort (fun { Ptt.Mxs.preference= a; _ } { Ptt.Mxs.preference= b; _ } -> Int.compare a b) in
+        let sort = List.sort (fun { Ptt.Mxs.preference= a; _ } { Ptt.Mxs.preference= b; _ } -> (compare : int -> int -> int) a b) in
         let sorted = Ptt.Mxs.elements mxs |> sort in
         go sorted in
       List.map sendmail targets in
