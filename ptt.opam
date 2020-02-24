@@ -25,6 +25,8 @@ depends: [
   "domain-name"
   "dns"
   "logs"
+  "tls"
+  "tcpip"
   "tuyau"
   "tuyau-mirage"
   "ocaml-syntax-shims"
