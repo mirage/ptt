@@ -6,7 +6,6 @@ let ( <.> ) f g = fun x -> f (g x)
 module Value = struct
   include Logic.Value
 
-  type error = Logic.Value.error
   type decoder = Decoder.decoder
   type encoder = Encoder.encoder
 

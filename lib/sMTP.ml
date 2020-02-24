@@ -5,8 +5,6 @@ let ( <.> ) f g = fun x -> f (g x)
 module Value = struct
   include Logic.Value
 
-  type error = Logic.Value.error
-
   let encode_without_tls ctx v w =
     let rec go = function
       | Colombe.State.Read { k; buffer; off; len; } ->
