@@ -26,5 +26,6 @@ depends: [
   "dns"
   "logs"
   "tuyau"
+  "tuyau-mirage"
   "ocaml-syntax-shims"
 ]
