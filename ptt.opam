@@ -31,4 +31,7 @@ depends: [
   "tuyau-tls"
   "tuyau-mirage"
   "ocaml-syntax-shims"
+  "alcotest" {with-test}
+  "base-thread" {with-test}
+  "bos" {with-test}
 ]
