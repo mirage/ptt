@@ -1,3 +1,13 @@
+let () = Printexc.record_backtrace true
+let reporter = Logs_fmt.reporter ()
+let () = Fmt.set_utf_8 Fmt.stdout true
+let () = Fmt.set_utf_8 Fmt.stderr true
+let () = Fmt.set_style_renderer Fmt.stdout `Ansi_tty
+let () = Fmt.set_style_renderer Fmt.stderr `Ansi_tty
+let () = Logs.set_level ~all:true (Some Logs.Debug)
+let () = Logs.set_reporter reporter
+let () = Nocrypto_entropy_unix.initialize ()
+
 module Unix_scheduler = Colombe.Sigs.Make(struct type +'a t = 'a end)
 
 let unix =
@@ -33,6 +43,7 @@ module IO = struct
 end
 
 let ( <.> ) f g = fun x -> f (g x)
+let rev f a b = f b a
 
 let mechanism = Alcotest.testable Ptt.Mechanism.pp Ptt.Mechanism.equal
 let msg = Alcotest.testable Rresult.R.pp_msg (fun (`Msg a) (`Msg b) -> String.equal a b)
@@ -364,7 +375,7 @@ let smtp_test_1 =
       ; "250-8BITMIME"
       ; "250-SMTPUTF8"
       ; "250 SIZE 16777216"
-      ; "220 Bye, buddy!" ] in
+      ; "221 Bye, buddy!" ] in
   let ctx = Colombe.State.Context.make () in
   let info =
     { Ptt.SSMTP.domain= x25519
@@ -395,7 +406,7 @@ let smtp_test_2 =
       ; "250-SMTPUTF8"
       ; "250 SIZE 16777216"
       ; "250 Yes buddy!"
-      ; "220 Bye, buddy!" ] in
+      ; "221 Bye, buddy!" ] in
   let ctx = Colombe.State.Context.make () in
   let info =
     { Ptt.SSMTP.domain= x25519
@@ -529,6 +540,257 @@ let smtp_test_5 =
   | Error `Connection_close ->
     Alcotest.fail "Unexpected connection close"
 
+let smtp_test_6 =
+  Alcotest.test_case "SMTP (submission) 6" `Quick @@ fun () ->
+  let rdwr, check = rdwr_from_flows
+      [ "EHLO gmail.com"
+      ; "MAIL FROM:<romain.calascibetta@gmail.com>"
+      ; "QUIT" ]
+      [ "220 x25519.net"
+      ; "250-x25519.net at your service, [127.0.0.1]"
+      ; "250-8BITMIME"
+      ; "250-SMTPUTF8"
+      ; "250-SIZE 16777216"
+      ; "250 AUTH PLAIN"
+      ; "530 Authentication required, buddy!"
+      ; "221 Bye, buddy!" ] in
+  let ctx = Colombe.State.Context.make () in
+  let info =
+    { Ptt.SSMTP.domain= x25519
+    ; ipv4= Ipaddr.V4.localhost
+    ; tls= fake_tls_config
+    ; zone= Mrmime.Date.Zone.gmt
+    ; size= 16777216L } in
+  match run (Ptt.SSMTP.m_submission_init ctx info [ Ptt.Mechanism.PLAIN ]) rdwr () with
+  | Ok `Quit ->
+    Alcotest.(check unit) "empty stream" (check ()) () ;
+    Alcotest.(check pass) "quit" () ()
+  | Ok (`Authentication _) -> Alcotest.failf "Unexpected authentication"
+  | Ok (`Submission _) -> Alcotest.failf "Unexpected submission"
+  | Error (`Error err) -> Alcotest.failf "Unexpected protocol error: %a" Ptt.SSMTP.pp_error err
+  | Error `Connection_close -> Alcotest.failf "Unexpected connection close"
+
+let smtp_test_7 =
+  Alcotest.test_case "SMTP (submission) 7" `Quick @@ fun () ->
+  let rdwr, check = rdwr_from_flows
+      [ "EHLO gmail.com"
+      ; "AUTH PLAIN" ]
+      [ "220 x25519.net"
+      ; "250-x25519.net at your service, [127.0.0.1]"
+      ; "250-8BITMIME"
+      ; "250-SMTPUTF8"
+      ; "250-SIZE 16777216"
+      ; "250 AUTH PLAIN" ] in
+  let ctx = Colombe.State.Context.make () in
+  let info =
+    { Ptt.SSMTP.domain= x25519
+    ; ipv4= Ipaddr.V4.localhost
+    ; tls= fake_tls_config
+    ; zone= Mrmime.Date.Zone.gmt
+    ; size= 16777216L } in
+  match run (Ptt.SSMTP.m_submission_init ctx info [ Ptt.Mechanism.PLAIN ]) rdwr () with
+  | Ok (`Authentication (v, m)) ->
+    let gmail =
+      let open Mrmime.Mailbox in
+      Domain.(v domain [ a "gmail"; a "com" ]) in
+    Alcotest.(check unit) "empty stream" (check ()) () ;
+    Alcotest.(check mechanism) "mechanism" m Ptt.Mechanism.PLAIN ;
+    Alcotest.(check domain) "domain"  v ((Rresult.R.get_ok <.> Colombe_emile.to_domain) gmail) ;
+    Alcotest.(check pass) "authentication" () ()
+  | Ok `Quit | Ok (`Submission _) -> Alcotest.failf "Unexpected quit or submission"
+  | Error (`Error err) -> Alcotest.failf "Unexpected protocol error: %a" Ptt.SSMTP.pp_error err
+  | Error `Connection_close -> Alcotest.failf "Unexpected connection close"
+
+module Random = struct
+  type g = unit
+  type +'a s = 'a
+
+  let generate ?g:_ _ = ()
+end
+
+let fake_dns_resolvers = Hashtbl.create 16
+let () = Hashtbl.add fake_dns_resolvers (Domain_name.(host_exn <.> of_string_exn) "gmail.com") (Ipaddr.V4.of_string_exn "10.0.0.8")
+let fake_smtp_servers = Hashtbl.create 16
+let () = Hashtbl.add fake_smtp_servers (Ipaddr.of_string_exn "10.0.0.8") 8888
+
+module Resolver = struct
+  type t = unit
+  type +'a s = 'a
+
+  let gethostbyname () domain_name =
+    match Hashtbl.find fake_dns_resolvers domain_name with
+    | v -> Ok v
+    | exception Not_found ->
+      Rresult.R.error_msgf "%a not found" Domain_name.pp domain_name
+
+  let getmxbyname () domain_name =
+    let mxs = Dns.Rr_map.Mx_set.add { Dns.Mx.preference= 0; mail_exchange= domain_name; } Dns.Rr_map.Mx_set.empty in
+    Ok mxs
+
+  let extension () _ _ = Rresult.R.error_msgf "Extension are not available"
+end
+
+module Flow_tuyau = (val (let open Tuyau_unix in
+                          let open Tuyau_unix_tcp in
+                          let res = impl_of_protocol ~key:endpoint protocol in
+                          Rresult.R.get_ok res))
+
+module Flow = struct
+  type t = Flow_tuyau.flow
+  include Flow_tuyau
+
+  let flow endpoint =
+    let sockaddr = match endpoint with
+      | Unix.ADDR_UNIX _ -> endpoint
+      | Unix.ADDR_INET (fake_inet_addr, _) ->
+        let fake_inet_addr = Ipaddr_unix.of_inet_addr fake_inet_addr in
+        Unix.ADDR_INET (Unix.inet_addr_loopback, Hashtbl.find fake_smtp_servers fake_inet_addr) in
+    flow sockaddr
+
+  let recv flow buf off len =
+    let raw = Cstruct.of_bytes ~off ~len buf in
+    Fmt.epr ">>> flow [recv:0].\n%!" ;
+    Thread.wait_read (Tuyau_unix_tcp.socket flow) ;
+    let res = recv flow raw in
+    match res with
+    | Ok (`Input len) -> Cstruct.blit_to_bytes raw 0 buf off len ; len
+    | Ok `End_of_input -> 0
+    | Error err -> Fmt.failwith "%a" Flow_tuyau.pp_error err
+
+  let send flow buf off len =
+    let raw = Cstruct.of_string ~off ~len buf in
+    Fmt.epr ">>> flow [send].\n%!" ;
+    Thread.wait_write (Tuyau_unix_tcp.socket flow) ;
+    let res = send flow raw in
+    match res with
+    | Ok _ -> ()
+    | Error err -> Fmt.failwith "%a" Flow_tuyau.pp_error err
+end
+
+let make_submission_smtp_server mutex initialized ~info ~port =
+  let module SMTP = Ptt.Relay.Make(Unix_scheduler)(IO)(Flow)(Resolver)(Random) in
+  let conf_server = SMTP.create ~info in
+  let messaged = SMTP.messaged conf_server in
+  let close = ref false in
+  let smtp_submission_server conf_server =
+    let open Rresult in
+    Tuyau_unix.impl_of_service ~key:Tuyau_unix_tcp.configuration
+       Tuyau_unix_tcp.service >>= fun (module Server) ->
+    Tuyau_unix.serve ~key:Tuyau_unix_tcp.configuration
+      ~service:Tuyau_unix_tcp.service
+      { Tuyau_unix_tcp.inet_addr= Ipaddr_unix.to_inet_addr (Ipaddr.V4 info.SMTP.ipv4)
+      ; Tuyau_unix_tcp.port= port
+      ; Tuyau_unix_tcp.capacity= 0x1000 } >>= fun (t, protocol) ->
+    Fmt.epr ">>> Start SMTP Submission server.\n%!" ;
+    let module Flow = (val (Tuyau_unix.impl_of_flow protocol)) in
+    let handle flow =
+      let rs0 = SMTP.accept flow () conf_server in
+      let rs1 = Flow.close flow in
+      match rs0, rs1 with
+      | Ok _, Ok _ -> ()
+      | Error err, _ -> Fmt.epr "%a" SMTP.pp_error err
+      | Ok _, Error err -> Fmt.epr "%a" Flow.pp_error err in
+    let rec go () =
+      if !close then Thread.exit () ;
+      Fmt.epr ">>> Start to waiting incoming connection.\n%!" ;
+      Server.accept t >>= fun flow ->
+      (* XXX(dinosaure): we assert that [handle] finish in any cases. So we
+         don't need to [join] it. *)
+      let _ = Thread.create handle flow in Thread.yield () ; go () in
+    Fmt.epr ">>> Signal initialization.\n%!" ;
+    Mutex.lock mutex ; Condition.signal initialized ; Mutex.unlock mutex ; Thread.yield () ;
+    R.reword_error (R.msgf "%a" Server.pp_error) (go ()) in
+  let smtp_logic messaged ms =
+    let rec go () =
+      if !close then Thread.exit () ;
+      let () = SMTP.Md.await messaged in
+      match SMTP.Md.pop messaged with
+      | Some (key, queue, _) ->
+        SMTP.Md.close queue ;
+        Queue.push key ms ;
+        Thread.yield () ; go ()
+      | None -> Thread.yield () ; go () in
+    go () in
+  let queue = Queue.create () in
+  let server () =
+    let _th1 = Thread.create (smtp_submission_server) conf_server in
+    let _th2 = Thread.create (smtp_logic messaged) queue in
+    let rec go () =
+      if !close
+      then ( Fmt.epr ">>> Kill threads.\n%!"
+           (* ; Thread.kill th1
+              ; Thread.kill th2 *)
+           ; queue )
+      (* XXX(dinosaure): it seems that [Thread.yield] does not properly
+         re-schedule threads and this thread takes the opportunity to do an
+         infinite loop (when [!close] will never be updated). It's why we put a
+         [Thread.delay] to give a chance to other threads to be computed. *)
+      else ( Thread.delay 0.5 ; go () ) in
+    go () in
+  (fun () -> close := true),
+  Thread.create server (),
+  (fun () -> Queue.fold (rev List.cons) [] queue)
+
+let sendmail ipv4 port ~domain sender recipients contents =
+  let stream = stream_of_string_list contents in
+  let stream = (function Some x -> Some (x ^"\r\n", 0, String.length x + 2) | None -> None) <.> stream in
+  let stream = Unix_scheduler.inj <.> stream in
+  let tls_config = Tls.Config.client ~authenticator:X509.Authenticator.null () in
+  let ctx = Sendmail_with_tls.Context_with_tls.make () in
+  let rdwr =
+    { Colombe.Sigs.rd= (fun fd buf off len ->
+          Fmt.epr ">>> sendmail [recv:0].\n%!" ;
+          Thread.wait_read fd ;
+          let res = Unix.read fd buf off len in
+          Fmt.epr ">>> sendmail [recv:1] %S.\n%!" (Bytes.sub_string buf off res) ;
+          Unix_scheduler.inj res)
+    ; Colombe.Sigs.wr= (fun fd buf off len ->
+          Fmt.epr ">>> sendmail [send] %S.\n%!" (String.sub buf off len) ;
+          Thread.wait_write fd ;
+          let _ = Unix.write fd (Bytes.unsafe_of_string buf) off len in Unix_scheduler.inj ()) } in
+  let socket = Unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
+  Unix.connect socket (Unix.ADDR_INET (Ipaddr_unix.to_inet_addr (Ipaddr.V4 ipv4), port)) ;
+  let res = Sendmail_with_tls.sendmail unix rdwr socket ctx tls_config ~domain sender recipients stream in
+  match Unix_scheduler.prj res with
+  | Ok () -> Fmt.epr "Close sendmail connection.\n%!" ; Unix.close socket
+  | Error err -> Fmt.failwith "%a" Sendmail_with_tls.pp_error err
+
+let key = Alcotest.testable Ptt.Messaged.pp Ptt.Messaged.equal
+
+let full_test_0 =
+  Alcotest.test_case "Receive one email from Anil" `Quick @@ fun () ->
+  let romain_calascibetta =
+    (Rresult.R.get_ok <.> Colombe_emile.to_forward_path)
+      (let open Mrmime.Mailbox in
+       Local.[ w "romain"; w "calascibetta" ] @ Domain.(domain, [ a "gmail"; a "com" ])) in
+  let anil =
+    (Rresult.R.get_ok <.> Colombe_emile.to_reverse_path)
+      (let open Mrmime.Mailbox in
+       Local.[ w "anil" ] @ Domain.(domain, [ a "recoil"; a "org" ])) in
+  let mutex = Mutex.create () and initialized = Condition.create () in
+  let close, th0, inbox =
+    make_submission_smtp_server
+      mutex initialized
+      ~info:{ Ptt.SMTP.domain= gmail
+            ; ipv4= Ipaddr.V4.localhost
+            ; tls= fake_tls_config
+            ; zone= Mrmime.Date.Zone.GMT
+            ; size= 0x1000000000L } ~port:8888 in
+  let domain = (Colombe.Domain.of_string_exn <.> Domain_name.to_string) gmail in
+  let sendmail contents =
+    Mutex.lock mutex ;
+    Fmt.epr ">>> Start to waiting server (mutex locked).\n%!" ;
+    Condition.wait initialized mutex ; Mutex.unlock mutex ; Thread.yield () ;
+    Fmt.epr ">>> Sendmail.\n%!" ;
+    sendmail Ipaddr.V4.localhost 8888 ~domain anil [ romain_calascibetta ] contents in
+  let th1 = Thread.create sendmail [ "From: anil@recoil.org"
+                                   ; "Subject: SMTP server, PLZ!"
+                                   ; ""
+                                   ; "Hello World!" ] in
+  Thread.join th1 ; Fmt.epr ">>> Sendmail is full-filled.\n%!" ; close () ; Thread.join th0 ;
+  let contents = inbox () in
+  Alcotest.(check (list key)) "inbox" contents [ Ptt.Messaged.v ~domain_from:domain ~from:(anil, []) ~recipients:[ (romain_calascibetta, []) ] 0L ]
+
 let () =
   Alcotest.run "ptt"
     [ "mechanism", [ mechanism_test_0 ]
@@ -541,4 +803,7 @@ let () =
               ; smtp_test_2
               ; smtp_test_3
               ; smtp_test_4
-              ; smtp_test_5 ] ]
+              ; smtp_test_5
+              ; smtp_test_6
+              ; smtp_test_7 ]
+    ; "Server", [ full_test_0 ] ]

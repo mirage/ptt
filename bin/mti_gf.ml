@@ -63,6 +63,7 @@ let fiber ~domain map =
   let conf =
     { Tuyau_mirage_tcp.stack= stackv4
     ; Tuyau_mirage_tcp.keepalive= None
+    ; Tuyau_mirage_tcp.nodelay= false
     ; Tuyau_mirage_tcp.port= 4242 } in
   let info =
     { Ptt.SMTP.domain

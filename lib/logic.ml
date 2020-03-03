@@ -9,12 +9,14 @@ module Value = struct
 
   type pp_220 = string list
   type pp_221 = string list
+  type pp_235 = string list
   type pp_250 = string list
   type tp_354 = string list
   type tn_454 = string list
   type pn_503 = string list
   type pn_504 = string list
   type pn_530 = string list
+  type pn_535 = string list
   type pn_554 = string list
   type pn_555 = string list
   type code = int * string list
@@ -34,11 +36,13 @@ module Value = struct
     | PP_220 : pp_220 send
     | PP_221 : pp_221 send
     | PP_250 : pp_250 send
+    | PP_235 : pp_235 send
     | TP_354 : tp_354 send
     | TN_454 : tn_454 send
     | PN_503 : pn_503 send
     | PN_504 : pn_504 send
     | PN_530 : pn_530 send
+    | PN_535 : pn_535 send
     | PN_554 : pn_554 send
     | PN_555 : pn_555 send
     | Payload : string send
@@ -111,6 +115,7 @@ module type MONAD = sig
 end
 
 let () = Colombe.Request.Decoder.add_extension "STARTTLS"
+let () = Colombe.Request.Decoder.add_extension "AUTH"
 (* XXX(dinosaure): shoud be ok! *)
 
 type info =
@@ -140,7 +145,7 @@ module Make (Monad : MONAD) = struct
 
   let m_politely_close ctx =
     let open Monad in
-    let* () = send ctx Value.PP_220 [ "Bye, buddy!" ] in
+    let* () = send ctx Value.PP_221 [ "Bye, buddy!" ] in
     (* TODO(dinosaure): properly close when we use a STARTTLS context.
        Currently fixed into [SMTP]: when we want to [`Quit], we properly
        close the TLS connection. *)
@@ -281,6 +286,7 @@ module Make (Monad : MONAD) = struct
         [ politely ~domain:info.domain ~ipv4:info.ipv4
         ; "8BITMIME"
         ; "SMTPUTF8"
+        ; Fmt.strf "SIZE %Ld" info.size
         ; Fmt.strf "AUTH %a" Fmt.(list ~sep:(const string " ") Mechanism.pp) ms ] in
     m_submission ctx ~domain_from ms
 end

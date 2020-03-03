@@ -14,7 +14,7 @@ module Make
   module TLS = Tuyau_mirage_tls
   include Ptt_tuyau.Make(StackV4)
 
-  let tls_endpoint, tls_protocol = TLS.protocol_with_tls ~key:TCP.endpoint TCP.protocol
+  let _tls_endpoint, tls_protocol = TLS.protocol_with_tls ~key:TCP.endpoint TCP.protocol
   let tls_configuration, tls_service = TLS.service_with_tls ~key:TCP.configuration TCP.service tls_protocol
 
   let src = Logs.Src.create "lipap"
@@ -38,7 +38,7 @@ module Make
 
   let smtp_submission_service resolver random hash conf conf_server =
     let tls = (Submission.info conf_server).Ptt.SSMTP.tls in
-    Tuyau_mirage.impl_of_service ~key:tls_endpoint tls_service |> Lwt.return >>? fun (module Server) ->
+    Tuyau_mirage.impl_of_service ~key:tls_configuration tls_service |> Lwt.return >>? fun (module Server) ->
     Tuyau_mirage.serve ~key:tls_configuration (conf, tls) ~service:tls_service >>? fun (t, protocol) ->
     let module Flow = (val (Tuyau_mirage.impl_of_flow protocol)) in
     let handle ip port flow () =
@@ -51,7 +51,7 @@ module Make
         (function Failure err -> Lwt.return (R.error_msg err)
                 | exn -> Lwt.return (Error (`Exn exn))) >>= function
       | Ok () ->
-        Log.info (fun m -> m "<%a:%d> submitted a message" Ipaddr.V4.pp ip port) ;
+        Log.info (fun m -> m "<%a:%d> quit properly" Ipaddr.V4.pp ip port) ;
         Lwt.return ()
       | Error (`Msg err) ->
         Log.err (fun m -> m "<%a:%d> %s" Ipaddr.V4.pp ip port err) ;

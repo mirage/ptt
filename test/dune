@@ -1,6 +1,7 @@
 (executable
  (name test)
- (libraries bos threads mrmime ptt alcotest))
+ (modules test)
+ (libraries logs.fmt nocrypto.unix ipaddr.unix tuyau-unix tuyau-unix.tcp bos threads mrmime ptt ptt.tuyau alcotest))
 
 (rule
  (alias runtest)
