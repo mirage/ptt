@@ -23,6 +23,34 @@ let v ~domain_from ~from ~recipients id =
   ; recipients
   ; id }
 
+let pp ppf key =
+  Fmt.pf ppf "{ @[<hov>domain_from= %a;@ \
+                       from= %a;@ \
+                       recipients= @[<hov>%a@];@ \
+                       id= %Ld;@] }"
+    Domain.pp key.domain_from
+    Reverse_path.pp (fst key.from)
+    Fmt.(Dump.list Forward_path.pp) (List.map fst key.recipients)
+    key.id
+
+let equal_recipients a b =
+  let a = List.sort Forward_path.compare a in
+  let b = List.sort Forward_path.compare b in
+  let rec go a b = match a, b with
+    | _ :: _, [] -> false
+    | [], _ :: _ -> false
+    | a :: ar, b :: br ->
+      let res = Forward_path.equal a b in
+      if res then go ar br else false
+    | [], [] -> true in
+  go a b
+
+let equal a b =
+  Domain.equal a.domain_from b.domain_from
+  && Reverse_path.equal (fst a.from) (fst b.from)
+  && equal_recipients (List.map fst a.recipients) (List.map fst b.recipients)
+  && a.id = b.id
+
 module type S = sig
   type +'a s
 
@@ -38,6 +66,7 @@ module type S = sig
   val push : ?chunk:int -> t -> key -> chunk producer s
   val await : t -> unit s
   val pop : t -> (key * queue * chunk consumer) option s
+  val broadcast : t -> unit
 end
 
 module Make
@@ -145,4 +174,6 @@ module Make
     try let (key, queue, consumer) = Queue.pop t.q in
         Mutex.unlock t.m ; return (Some (key, queue, consumer))
     with _exn -> Mutex.unlock t.m ; return None
+
+  let broadcast t = Condition.broadcast t.c
 end

@@ -77,6 +77,7 @@ module Make (StackV4 : Mirage_stack.V4) = struct
     let endpoint =
       { Tuyau_mirage_tcp.stack= stack
       ; Tuyau_mirage_tcp.keepalive= None
+      ; Tuyau_mirage_tcp.nodelay= false
       ; Tuyau_mirage_tcp.ip= mx_ipaddr
       ; Tuyau_mirage_tcp.port= 25 } in
     Tuyau_mirage.flow_of_protocol ~key:TCP.endpoint endpoint ~protocol:TCP.protocol >>? fun flow ->

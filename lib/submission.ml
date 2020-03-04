@@ -74,11 +74,21 @@ module Make
           send ctx Value.TP_354 [ Base64.encode_string stamp ] >>= fun () ->
           recv ctx Value.Payload in
         run flow m >>? fun v ->
+        Logs.debug (fun m -> m "Got a payload while authentication: %S" v) ;
         Authentication.decode_authentication scheduler hash (Authentication.PLAIN (Some stamp)) server.authenticator v
         |> Scheduler.prj >>= function
-        | Ok true -> IO.return (Ok `Authenticated)
-        | Error _ | Ok false ->
-          let m = SSMTP.m_submission ctx ~domain_from server.mechanisms in
+        | Ok true ->
+          let m = SSMTP.(Monad.send ctx Value.PP_235 [ "Accepted, buddy!" ]) in
+          run flow m >>? fun () -> IO.return (Ok `Authenticated)
+        | (Error _ | Ok false) as res ->
+          let () = match res with
+            | Error (`Msg err) -> Log.err (fun m -> m "Got an authentication error: %s" err)
+            | _ -> () in
+          let m =
+            let open SSMTP in
+            let open Monad in
+            let* () = send ctx Value.PN_535 [ "Bad authentication, buddy!" ] in
+            SSMTP.m_submission ctx ~domain_from server.mechanisms in
           run flow m >>? function
           | `Quit -> IO.return (Ok `Quit)
           | `Authentication (_domain_from, m) ->

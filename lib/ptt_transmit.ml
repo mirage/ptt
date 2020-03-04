@@ -1,6 +1,8 @@
 let ( <.> ) f g = fun x -> f (g x)
 let apply x f = f x
 
+let icompare : int -> int -> int = fun a b -> compare a b
+
 module Make
     (Pclock : Mirage_clock.PCLOCK)
     (StackV4 : Mirage_stack.V4)
@@ -89,7 +91,7 @@ module Make
             sendmail ~info stack mx_ipaddr emitter stream recipients >>= function
             | Ok () -> Lwt.return ()
             | Error _ -> go rest in
-        let sort = List.sort (fun { Ptt.Mxs.preference= a; _ } { Ptt.Mxs.preference= b; _ } -> (compare : int -> int -> int) a b) in
+        let sort = List.sort (fun { Ptt.Mxs.preference= a; _ } { Ptt.Mxs.preference= b; _ } -> icompare a b) in
         let sorted = Ptt.Mxs.elements mxs |> sort in
         go sorted in
       List.map sendmail targets in

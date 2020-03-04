@@ -21,12 +21,14 @@ module Value = struct
           Encoder.safe k encoder
         | PP_220 -> Reply.Encoder.response (`PP_220 v) encoder
         | PP_221 -> Reply.Encoder.response (`PP_221 v) encoder
+        | PP_235 -> Reply.Encoder.response (`Other (235, v)) encoder
         | PP_250 -> Reply.Encoder.response (`PP_250 v) encoder
         | TP_354 -> Reply.Encoder.response (`TP_354 v) encoder
         | TN_454 -> Reply.Encoder.response (`Other (454, v)) encoder
         | PN_503 -> Reply.Encoder.response (`PN_503 v) encoder
         | PN_504 -> Reply.Encoder.response (`PN_504 v) encoder
         | PN_530 -> Reply.Encoder.response (`Other (530, v)) encoder
+        | PN_535 -> Reply.Encoder.response (`Other (535, v)) encoder
         | PN_554 -> Reply.Encoder.response (`PN_554 v) encoder
         | PN_555 -> Reply.Encoder.response (`Other (555, v)) encoder
         | Code ->

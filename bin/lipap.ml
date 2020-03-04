@@ -43,20 +43,20 @@ let load_file filename =
 
 let cert =
   let open Rresult in
-  load_file (Fpath.v "ptt.pem") >>= fun raw ->
+  load_file (Fpath.v "server.pem") >>= fun raw ->
   X509.Certificate.decode_pem raw
 
 let cert = Rresult.R.get_ok cert
 
 let private_key =
   let open Rresult in
-  load_file (Fpath.v "ptt.key") >>= fun raw ->
+  load_file (Fpath.v "server.key") >>= fun raw ->
   X509.Private_key.decode_pem raw >>= fun (`RSA v) -> R.ok v
 
 let private_key = Rresult.R.get_ok private_key
 
 let authenticator _username _password =
-  Ptt_tuyau.Lwt_backend.Lwt_scheduler.inj (Lwt.return false)
+  Ptt_tuyau.Lwt_backend.Lwt_scheduler.inj (Lwt.return true)
 let authenticator =
   Ptt.Authentication.v authenticator
 
@@ -68,6 +68,7 @@ let fiber ~domain map =
   let conf =
     { Tuyau_mirage_tcp.stack= stackv4
     ; Tuyau_mirage_tcp.keepalive= None
+    ; Tuyau_mirage_tcp.nodelay= false
     ; Tuyau_mirage_tcp.port= 4242 } in
   let info =
     { Ptt.SMTP.domain

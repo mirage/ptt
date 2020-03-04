@@ -11,6 +11,9 @@ val from : key -> from
 val recipients : key -> recipient list
 val id : key -> int64
 
+val pp : key Fmt.t
+val equal : key -> key -> bool
+
 val v : domain_from:Domain.t -> from:from -> recipients:recipient list -> int64 -> key
 
 module type S = sig
@@ -48,6 +51,10 @@ module type S = sig
   (** [pop t] returns next message available in [t]. It gives
      the identifier, the queue which contains the mail and
      a safe-threaded consumer. *)
+
+  (** / **)
+
+  val broadcast : t -> unit
 end
 
 module Make
