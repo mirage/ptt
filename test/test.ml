@@ -691,18 +691,21 @@ let make_submission_smtp_server mutex initialized ~info ~port =
       | Error err, _ -> Fmt.epr "%a" SMTP.pp_error err
       | Ok _, Error err -> Fmt.epr "%a" Flow.pp_error err in
     let rec go () =
-      if !close then Thread.exit () ;
-      Fmt.epr ">>> Start to waiting incoming connection.\n%!" ;
-      Server.accept t >>= fun flow ->
-      (* XXX(dinosaure): we assert that [handle] finish in any cases. So we
-         don't need to [join] it. *)
-      let _ = Thread.create handle flow in Thread.yield () ; go () in
-    Fmt.epr ">>> Signal initialization.\n%!" ;
+      let rd, _, _ = Thread.select [ (t :> Unix.file_descr) ] [] [] 0.1 in
+      if !close then ( Fmt.epr ">>> Close server.\n%!" ; let _ = Server.close t in Thread.exit () ) ;
+      if List.length rd = 0
+      then go ()
+      else ( Fmt.epr ">>> Start to waiting incoming connection.\n%!"
+           ; Server.accept t >>= fun flow ->
+             (* XXX(dinosaure): we assert that [handle] finish in any cases. So we
+                don't need to [join] it. *)
+             let _ = Thread.create handle flow in Thread.yield () ; go () ) in
+    Thread.delay 0.5 ; Fmt.epr ">>> Signal initialization.\n%!" ;
     Mutex.lock mutex ; Condition.signal initialized ; Mutex.unlock mutex ; Thread.yield () ;
     R.reword_error (R.msgf "%a" Server.pp_error) (go ()) in
   let smtp_logic messaged ms =
     let rec go () =
-      if !close then Thread.exit () ;
+      if !close then ( Fmt.epr ">>> Close logic server.\n%!" ; Thread.exit () ) ;
       let () = SMTP.Md.await messaged in
       match SMTP.Md.pop messaged with
       | Some (key, queue, _) ->
@@ -776,20 +779,71 @@ let full_test_0 =
             ; tls= fake_tls_config
             ; zone= Mrmime.Date.Zone.GMT
             ; size= 0x1000000000L } ~port:8888 in
-  let domain = (Colombe.Domain.of_string_exn <.> Domain_name.to_string) gmail in
+  let recoil = (Colombe.Domain.of_string_exn <.> Domain_name.to_string) recoil in
   let sendmail contents =
     Mutex.lock mutex ;
     Fmt.epr ">>> Start to waiting server (mutex locked).\n%!" ;
     Condition.wait initialized mutex ; Mutex.unlock mutex ; Thread.yield () ;
     Fmt.epr ">>> Sendmail.\n%!" ;
-    sendmail Ipaddr.V4.localhost 8888 ~domain anil [ romain_calascibetta ] contents in
+    sendmail Ipaddr.V4.localhost 8888 ~domain:recoil anil [ romain_calascibetta ] contents in
   let th1 = Thread.create sendmail [ "From: anil@recoil.org"
                                    ; "Subject: SMTP server, PLZ!"
                                    ; ""
                                    ; "Hello World!" ] in
   Thread.join th1 ; Fmt.epr ">>> Sendmail is full-filled.\n%!" ; close () ; Thread.join th0 ;
   let contents = inbox () in
-  Alcotest.(check (list key)) "inbox" contents [ Ptt.Messaged.v ~domain_from:domain ~from:(anil, []) ~recipients:[ (romain_calascibetta, []) ] 0L ]
+  Alcotest.(check (list key)) "inbox" contents
+    [ Ptt.Messaged.v ~domain_from:recoil ~from:(anil, []) ~recipients:[ (romain_calascibetta, []) ] 0L ]
+
+let full_test_1 =
+  Alcotest.test_case "Receive emails from Anil and Thomas" `Quick @@ fun () ->
+  let romain_calascibetta =
+    (Rresult.R.get_ok <.> Colombe_emile.to_forward_path)
+      (let open Mrmime.Mailbox in
+       Local.[ w "romain"; w "calascibetta" ] @ Domain.(domain, [ a "gmail"; a "com" ])) in
+  let anil =
+    (Rresult.R.get_ok <.> Colombe_emile.to_reverse_path)
+      (let open Mrmime.Mailbox in
+       Local.[ w "anil" ] @ Domain.(domain, [ a "recoil"; a "org" ])) in
+  let thomas =
+    (Rresult.R.get_ok <.> Colombe_emile.to_reverse_path)
+      (let open Mrmime.Mailbox in
+       Local.[ w "thomas" ] @ Domain.(domain, [ a "gazagnaire"; a "org" ])) in
+  let mutex = Mutex.create () and initialized = Condition.create () in
+  let close, th0, inbox =
+    make_submission_smtp_server
+      mutex initialized
+      ~info:{ Ptt.SMTP.domain= gmail
+            ; ipv4= Ipaddr.V4.localhost
+            ; tls= fake_tls_config
+            ; zone= Mrmime.Date.Zone.GMT
+            ; size= 0x1000000000L } ~port:8888 in
+  let recoil = (Colombe.Domain.of_string_exn <.> Domain_name.to_string) recoil in
+  let gazagnaire = (Colombe.Domain.of_string_exn <.> Domain_name.to_string) gazagnaire in
+  let sendmail ?(waiting= true) ~domain sender contents =
+    if waiting
+    then ( Mutex.lock mutex
+         ; Fmt.epr ">>> Start to waiting server (mutex locked).\n%!"
+         ; Condition.wait initialized mutex ; Mutex.unlock mutex ; Thread.yield () ) ;
+    Fmt.epr ">>> Sendmail.\n%!" ;
+    sendmail Ipaddr.V4.localhost 8888 ~domain sender [ romain_calascibetta ] contents in
+  let th1 = Thread.create (sendmail ~domain:recoil anil)
+      [ "From: anil@recoil.org"
+      ; "Subject: SMTP server, PLZ!"
+      ; ""
+      ; "Hello World!" ] in
+  Thread.join th1 ; Fmt.epr ">>> Sendmail (recoil.org) is full-filled.\n%!" ;
+  let th2 = Thread.create (sendmail ~waiting:false ~domain:gazagnaire thomas)
+      [ "From: anil@recoil.org"
+      ; "Subject: SMTP server, PLZ!"
+      ; ""
+      ; "Hello World!" ] in
+  Thread.join th2 ; Fmt.epr ">>> Sendmail (gazagnaire.org) is full-filled.\n%!" ;
+  close () ; Thread.join th0 ;
+  let contents = inbox () in
+  Alcotest.(check (list key)) "inbox" contents
+    [ Ptt.Messaged.v ~domain_from:gazagnaire ~from:(thomas, []) ~recipients:[ (romain_calascibetta, []) ] 1L
+    ; Ptt.Messaged.v ~domain_from:recoil ~from:(anil, []) ~recipients:[ (romain_calascibetta, []) ] 0L ]
 
 let () =
   Alcotest.run "ptt"
@@ -806,4 +860,5 @@ let () =
               ; smtp_test_5
               ; smtp_test_6
               ; smtp_test_7 ]
-    ; "Server", [ full_test_0 ] ]
+    ; "Server", [ full_test_0
+                ; full_test_1 ] ]
