@@ -82,19 +82,19 @@ module Make (StackV4 : Mirage_stack.V4) = struct
       ; Conduit_mirage_tcp.ip= mx_ipaddr
       ; Conduit_mirage_tcp.port= 25 } in
     Conduit_mirage.connect endpoint TCP.protocol >>? fun flow ->
-    let ctx = Sendmail_with_tls.Context_with_tls.make () in
+    let ctx = Sendmail_with_starttls.Context_with_tls.make () in
     let domain =
       let vs = Domain_name.to_strings info.Ptt.Logic.domain in
       Colombe.Domain.Domain vs in
     Lwt.catch
       (fun () ->
-         Sendmail_with_tls.sendmail lwt rdwr flow ctx tls ~domain emitter recipients producer
+         Sendmail_with_starttls.sendmail lwt rdwr flow ctx tls ~domain emitter recipients producer
          |> Lwt_scheduler.prj >|= R.reword_error (fun err -> `Sendmail err))
       (function Failure err -> Lwt.return (R.error_msg err) (* XXX(dinosaure): should come from [rdwr]. *)
               | exn -> Lwt.return (Error (`Exn exn))) >>= function
     | Ok () -> Lwt.return (Ok ())
     | Error (`Sendmail err) ->
-      Lwt.return (R.error_msgf "%a" Sendmail_with_tls.pp_error err)
+      Lwt.return (R.error_msgf "%a" Sendmail_with_starttls.pp_error err)
     | Error (`Msg _) as err ->
       Lwt.return err
     | Error (`Exn exn) ->

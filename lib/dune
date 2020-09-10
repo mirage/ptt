@@ -9,7 +9,7 @@
    mechanism messaged mxs
    relay_map relay
    sigs sMTP sSMTP submission)
- (libraries digestif mrmime colombe.emile domain-name dns sendmail.tls logs)
+ (libraries digestif mrmime colombe.emile domain-name dns sendmail.starttls logs)
  (preprocess future_syntax))
 
 (library
