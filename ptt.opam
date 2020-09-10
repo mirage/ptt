@@ -20,6 +20,7 @@ depends: [
   "mrmime"
   "digestif"
   "colombe"
+  "received"
   "sendmail"
   "sendmail-lwt"
   "domain-name"
