@@ -6,8 +6,9 @@ let () = Fmt.set_style_renderer Fmt.stdout `Ansi_tty
 let () = Fmt.set_style_renderer Fmt.stderr `Ansi_tty
 let () = Logs.set_level ~all:true (Some Logs.Debug)
 let () = Logs.set_reporter reporter
-let () = Nocrypto_entropy_unix.initialize ()
+let () = Mirage_crypto_rng_unix.initialize ()
 
+open Tcp
 module Unix_scheduler = Colombe.Sigs.Make(struct type +'a t = 'a end)
 
 let unix =
@@ -346,7 +347,7 @@ let private_key = Rresult.R.get_ok private_key
 
 let fake_tls_config = Tls.Config.server
     ~certificates:(`Single ([ cert ], private_key))
-    ~authenticator:X509.Authenticator.null ()
+    ~authenticator:(fun ~host:_ _ -> Ok None) ()
 
 let smtp_test_0 =
   Alcotest.test_case "SMTP (relay) 0" `Quick @@ fun () ->
@@ -603,7 +604,7 @@ let smtp_test_7 =
 
 module Random = struct
   type g = unit
-  type +'a s = 'a
+  type +'a io = 'a
 
   let generate ?g:_ _ = ()
 end
@@ -615,7 +616,7 @@ let () = Hashtbl.add fake_smtp_servers (Ipaddr.of_string_exn "10.0.0.8") 8888
 
 module Resolver = struct
   type t = unit
-  type +'a s = 'a
+  type +'a io = 'a
 
   let gethostbyname () domain_name =
     match Hashtbl.find fake_dns_resolvers domain_name with
@@ -630,10 +631,7 @@ module Resolver = struct
   let extension () _ _ = Rresult.R.error_msgf "Extension are not available"
 end
 
-module Flow_tuyau = (val (let open Tuyau_unix in
-                          let open Tuyau_unix_tcp in
-                          let res = impl_of_protocol ~key:endpoint protocol in
-                          Rresult.R.get_ok res))
+module Flow_tuyau = (val Conduit_unix.impl protocol)
 
 module Flow = struct
   type t = Flow_tuyau.flow
@@ -645,22 +643,24 @@ module Flow = struct
       | Unix.ADDR_INET (fake_inet_addr, _) ->
         let fake_inet_addr = Ipaddr_unix.of_inet_addr fake_inet_addr in
         Unix.ADDR_INET (Unix.inet_addr_loopback, Hashtbl.find fake_smtp_servers fake_inet_addr) in
-    flow sockaddr
+    connect sockaddr
 
   let recv flow buf off len =
+    let socket = Protocol.file_descr flow in
     let raw = Cstruct.of_bytes ~off ~len buf in
     Fmt.epr ">>> flow [recv:0].\n%!" ;
-    Thread.wait_read (Tuyau_unix_tcp.socket flow) ;
+    Thread.wait_read socket ;
     let res = recv flow raw in
     match res with
     | Ok (`Input len) -> Cstruct.blit_to_bytes raw 0 buf off len ; len
-    | Ok `End_of_input -> 0
+    | Ok `End_of_flow -> 0
     | Error err -> Fmt.failwith "%a" Flow_tuyau.pp_error err
 
   let send flow buf off len =
+    let socket = Protocol.file_descr flow in
     let raw = Cstruct.of_string ~off ~len buf in
     Fmt.epr ">>> flow [send].\n%!" ;
-    Thread.wait_write (Tuyau_unix_tcp.socket flow) ;
+    Thread.wait_write socket ;
     let res = send flow raw in
     match res with
     | Ok _ -> ()
@@ -674,15 +674,14 @@ let make_submission_smtp_server mutex initialized ~info ~port =
   let close = ref false in
   let smtp_submission_server conf_server =
     let open Rresult in
-    Tuyau_unix.impl_of_service ~key:Tuyau_unix_tcp.configuration
-       Tuyau_unix_tcp.service >>= fun (module Server) ->
-    Tuyau_unix.serve ~key:Tuyau_unix_tcp.configuration
-      ~service:Tuyau_unix_tcp.service
-      { Tuyau_unix_tcp.inet_addr= Ipaddr_unix.to_inet_addr (Ipaddr.V4 info.SMTP.ipv4)
-      ; Tuyau_unix_tcp.port= port
-      ; Tuyau_unix_tcp.capacity= 0x1000 } >>= fun (t, protocol) ->
+    let module Server = (val Conduit_unix.Service.impl service) in
+    Conduit_unix.Service.init
+      ~service:service
+      { inet_addr= Ipaddr_unix.to_inet_addr (Ipaddr.V4 info.SMTP.ipv4)
+      ; port= port
+      ; capacity= 0x1000 } >>= fun t ->
     Fmt.epr ">>> Start SMTP Submission server.\n%!" ;
-    let module Flow = (val (Tuyau_unix.impl_of_flow protocol)) in
+    let module Flow = (val Conduit_unix.impl protocol) in
     let handle flow =
       let rs0 = SMTP.accept flow () conf_server in
       let rs1 = Flow.close flow in
@@ -738,7 +737,7 @@ let sendmail ipv4 port ~domain sender recipients contents =
   let stream = stream_of_string_list contents in
   let stream = (function Some x -> Some (x ^"\r\n", 0, String.length x + 2) | None -> None) <.> stream in
   let stream = Unix_scheduler.inj <.> stream in
-  let tls_config = Tls.Config.client ~authenticator:X509.Authenticator.null () in
+  let tls_config = Tls.Config.client ~authenticator:(fun ~host:_ _ -> Ok None) () in
   let ctx = Sendmail_with_tls.Context_with_tls.make () in
   let rdwr =
     { Colombe.Sigs.rd= (fun fd buf off len ->

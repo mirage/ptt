@@ -42,24 +42,24 @@ end
 
 module type RESOLVER = sig
   type t
-  type +'a s
+  type +'a io
 
-  val gethostbyname : t -> [ `host ] Domain_name.t -> (Ipaddr.V4.t, [> Rresult.R.msg ]) result s
-  val getmxbyname : t -> [ `host ] Domain_name.t -> (Dns.Rr_map.Mx_set.t, [> Rresult.R.msg ]) result s
-  val extension : t -> string -> string -> (Ipaddr.V4.t, [> Rresult.R.msg ]) result s
+  val gethostbyname : t -> [ `host ] Domain_name.t -> (Ipaddr.V4.t, [> Rresult.R.msg ]) result io
+  val getmxbyname : t -> [ `host ] Domain_name.t -> (Dns.Rr_map.Mx_set.t, [> Rresult.R.msg ]) result io
+  val extension : t -> string -> string -> (Ipaddr.V4.t, [> Rresult.R.msg ]) result io
 end
 
 module type RANDOM = sig
   type g
-  type +'a s
+  type +'a io
 
-  val generate : ?g:g -> bytes -> unit s
+  val generate : ?g:g -> bytes -> unit io
 end
 
 module type FLOW = sig
   type t
-  type +'a s
+  type +'a io
 
-  val recv : t -> bytes -> int -> int -> int s
-  val send : t -> string -> int -> int -> unit s
+  val recv : t -> bytes -> int -> int -> int io
+  val send : t -> string -> int -> int -> unit io
 end

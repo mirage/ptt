@@ -6,7 +6,7 @@ module Make
     (Random : Mirage_random.S)
     (Mclock : Mirage_clock.MCLOCK)
     (Pclock : Mirage_clock.PCLOCK)
-    (Resolver : Ptt.Sigs.RESOLVER with type +'a s = 'a Lwt.t)
+    (Resolver : Ptt.Sigs.RESOLVER with type +'a io = 'a Lwt.t)
     (StackV4 : Mirage_stack.V4)
 = struct
   include Ptt_tuyau.Make(StackV4)
@@ -16,7 +16,7 @@ module Make
 
   module Random = struct
     type g = Random.g
-    type +'a s = 'a Lwt.t
+    type +'a io = 'a Lwt.t
 
     let generate ?g buf =
       let len = Bytes.length buf in
@@ -30,9 +30,9 @@ module Make
   include Ptt_transmit.Make(Pclock)(StackV4)(Relay.Md)
 
   let smtp_relay_service resolver conf conf_server =
-    Tuyau_mirage.impl_of_service ~key:TCP.configuration TCP.service |> Lwt.return >>? fun (module Server) ->
-    Tuyau_mirage.serve ~key:TCP.configuration conf ~service:TCP.service >>? fun (t, protocol) ->
-    let module Flow = (val (Tuyau_mirage.impl_of_flow protocol)) in
+    let module Server = (val Conduit_mirage.Service.impl TCP.service) in
+    Conduit_mirage.Service.init conf ~service:TCP.service >>? fun t ->
+    let module Flow = (val Conduit_mirage.impl TCP.protocol) in
     let handle ip port flow () =
       Lwt.catch
         (fun () -> Relay.accept flow resolver conf_server
@@ -62,7 +62,7 @@ module Make
     smtp_relay_service resolver conf conf_server >>= function
     | Ok () -> Lwt.return ()
     | Error err ->
-      Log.err (fun m -> m "%a" Tuyau_mirage.pp_error err) ;
+      Log.err (fun m -> m "%a" Conduit_mirage.pp_error err) ;
       Lwt.return ()
 
   let smtp_logic ~info stack resolver messaged map =

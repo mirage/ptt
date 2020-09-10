@@ -4,9 +4,9 @@ open Sigs
 module Make
     (Scheduler : SCHEDULER)
     (IO : IO with type 'a t = 'a Scheduler.s)
-    (Flow : FLOW with type 'a s = 'a IO.t)
-    (Resolver : RESOLVER with type 'a s = 'a IO.t)
-    (Random : RANDOM with type 'a s = 'a IO.t)
+    (Flow : FLOW with type 'a io = 'a IO.t)
+    (Resolver : RESOLVER with type 'a io = 'a IO.t)
+    (Random : RANDOM with type 'a io = 'a IO.t)
   : sig
     module Md : module type of Messaged.Make(Scheduler)(IO)
 

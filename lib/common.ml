@@ -7,9 +7,9 @@ let ( <.> ) f g = fun x -> f (g x)
 module Make
     (Scheduler : SCHEDULER)
     (IO : IO with type 'a t = 'a Scheduler.s)
-    (Flow : FLOW with type 'a s = 'a IO.t)
-    (Resolver : RESOLVER with type 'a s = 'a IO.t)
-    (Random : RANDOM with type 'a s = 'a IO.t)
+    (Flow : FLOW with type 'a io = 'a IO.t)
+    (Resolver : RESOLVER with type 'a io = 'a IO.t)
+    (Random : RANDOM with type 'a io = 'a IO.t)
 = struct
   type 'w resolver =
     { gethostbyname : 'a. 'w -> [ `host ] Domain_name.t -> (Ipaddr.V4.t, [> R.msg ] as 'a) result IO.t

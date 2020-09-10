@@ -27,13 +27,19 @@ depends: [
   "logs"
   "tls"
   "mirage-stack" "tcpip" "ke" "bigstringaf"
-  "tuyau"
-  "tuyau-tls"
-  "tuyau-mirage"
+  "conduit"
+  "conduit-tls"
+  "conduit-mirage"
   "ocaml-syntax-shims"
   "base-threads" {with-test}
-  "tuyau-unix"   {with-test}
+  "conduit"      {with-test}
   "alcotest"     {with-test}
   "base-threads" {with-test}
   "bos"          {with-test}
+]
+
+pin-depends: [
+  [ "conduit.dev" "git+https://github.com/dinosaure/ocaml-conduit.git#9815aa091e9c285e236e1deffb0dc48723ac72a0" ]
+  [ "conduit-mirage.dev" "git+https://github.com/dinosaure/ocaml-conduit.git#9815aa091e9c285e236e1deffb0dc48723ac72a0" ]
+  [ "conduit-tls.dev" "git+https://github.com/dinosaure/ocaml-conduit.git#9815aa091e9c285e236e1deffb0dc48723ac72a0" ]
 ]

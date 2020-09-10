@@ -6,7 +6,7 @@ let () = Fmt.set_style_renderer Fmt.stdout `Ansi_tty
 let () = Fmt.set_style_renderer Fmt.stderr `Ansi_tty
 let () = Logs.set_level ~all:true (Some Logs.Debug)
 let () = Logs.set_reporter reporter
-let () = Nocrypto_entropy_unix.initialize ()
+let () = Mirage_crypto_rng_unix.initialize ()
 
 let ( <.> ) f g = fun x -> f (g x)
 
@@ -23,7 +23,7 @@ end
 open Rresult
 
 module Resolver = struct
-  type +'a s = 'a Lwt.t
+  type +'a io = 'a Lwt.t
   type t = Dns_client_lwt.t
 
   let gethostbyname t v = Dns_client_lwt.gethostbyname t v
@@ -66,19 +66,19 @@ let fiber ~domain map =
   Tcpip_stack_socket.UDPV4.connect None >>= fun udpv4 ->
   Tcpip_stack_socket.connect [] udpv4 tcpv4 >>= fun stackv4 ->
   let conf =
-    { Tuyau_mirage_tcp.stack= stackv4
-    ; Tuyau_mirage_tcp.keepalive= None
-    ; Tuyau_mirage_tcp.nodelay= false
-    ; Tuyau_mirage_tcp.port= 4242 } in
+    { Conduit_mirage_tcp.stack= stackv4
+    ; Conduit_mirage_tcp.keepalive= None
+    ; Conduit_mirage_tcp.nodelay= false
+    ; Conduit_mirage_tcp.port= 4242 } in
   let info =
     { Ptt.SMTP.domain
     ; Ptt.SMTP.ipv4= Ipaddr.V4.any
     ; Ptt.SMTP.tls= Tls.Config.server
           ~certificates:(`Single ([ cert ], private_key))
-          ~authenticator:X509.Authenticator.null ()
+          ~authenticator:(fun ~host:_ _ -> Ok None) ()
     ; Ptt.SMTP.zone= Mrmime.Date.Zone.GMT
     ; Ptt.SMTP.size= 0x1000000L } in
-  let resolver = Dns_client_lwt.create ~clock:Mclock.elapsed_ns () in
+  let resolver = Dns_client_lwt.create () in
   Server.fiber stackv4 resolver () (Digestif.BLAKE2B 64) conf map info authenticator [ Ptt.Mechanism.PLAIN ]
 
 let romain_calascibetta =
