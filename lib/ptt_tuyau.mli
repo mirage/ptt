@@ -1,19 +1,17 @@
 module Lwt_backend : module type of Lwt_backend
 open Lwt_backend
 
-module type FLOW = Ptt.Sigs.FLOW with type +'a s = 'a Lwt.t
+module type FLOW = Ptt.Sigs.FLOW with type +'a io = 'a Lwt.t
 
 module Make (StackV4 : Mirage_stack.V4) : sig
-  module TCP : module type of Tuyau_mirage_tcp.Make(StackV4)
+  module TCP : module type of Conduit_mirage_tcp.Make(StackV4)
   module Flow : FLOW with type t = TCP.protocol
 
   val flow
-    :  (module Tuyau_mirage.FLOW with type flow = 'flow)
+    :  (module Conduit_mirage.PROTOCOL with type flow = 'flow and type endpoint = 'endpoint)
     -> (module FLOW with type t = 'flow)
 
-  val rdwr
-    :  (module Tuyau_mirage.FLOW with type flow = 'flow)
-    -> ('flow, Lwt_scheduler.t) Colombe.Sigs.rdwr
+  val rdwr : (Conduit_mirage.flow, Lwt_scheduler.t) Colombe.Sigs.rdwr
 
   val sendmail
     :  info:Ptt.Logic.info
@@ -23,5 +21,5 @@ module Make (StackV4 : Mirage_stack.V4) : sig
     -> Colombe.Reverse_path.t
     -> (string * int * int, Lwt_scheduler.t) Sendmail.stream
     -> Colombe.Forward_path.t list
-    -> (unit, [> Tuyau_mirage.error ]) result Lwt.t
+    -> (unit, [> Conduit_mirage.error ]) result Lwt.t
 end

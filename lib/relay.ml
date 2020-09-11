@@ -4,9 +4,9 @@ open Rresult
 module Make
     (Scheduler : SCHEDULER)
     (IO : IO with type 'a t = 'a Scheduler.s)
-    (Flow : FLOW with type 'a s = 'a IO.t)
-    (Resolver : RESOLVER with type 'a s = 'a IO.t)
-    (Random : RANDOM with type 'a s = 'a IO.t)
+    (Flow : FLOW with type 'a io = 'a IO.t)
+    (Resolver : RESOLVER with type 'a io = 'a IO.t)
+    (Random : RANDOM with type 'a io = 'a IO.t)
 = struct
   include Common.Make (Scheduler) (IO) (Flow) (Resolver) (Random)
   module Md = Messaged.Make(Scheduler)(IO)
@@ -49,7 +49,7 @@ module Make
     | `Too_big_data -> Fmt.pf ppf "Too big data"
 
   let properly_close_tls flow ctx =
-    let encoder = Sendmail_with_tls.Context_with_tls.encoder ctx in
+    let encoder = Sendmail_with_starttls.Context_with_tls.encoder ctx in
     let tls_error err = `Tls err in
     let m = SMTP.Value_with_tls.close encoder |> SMTP.Monad.reword_error tls_error in
     run flow m
@@ -57,7 +57,7 @@ module Make
   let accept
     : Flow.t -> Resolver.t -> server -> (unit, error) result IO.t
     = fun flow resolver server ->
-      let ctx = Sendmail_with_tls.Context_with_tls.make () in
+      let ctx = Sendmail_with_starttls.Context_with_tls.make () in
       let m = SMTP.m_relay_init ctx server.info in
       run flow m >>? function
       | `Quit ->

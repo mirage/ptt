@@ -8,7 +8,7 @@
   tcpip.stack-socket
   ptt.mti-gf
   logs.fmt
-  nocrypto.lwt))
+  mirage-crypto-rng))
 
 (executable
  (name lipap)
@@ -21,4 +21,4 @@
   tcpip.stack-socket
   ptt.lipap
   logs.fmt
-  nocrypto.lwt))
+  mirage-crypto-rng))

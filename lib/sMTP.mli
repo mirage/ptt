@@ -8,10 +8,10 @@ module Value : sig
   val decode_without_tls : Decoder.decoder -> 'x recv -> ('x, [> `Protocol of SSMTP.Value.error ]) t
 end
 
-module Value_with_tls : module type of Sendmail_with_tls.Make_with_tls(Value)
-module Monad : module type of State.Scheduler(Sendmail_with_tls.Context_with_tls)(Value_with_tls)
+module Value_with_tls : module type of Sendmail_with_starttls.Make_with_tls(Value)
+module Monad : module type of State.Scheduler(Sendmail_with_starttls.Context_with_tls)(Value_with_tls)
 
-type context = Sendmail_with_tls.Context_with_tls.t
+type context = Sendmail_with_starttls.Context_with_tls.t
 type error =
   [ `Tls of [ `Protocol of Value.error
             | `Tls_alert of Tls.Packet.alert_type

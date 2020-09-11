@@ -26,13 +26,13 @@ module Value = struct
     go (SSMTP.Value.decode ctx w)
 end
 
-module Value_with_tls = Sendmail_with_tls.Make_with_tls(Value)
+module Value_with_tls = Sendmail_with_starttls.Make_with_tls(Value)
 module Monad = struct
-  type context = Sendmail_with_tls.Context_with_tls.t
-  include State.Scheduler(Sendmail_with_tls.Context_with_tls)(Value_with_tls)
+  type context = Sendmail_with_starttls.Context_with_tls.t
+  include State.Scheduler(Sendmail_with_starttls.Context_with_tls)(Value_with_tls)
 end
 
-type context = Sendmail_with_tls.Context_with_tls.t
+type context = Sendmail_with_starttls.Context_with_tls.t
 type error =
   [ `Protocol of [ `Protocol of Value.error
                  | `Tls_alert of Tls.Packet.alert_type
@@ -94,7 +94,7 @@ let m_relay_init ctx info =
       match command with
       | `Verb ("STARTTLS", []) (* | `Payload "STARTTLS" *) ->
         let* () = send ctx Value.PP_220 [ "Go ahead buddy!" ] in
-        let decoder = Sendmail_with_tls.Context_with_tls.decoder ctx in
+        let decoder = Sendmail_with_starttls.Context_with_tls.decoder ctx in
         let tls_error err = `Tls err in
         Value_with_tls.starttls_as_server decoder info.Logic.tls |> reword_error tls_error >>= fun () ->
         m_relay_init ctx info
@@ -131,7 +131,7 @@ let m_submission_init ctx info ms =
       match command with
       | `Verb ("STARTTLS", []) (* | `Payload "STARTTLS" *) ->
         let* () = send ctx Value.PP_220 [ "Go ahead buddy!" ] in
-        let decoder = Sendmail_with_tls.Context_with_tls.decoder ctx in
+        let decoder = Sendmail_with_starttls.Context_with_tls.decoder ctx in
         let tls_error err = `Tls err in
         Value_with_tls.starttls_as_server decoder info.tls |> reword_error tls_error >>= fun () ->
         m_submission_init ctx info ms

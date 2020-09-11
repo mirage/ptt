@@ -9,26 +9,26 @@
    mechanism messaged mxs
    relay_map relay
    sigs sMTP sSMTP submission)
- (libraries digestif mrmime colombe.emile domain-name dns sendmail.tls logs)
+ (libraries digestif mrmime colombe.emile domain-name dns sendmail.starttls logs)
  (preprocess future_syntax))
 
 (library
  (name ptt_tuyau)
  (public_name ptt.tuyau)
  (modules ptt_tuyau lwt_backend)
- (libraries tcpip tuyau-mirage tuyau-mirage.tcp ptt))
+ (libraries tcpip conduit-mirage conduit-mirage.tcp ptt))
 
 (library
  (name ptt_transmit)
  (public_name ptt.transmit)
  (modules ptt_transmit)
- (libraries ptt.tuyau colombe.received))
+ (libraries ptt.tuyau received))
 
 (library
  (name lipap)
  (public_name ptt.lipap)
  (modules lipap)
- (libraries tls ptt.transmit tuyau-mirage.tls))
+ (libraries tls ptt.transmit conduit-tls))
 
 (library
  (name mti_gf)

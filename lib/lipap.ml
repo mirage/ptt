@@ -8,21 +8,21 @@ module Make
     (Random : Mirage_random.S)
     (Mclock : Mirage_clock.MCLOCK)
     (Pclock : Mirage_clock.PCLOCK)
-    (Resolver : Ptt.Sigs.RESOLVER with type +'a s = 'a Lwt.t)
+    (Resolver : Ptt.Sigs.RESOLVER with type +'a io = 'a Lwt.t)
     (StackV4 : Mirage_stack.V4)
 = struct
-  module TLS = Tuyau_mirage_tls
+  module TLS = Conduit_tls.Make(Lwt)(Conduit_mirage)
   include Ptt_tuyau.Make(StackV4)
 
-  let _tls_endpoint, tls_protocol = TLS.protocol_with_tls ~key:TCP.endpoint TCP.protocol
-  let tls_configuration, tls_service = TLS.service_with_tls ~key:TCP.configuration TCP.service tls_protocol
+  let tls_protocol = TLS.protocol_with_tls TCP.protocol
+  let tls_service = TLS.service_with_tls TCP.service tls_protocol
 
   let src = Logs.Src.create "lipap"
   module Log = ((val Logs.src_log src) : Logs.LOG)
 
   module Random = struct
     type g = Random.g
-    type +'a s = 'a Lwt.t
+    type +'a io = 'a Lwt.t
 
     let generate ?g buf =
       let len = Bytes.length buf in
@@ -31,16 +31,16 @@ module Make
       Lwt.return ()
   end
 
-  module Tls_flow = (val (flow (Tuyau_mirage.impl_of_flow tls_protocol)))
+  module Tls_flow = (val (flow (Conduit_mirage.impl tls_protocol)))
   module Submission = Ptt.Submission.Make(Lwt_scheduler)(Lwt_io)(Tls_flow)(Resolver)(Random)
 
   include Ptt_transmit.Make(Pclock)(StackV4)(Submission.Md)
 
   let smtp_submission_service resolver random hash conf conf_server =
     let tls = (Submission.info conf_server).Ptt.SSMTP.tls in
-    Tuyau_mirage.impl_of_service ~key:tls_configuration tls_service |> Lwt.return >>? fun (module Server) ->
-    Tuyau_mirage.serve ~key:tls_configuration (conf, tls) ~service:tls_service >>? fun (t, protocol) ->
-    let module Flow = (val (Tuyau_mirage.impl_of_flow protocol)) in
+    let module Server = (val Conduit_mirage.Service.impl tls_service) in
+    Conduit_mirage.Service.init (conf, tls) ~service:tls_service >>? fun t ->
+    let module Flow = (val (Conduit_mirage.impl tls_protocol)) in
     let handle ip port flow () =
       Lwt.catch
         (fun () -> Submission.accept flow resolver random hash conf_server
@@ -70,7 +70,7 @@ module Make
     smtp_submission_service resolver random hash conf conf_server >>= function
     | Ok () -> Lwt.return ()
     | Error err ->
-      Log.err (fun m -> m "%a" Tuyau_mirage.pp_error err) ;
+      Log.err (fun m -> m "%a" Conduit_mirage.pp_error err) ;
       Lwt.return ()
 
   let smtp_logic ~info stack resolver messaged map =

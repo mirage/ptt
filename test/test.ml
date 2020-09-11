@@ -6,8 +6,9 @@ let () = Fmt.set_style_renderer Fmt.stdout `Ansi_tty
 let () = Fmt.set_style_renderer Fmt.stderr `Ansi_tty
 let () = Logs.set_level ~all:true (Some Logs.Debug)
 let () = Logs.set_reporter reporter
-let () = Nocrypto_entropy_unix.initialize ()
+let () = Mirage_crypto_rng_unix.initialize ()
 
+open Tcp
 module Unix_scheduler = Colombe.Sigs.Make(struct type +'a t = 'a end)
 
 let unix =
@@ -287,7 +288,6 @@ let rdwr_from_flows inputs outputs =
     | x :: r ->
       let len = min (String.length x) len in
       Bytes.blit_string x 0 bytes off len ;
-      Fmt.epr "[rd] >>> %S\n%!" (String.sub x 0 len) ;
       if len = String.length x
       then ( inputs := r )
       else ( inputs := String.sub x len (String.length x - len) :: r ) ;
@@ -299,7 +299,6 @@ let rdwr_from_flows inputs outputs =
     | x :: r ->
       let max = len in
       let len = min (String.length x) len in
-      Fmt.epr "[wr] <<< %S\n%!" (String.sub x 0 len) ;
       if String.sub x 0 len <> String.sub bytes off len
       then Fmt.failwith "Expected %S, have %S" (String.sub x 0 len) (String.sub bytes off len) ;
       if String.length x = len
@@ -346,7 +345,7 @@ let private_key = Rresult.R.get_ok private_key
 
 let fake_tls_config = Tls.Config.server
     ~certificates:(`Single ([ cert ], private_key))
-    ~authenticator:X509.Authenticator.null ()
+    ~authenticator:(fun ~host:_ _ -> Ok None) ()
 
 let smtp_test_0 =
   Alcotest.test_case "SMTP (relay) 0" `Quick @@ fun () ->
@@ -603,7 +602,7 @@ let smtp_test_7 =
 
 module Random = struct
   type g = unit
-  type +'a s = 'a
+  type +'a io = 'a
 
   let generate ?g:_ _ = ()
 end
@@ -615,7 +614,7 @@ let () = Hashtbl.add fake_smtp_servers (Ipaddr.of_string_exn "10.0.0.8") 8888
 
 module Resolver = struct
   type t = unit
-  type +'a s = 'a
+  type +'a io = 'a
 
   let gethostbyname () domain_name =
     match Hashtbl.find fake_dns_resolvers domain_name with
@@ -630,10 +629,7 @@ module Resolver = struct
   let extension () _ _ = Rresult.R.error_msgf "Extension are not available"
 end
 
-module Flow_tuyau = (val (let open Tuyau_unix in
-                          let open Tuyau_unix_tcp in
-                          let res = impl_of_protocol ~key:endpoint protocol in
-                          Rresult.R.get_ok res))
+module Flow_tuyau = (val Conduit_unix.impl protocol)
 
 module Flow = struct
   type t = Flow_tuyau.flow
@@ -645,22 +641,22 @@ module Flow = struct
       | Unix.ADDR_INET (fake_inet_addr, _) ->
         let fake_inet_addr = Ipaddr_unix.of_inet_addr fake_inet_addr in
         Unix.ADDR_INET (Unix.inet_addr_loopback, Hashtbl.find fake_smtp_servers fake_inet_addr) in
-    flow sockaddr
+    connect sockaddr
 
   let recv flow buf off len =
+    let socket = Protocol.file_descr flow in
     let raw = Cstruct.of_bytes ~off ~len buf in
-    Fmt.epr ">>> flow [recv:0].\n%!" ;
-    Thread.wait_read (Tuyau_unix_tcp.socket flow) ;
+    Thread.wait_read socket ;
     let res = recv flow raw in
     match res with
     | Ok (`Input len) -> Cstruct.blit_to_bytes raw 0 buf off len ; len
-    | Ok `End_of_input -> 0
+    | Ok `End_of_flow -> 0
     | Error err -> Fmt.failwith "%a" Flow_tuyau.pp_error err
 
   let send flow buf off len =
+    let socket = Protocol.file_descr flow in
     let raw = Cstruct.of_string ~off ~len buf in
-    Fmt.epr ">>> flow [send].\n%!" ;
-    Thread.wait_write (Tuyau_unix_tcp.socket flow) ;
+    Thread.wait_write socket ;
     let res = send flow raw in
     match res with
     | Ok _ -> ()
@@ -674,15 +670,13 @@ let make_submission_smtp_server mutex initialized ~info ~port =
   let close = ref false in
   let smtp_submission_server conf_server =
     let open Rresult in
-    Tuyau_unix.impl_of_service ~key:Tuyau_unix_tcp.configuration
-       Tuyau_unix_tcp.service >>= fun (module Server) ->
-    Tuyau_unix.serve ~key:Tuyau_unix_tcp.configuration
-      ~service:Tuyau_unix_tcp.service
-      { Tuyau_unix_tcp.inet_addr= Ipaddr_unix.to_inet_addr (Ipaddr.V4 info.SMTP.ipv4)
-      ; Tuyau_unix_tcp.port= port
-      ; Tuyau_unix_tcp.capacity= 0x1000 } >>= fun (t, protocol) ->
-    Fmt.epr ">>> Start SMTP Submission server.\n%!" ;
-    let module Flow = (val (Tuyau_unix.impl_of_flow protocol)) in
+    let module Server = (val Conduit_unix.Service.impl service) in
+    Conduit_unix.Service.init
+      ~service:service
+      { inet_addr= Ipaddr_unix.to_inet_addr (Ipaddr.V4 info.SMTP.ipv4)
+      ; port= port
+      ; capacity= 0x1000 } >>= fun t ->
+    let module Flow = (val Conduit_unix.impl protocol) in
     let handle flow =
       let rs0 = SMTP.accept flow () conf_server in
       let rs1 = Flow.close flow in
@@ -692,11 +686,10 @@ let make_submission_smtp_server mutex initialized ~info ~port =
       | Ok _, Error err -> Fmt.epr "%a" Flow.pp_error err in
     let rec go () =
       let rd, _, _ = Thread.select [ (t :> Unix.file_descr) ] [] [] 0.1 in
-      if !close then ( Fmt.epr ">>> Close server.\n%!" ; let _ = Server.close t in Thread.exit () ) ;
+      if !close then ( let _ = Server.close t in Thread.exit () ) ;
       if List.length rd = 0
       then go ()
-      else ( Fmt.epr ">>> Start to waiting incoming connection.\n%!"
-           ; Server.accept t >>= fun flow ->
+      else ( Server.accept t >>= fun flow ->
              (* XXX(dinosaure): we assert that [handle] finish in any cases. So we
                 don't need to [join] it. *)
              let _ = Thread.create handle flow in Thread.yield () ; go () ) in
@@ -738,25 +731,22 @@ let sendmail ipv4 port ~domain sender recipients contents =
   let stream = stream_of_string_list contents in
   let stream = (function Some x -> Some (x ^"\r\n", 0, String.length x + 2) | None -> None) <.> stream in
   let stream = Unix_scheduler.inj <.> stream in
-  let tls_config = Tls.Config.client ~authenticator:X509.Authenticator.null () in
-  let ctx = Sendmail_with_tls.Context_with_tls.make () in
+  let tls_config = Tls.Config.client ~authenticator:(fun ~host:_ _ -> Ok None) () in
+  let ctx = Sendmail_with_starttls.Context_with_tls.make () in
   let rdwr =
     { Colombe.Sigs.rd= (fun fd buf off len ->
-          Fmt.epr ">>> sendmail [recv:0].\n%!" ;
           Thread.wait_read fd ;
           let res = Unix.read fd buf off len in
-          Fmt.epr ">>> sendmail [recv:1] %S.\n%!" (Bytes.sub_string buf off res) ;
           Unix_scheduler.inj res)
     ; Colombe.Sigs.wr= (fun fd buf off len ->
-          Fmt.epr ">>> sendmail [send] %S.\n%!" (String.sub buf off len) ;
           Thread.wait_write fd ;
           let _ = Unix.write fd (Bytes.unsafe_of_string buf) off len in Unix_scheduler.inj ()) } in
   let socket = Unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
   Unix.connect socket (Unix.ADDR_INET (Ipaddr_unix.to_inet_addr (Ipaddr.V4 ipv4), port)) ;
-  let res = Sendmail_with_tls.sendmail unix rdwr socket ctx tls_config ~domain sender recipients stream in
+  let res = Sendmail_with_starttls.sendmail unix rdwr socket ctx tls_config ~domain sender recipients stream in
   match Unix_scheduler.prj res with
-  | Ok () -> Fmt.epr "Close sendmail connection.\n%!" ; Unix.close socket
-  | Error err -> Fmt.failwith "%a" Sendmail_with_tls.pp_error err
+  | Ok () -> Unix.close socket
+  | Error err -> Fmt.failwith "%a" Sendmail_with_starttls.pp_error err
 
 let key = Alcotest.testable Ptt.Messaged.pp Ptt.Messaged.equal
 
@@ -782,15 +772,13 @@ let full_test_0 =
   let recoil = (Colombe.Domain.of_string_exn <.> Domain_name.to_string) recoil in
   let sendmail contents =
     Mutex.lock mutex ;
-    Fmt.epr ">>> Start to waiting server (mutex locked).\n%!" ;
     Condition.wait initialized mutex ; Mutex.unlock mutex ; Thread.yield () ;
-    Fmt.epr ">>> Sendmail.\n%!" ;
     sendmail Ipaddr.V4.localhost 8888 ~domain:recoil anil [ romain_calascibetta ] contents in
   let th1 = Thread.create sendmail [ "From: anil@recoil.org"
                                    ; "Subject: SMTP server, PLZ!"
                                    ; ""
                                    ; "Hello World!" ] in
-  Thread.join th1 ; Fmt.epr ">>> Sendmail is full-filled.\n%!" ; close () ; Thread.join th0 ;
+  Thread.join th1 ; close () ; Thread.join th0 ;
   let contents = inbox () in
   Alcotest.(check (list key)) "inbox" contents
     [ Ptt.Messaged.v ~domain_from:recoil ~from:(anil, []) ~recipients:[ (romain_calascibetta, []) ] 0L ]
@@ -823,22 +811,20 @@ let full_test_1 =
   let sendmail ?(waiting= true) ~domain sender contents =
     if waiting
     then ( Mutex.lock mutex
-         ; Fmt.epr ">>> Start to waiting server (mutex locked).\n%!"
          ; Condition.wait initialized mutex ; Mutex.unlock mutex ; Thread.yield () ) ;
-    Fmt.epr ">>> Sendmail.\n%!" ;
     sendmail Ipaddr.V4.localhost 8888 ~domain sender [ romain_calascibetta ] contents in
   let th1 = Thread.create (sendmail ~domain:recoil anil)
       [ "From: anil@recoil.org"
       ; "Subject: SMTP server, PLZ!"
       ; ""
       ; "Hello World!" ] in
-  Thread.join th1 ; Fmt.epr ">>> Sendmail (recoil.org) is full-filled.\n%!" ;
+  Thread.join th1 ;
   let th2 = Thread.create (sendmail ~waiting:false ~domain:gazagnaire thomas)
       [ "From: anil@recoil.org"
       ; "Subject: SMTP server, PLZ!"
       ; ""
       ; "Hello World!" ] in
-  Thread.join th2 ; Fmt.epr ">>> Sendmail (gazagnaire.org) is full-filled.\n%!" ;
+  Thread.join th2 ;
   close () ; Thread.join th0 ;
   let contents = inbox () in
   Alcotest.(check (list key)) "inbox" contents
