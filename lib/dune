@@ -1,15 +1,10 @@
 (library
  (name ptt)
  (public_name ptt)
- (modules
-   ptt
-   aggregate authentication
-   common
-   logic
-   mechanism messaged mxs
-   relay_map relay
-   sigs sMTP sSMTP submission)
- (libraries digestif mrmime colombe.emile domain-name dns sendmail.starttls logs)
+ (modules ptt aggregate authentication common logic mechanism messaged mxs
+   relay_map relay sigs sMTP sSMTP submission)
+ (libraries digestif mrmime colombe.emile domain-name dns sendmail.starttls
+   logs)
  (preprocess future_syntax))
 
 (library
