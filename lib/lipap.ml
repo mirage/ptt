@@ -2,26 +2,29 @@ open Rresult
 open Ptt_tuyau.Lwt_backend
 open Lwt.Infix
 
-let ( <.> ) f g = fun x -> f (g x)
+let ( <.> ) f g x = f (g x)
 
 module Make
     (Random : Mirage_random.S)
     (Mclock : Mirage_clock.MCLOCK)
     (Pclock : Mirage_clock.PCLOCK)
     (Resolver : Ptt.Sigs.RESOLVER with type +'a io = 'a Lwt.t)
-    (StackV4 : Mirage_stack.V4)
-= struct
-  module TLS = Conduit_tls.Make(Lwt)(Conduit_mirage)
-  include Ptt_tuyau.Make(StackV4)
+    (StackV4 : Mirage_stack.V4) =
+struct
+  module TLS = Conduit_tls.Make (Lwt) (Conduit_mirage)
+  include Ptt_tuyau.Make (StackV4)
 
   let tls_protocol = TLS.protocol_with_tls TCP.protocol
+
   let tls_service = TLS.service_with_tls TCP.service tls_protocol
 
   let src = Logs.Src.create "lipap"
-  module Log = ((val Logs.src_log src) : Logs.LOG)
+
+  module Log : Logs.LOG = (val Logs.src_log src)
 
   module Random = struct
     type g = Random.g
+
     type +'a io = 'a Lwt.t
 
     let generate ?g buf =
@@ -31,47 +34,54 @@ module Make
       Lwt.return ()
   end
 
-  module Tls_flow = (val (flow (Conduit_mirage.impl tls_protocol)))
-  module Submission = Ptt.Submission.Make(Lwt_scheduler)(Lwt_io)(Tls_flow)(Resolver)(Random)
+  module Tls_flow = (val flow (Conduit_mirage.impl tls_protocol))
 
-  include Ptt_transmit.Make(Pclock)(StackV4)(Submission.Md)
+  module Submission =
+    Ptt.Submission.Make (Lwt_scheduler) (Lwt_io) (Tls_flow) (Resolver) (Random)
+  include Ptt_transmit.Make (Pclock) (StackV4) (Submission.Md)
 
   let smtp_submission_service resolver random hash conf conf_server =
     let tls = (Submission.info conf_server).Ptt.SSMTP.tls in
     let module Server = (val Conduit_mirage.Service.impl tls_service) in
     Conduit_mirage.Service.init (conf, tls) ~service:tls_service >>? fun t ->
-    let module Flow = (val (Conduit_mirage.impl tls_protocol)) in
+    let module Flow = (val Conduit_mirage.impl tls_protocol) in
     let handle ip port flow () =
       Lwt.catch
-        (fun () -> Submission.accept flow resolver random hash conf_server
-          >|= R.reword_error (R.msgf "%a" Submission.pp_error) >>= fun res ->
+        (fun () ->
+          Submission.accept flow resolver random hash conf_server
+          >|= R.reword_error (R.msgf "%a" Submission.pp_error)
+          >>= fun res ->
           Flow.close flow >>= function
           | Error err -> Lwt.return (R.error_msgf "%a" Flow.pp_error err)
           | Ok () -> Lwt.return res)
-        (function Failure err -> Lwt.return (R.error_msg err)
-                | exn -> Lwt.return (Error (`Exn exn))) >>= function
+        (function
+          | Failure err -> Lwt.return (R.error_msg err)
+          | exn -> Lwt.return (Error (`Exn exn)))
+      >>= function
       | Ok () ->
-        Log.info (fun m -> m "<%a:%d> quit properly" Ipaddr.V4.pp ip port) ;
-        Lwt.return ()
+          Log.info (fun m -> m "<%a:%d> quit properly" Ipaddr.V4.pp ip port) ;
+          Lwt.return ()
       | Error (`Msg err) ->
-        Log.err (fun m -> m "<%a:%d> %s" Ipaddr.V4.pp ip port err) ;
-        Lwt.return ()
+          Log.err (fun m -> m "<%a:%d> %s" Ipaddr.V4.pp ip port err) ;
+          Lwt.return ()
       | Error (`Exn exn) ->
-        Log.err (fun m -> m "<%a:%d> raised an unknown exception: %s"
-                    Ipaddr.V4.pp ip port (Printexc.to_string exn)) ;
-        Lwt.return () in
+          Log.err (fun m ->
+              m "<%a:%d> raised an unknown exception: %s" Ipaddr.V4.pp ip port
+                (Printexc.to_string exn)) ;
+          Lwt.return () in
     let rec go () =
       Server.accept t >>? fun flow ->
       let ip, port = (TCP.dst <.> TLS.underlying) flow in
-      Lwt.async (handle ip port flow) ; Lwt.pause () >>= go in
+      Lwt.async (handle ip port flow) ;
+      Lwt.pause () >>= go in
     go () >|= R.reword_error (R.msgf "%a" Server.pp_error)
 
   let smtp_submission_service resolver random hash conf conf_server =
     smtp_submission_service resolver random hash conf conf_server >>= function
     | Ok () -> Lwt.return ()
     | Error err ->
-      Log.err (fun m -> m "%a" Conduit_mirage.pp_error err) ;
-      Lwt.return ()
+        Log.err (fun m -> m "%a" Conduit_mirage.pp_error err) ;
+        Lwt.return ()
 
   let smtp_logic ~info stack resolver messaged map =
     let rec go () =
@@ -79,16 +89,21 @@ module Make
       Submission.Md.pop messaged >>= function
       | None -> Lwt.pause () >>= go
       | Some ((key, _, _) as v) ->
-        let transmit () =
-          Submission.resolve_recipients ~domain:info.Ptt.SSMTP.domain resolver map
-            (List.map fst (Ptt.Messaged.recipients key)) >>= fun recipients ->
-          transmit ~info stack v recipients in
-        Lwt.async transmit ; Lwt.pause () >>= go in
+          let transmit () =
+            Submission.resolve_recipients ~domain:info.Ptt.SSMTP.domain resolver
+              map
+              (List.map fst (Ptt.Messaged.recipients key))
+            >>= fun recipients -> transmit ~info stack v recipients in
+          Lwt.async transmit ;
+          Lwt.pause () >>= go in
     go ()
 
   let fiber stack resolver random hash conf map info authenticator mechanisms =
     let conf_server = Submission.create ~info ~authenticator mechanisms in
     let messaged = Submission.messaged conf_server in
-    Lwt.join [ smtp_submission_service resolver random hash conf conf_server
-             ; smtp_logic ~info stack resolver messaged map ]
+    Lwt.join
+      [
+        smtp_submission_service resolver random hash conf conf_server;
+        smtp_logic ~info stack resolver messaged map;
+      ]
 end
