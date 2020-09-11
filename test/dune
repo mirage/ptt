@@ -1,7 +1,7 @@
 (executable
  (name test)
  (modules test tcp)
- (libraries logs.fmt mirage-crypto-rng.unix ipaddr.unix conduit-lwt bos threads mrmime ptt ptt.tuyau alcotest))
+ (libraries logs.fmt mirage-crypto-rng.unix ipaddr.unix bos threads mrmime ptt ptt.tuyau alcotest))
 
 (rule
  (alias runtest)
