@@ -8,6 +8,10 @@ let () = Logs.set_level ~all:true (Some Logs.Debug)
 let () = Logs.set_reporter reporter
 let () = Mirage_crypto_rng_unix.initialize ()
 
+let () =
+  let f _ = Printexc.print_backtrace stderr in
+  Sys.set_signal Sys.sigpipe (Sys.Signal_handle f)
+
 module Scheduler = Colombe.Sigs.Make (struct type +'a t = 'a Lwt.t end)
 
 let unix =
