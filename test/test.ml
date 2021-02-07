@@ -803,7 +803,7 @@ let serve_when_ready ?stop ~handler socket =
        Lwt_unix.close socket in
      stop)
 
-let make_submission_smtp_server ?stop ~info ~port =
+let make_submission_smtp_server ?stop ~port info =
   let module SMTP =
     Ptt.Relay.Make (Scheduler) (Lwt_io) (Flow) (Resolver) (Random)
   in
@@ -901,8 +901,7 @@ let full_test_0 =
       contents in
   let stop = Lwt_switch.create () in
   let open Lwt.Infix in
-  make_submission_smtp_server ~stop
-    ~info:
+  make_submission_smtp_server ~stop ~port:8888
       {
         Ptt.SMTP.domain= gmail
       ; ipv4= Ipaddr.V4.localhost
@@ -910,7 +909,6 @@ let full_test_0 =
       ; zone= Mrmime.Date.Zone.GMT
       ; size= 0x1000000000L
       }
-    ~port:8888
   >>= fun (`Initialized th0, `Queue th1) ->
   Lwt.join
     [
@@ -952,8 +950,7 @@ let full_test_1 =
     (Colombe.Domain.of_string_exn <.> Domain_name.to_string) gazagnaire in
   let stop = Lwt_switch.create () in
   let open Lwt.Infix in
-  make_submission_smtp_server ~stop
-    ~info:
+  make_submission_smtp_server ~stop ~port:8888
       {
         Ptt.SMTP.domain= gmail
       ; ipv4= Ipaddr.V4.localhost
@@ -961,7 +958,6 @@ let full_test_1 =
       ; zone= Mrmime.Date.Zone.GMT
       ; size= 0x1000000000L
       }
-    ~port:8888
   >>= fun (`Initialized th0, `Queue th1) ->
   let sendmail ~domain sender contents =
     sendmail Ipaddr.V4.localhost 8888 ~domain sender [romain_calascibetta]
