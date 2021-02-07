@@ -7,4 +7,4 @@ let of_string_exn x =
   | "plain" -> PLAIN
   | _ -> Fmt.invalid_arg "Invalid mechanism: %s" x
 
-let equal a b = match (a, b) with PLAIN, PLAIN -> true
+let equal a b = match a, b with PLAIN, PLAIN -> true

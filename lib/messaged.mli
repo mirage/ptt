@@ -2,21 +2,14 @@ open Sigs
 open Colombe
 
 type from = Reverse_path.t * (string * string option) list
-
 type recipient = Forward_path.t * (string * string option) list
-
 type key
 
 val domain_from : key -> Domain.t
-
 val from : key -> from
-
 val recipients : key -> recipient list
-
 val id : key -> int64
-
 val pp : key Fmt.t
-
 val equal : key -> key -> bool
 
 val v :
@@ -24,13 +17,9 @@ val v :
 
 module type S = sig
   type +'a s
-
   type queue
-
   type 'a producer = 'a option -> unit s
-
   type 'a consumer = unit -> 'a option s
-
   type chunk = string * int * int
 
   type t

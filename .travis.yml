@@ -7,6 +7,7 @@ env:
   global:
   - PINS="colombe.dev:https://github.com/mirage/colombe.git sendmail.dev:https://github.com/mirage/colombe.git sendmail-lwt.dev:https://github.com/mirage/colombe.git received.dev:https://github.com/mirage/colombe.git mrmime.dev:https://github.com/mirage/mrmime.git"
   jobs:
-  - PACKAGE="ptt" OCAML_VERSION=4.07 TESTS=true
   - PACKAGE="ptt" OCAML_VERSION=4.08 TESTS=true
   - PACKAGE="ptt" OCAML_VERSION=4.09 TESTS=true
+  - PACKAGE="ptt" OCAML_VERSION=4.10 TESTS=true
+  - PACKAGE="ptt" OCAML_VERSION=4.11 TESTS=true

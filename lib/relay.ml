@@ -15,26 +15,24 @@ struct
 
   module Log = (val Logs.src_log src : Logs.LOG)
 
-  type server = { info : info; messaged : Md.t; mutable count : int64 }
+  type server = {info: info; messaged: Md.t; mutable count: int64}
 
   and info = SMTP.info = {
-    domain : [ `host ] Domain_name.t;
-    ipv4 : Ipaddr.V4.t;
-    tls : Tls.Config.server;
-    zone : Mrmime.Date.Zone.t;
-    size : int64;
+      domain: [ `host ] Domain_name.t
+    ; ipv4: Ipaddr.V4.t
+    ; tls: Tls.Config.server
+    ; zone: Mrmime.Date.Zone.t
+    ; size: int64
   }
 
-  let info { info; _ } = info
-
-  let create ~info = { info; messaged = Md.create (); count = 0L }
-
-  let messaged { messaged; _ } = messaged
+  let info {info; _} = info
+  let create ~info = {info; messaged= Md.create (); count= 0L}
+  let messaged {messaged; _} = messaged
 
   let succ server =
     let v = server.count in
-    server.count <- Int64.succ server.count ;
-    v
+    server.count <- Int64.succ server.count
+    ; v
 
   type error = [ `Error of SMTP.error | `Connection_close | `Too_big_data ]
 
@@ -57,29 +55,29 @@ struct
     let m = SMTP.m_relay_init ctx server.info in
     run flow m >>? function
     | `Quit -> properly_close_tls flow ctx >>? fun () -> IO.return (Ok ())
-    | `Submission { SMTP.domain_from; from; recipients; _ } -> (
-        recipients_are_reachable ~ipv4:server.info.ipv4 resolver
-          (List.map fst recipients)
-        >>= function
-        | true ->
-            let id = succ server in
-            let key = Messaged.v ~domain_from ~from ~recipients id in
-            Md.push server.messaged key >>= fun producer ->
-            let m = SMTP.m_mail ctx in
-            run flow m >>? fun () ->
-            receive_mail
-              ~limit:(Int64.to_int server.info.size)
-              flow ctx
-              SMTP.(fun ctx -> Monad.recv ctx Value.Payload)
-              producer
-            >>? fun () ->
-            let m = SMTP.m_end ctx in
-            run flow m >>? fun `Quit ->
-            properly_close_tls flow ctx >>? fun () -> IO.return (Ok ())
-        | false ->
-            let e = `Invalid_recipients in
-            let m =
-              SMTP.m_properly_close_and_fail ctx ~message:"No valid recipients"
-                e in
-            run flow m)
+    | `Submission {SMTP.domain_from; from; recipients; _} -> (
+      recipients_are_reachable ~ipv4:server.info.ipv4 resolver
+        (List.map fst recipients)
+      >>= function
+      | true ->
+        let id = succ server in
+        let key = Messaged.v ~domain_from ~from ~recipients id in
+        Md.push server.messaged key >>= fun producer ->
+        let m = SMTP.m_mail ctx in
+        run flow m >>? fun () ->
+        receive_mail
+          ~limit:(Int64.to_int server.info.size)
+          flow ctx
+          SMTP.(fun ctx -> Monad.recv ctx Value.Payload)
+          producer
+        >>? fun () ->
+        let m = SMTP.m_end ctx in
+        run flow m >>? fun `Quit ->
+        properly_close_tls flow ctx >>? fun () -> IO.return (Ok ())
+      | false ->
+        let e = `Invalid_recipients in
+        let m =
+          SMTP.m_properly_close_and_fail ctx ~message:"No valid recipients" e
+        in
+        run flow m)
 end

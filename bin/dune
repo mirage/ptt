@@ -1,11 +1,11 @@
 (executable
  (name mti_gf)
  (modules mti_gf)
- (libraries bos mirage-clock-unix dns-client.lwt tcpip.stack-socket
-   ptt.mti-gf logs.fmt mirage-crypto-rng))
+ (libraries bos mirage-time-unix mirage-clock-unix dns-client.lwt
+   tcpip.stack-socket ptt.mti-gf logs.fmt mirage-crypto-rng))
 
 (executable
  (name lipap)
  (modules lipap)
- (libraries digestif.c bos mirage-clock-unix dns-client.lwt
+ (libraries digestif.c mirage-time-unix bos mirage-clock-unix dns-client.lwt
    tcpip.stack-socket ptt.lipap logs.fmt mirage-crypto-rng))

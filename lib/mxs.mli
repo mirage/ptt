@@ -4,9 +4,9 @@
     [Ipaddr.V4.t]. *)
 
 type elt = {
-  preference : int;
-  mx_ipaddr : Ipaddr.t;
-  mx_domain : [ `host ] Domain_name.t option;
+    preference: int
+  ; mx_ipaddr: Ipaddr.t
+  ; mx_domain: [ `host ] Domain_name.t option
 }
 (** Type of a MX value. *)
 
