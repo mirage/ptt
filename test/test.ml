@@ -774,8 +774,9 @@ module Flow = struct
     Lwt.catch
       (fun () -> Lwt_unix.read socket buf off len)
       (fun exn ->
-         Logs.err (fun m -> m "[recv] Got an exception: %S." (Printexc.to_string exn)) ;
-         Lwt.fail exn)
+        Logs.err (fun m ->
+            m "[recv] Got an exception: %S." (Printexc.to_string exn))
+        ; Lwt.fail exn)
 
   let send socket buf off len =
     let open Lwt.Infix in
@@ -783,11 +784,12 @@ module Flow = struct
       if len > 0 then
         Lwt.catch
           (fun () ->
-             Lwt_unix.write socket buf off len >>= fun res ->
-             go socket buf (off + res) (len - res))
+            Lwt_unix.write socket buf off len >>= fun res ->
+            go socket buf (off + res) (len - res))
           (fun exn ->
-             Logs.err (fun m -> m "[send] Got an exception: %S." (Printexc.to_string exn)) ;
-             Lwt.fail exn)
+            Logs.err (fun m ->
+                m "[send] Got an exception: %S." (Printexc.to_string exn))
+            ; Lwt.fail exn)
       else Lwt.return_unit in
     go socket (Bytes.unsafe_of_string buf) off len
 end
@@ -909,13 +911,13 @@ let full_test_0 =
   let stop = Lwt_switch.create () in
   let open Lwt.Infix in
   make_submission_smtp_server ~stop ~port:8888
-      {
-        Ptt.SMTP.domain= gmail
-      ; ipv4= Ipaddr.V4.localhost
-      ; tls= fake_tls_config
-      ; zone= Mrmime.Date.Zone.GMT
-      ; size= 0x1000000000L
-      }
+    {
+      Ptt.SMTP.domain= gmail
+    ; ipv4= Ipaddr.V4.localhost
+    ; tls= fake_tls_config
+    ; zone= Mrmime.Date.Zone.GMT
+    ; size= 0x1000000000L
+    }
   >>= fun (`Initialized th0, `Queue th1) ->
   Lwt.join
     [
@@ -958,13 +960,13 @@ let full_test_1 =
   let stop = Lwt_switch.create () in
   let open Lwt.Infix in
   make_submission_smtp_server ~stop ~port:8888
-      {
-        Ptt.SMTP.domain= gmail
-      ; ipv4= Ipaddr.V4.localhost
-      ; tls= fake_tls_config
-      ; zone= Mrmime.Date.Zone.GMT
-      ; size= 0x1000000000L
-      }
+    {
+      Ptt.SMTP.domain= gmail
+    ; ipv4= Ipaddr.V4.localhost
+    ; tls= fake_tls_config
+    ; zone= Mrmime.Date.Zone.GMT
+    ; size= 0x1000000000L
+    }
   >>= fun (`Initialized th0, `Queue th1) ->
   let sendmail ~domain sender contents =
     sendmail Ipaddr.V4.localhost 8888 ~domain sender [romain_calascibetta]
