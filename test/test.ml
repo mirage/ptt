@@ -916,7 +916,7 @@ let full_test_0 =
     ; ipv4= Ipaddr.V4.localhost
     ; tls= fake_tls_config
     ; zone= Mrmime.Date.Zone.GMT
-    ; size= 0x1000000000L
+    ; size= 0x1000000L
     }
   >>= fun (`Initialized th0, `Queue th1) ->
   Lwt.join
@@ -965,7 +965,7 @@ let full_test_1 =
     ; ipv4= Ipaddr.V4.localhost
     ; tls= fake_tls_config
     ; zone= Mrmime.Date.Zone.GMT
-    ; size= 0x1000000000L
+    ; size= 0x1000000L
     }
   >>= fun (`Initialized th0, `Queue th1) ->
   let sendmail ~domain sender contents =
