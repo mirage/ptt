@@ -1,8 +1,8 @@
 (executable
  (name test)
- (modules test tcp)
+ (modules test)
  (libraries logs.fmt mirage-crypto-rng.unix ipaddr.unix bos threads mrmime
-   ptt ptt.tuyau alcotest))
+   ptt ptt.tuyau alcotest-lwt))
 
 (rule
  (alias runtest)

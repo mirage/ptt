@@ -12,11 +12,11 @@ module Make
   type 'k server
 
   type info = SSMTP.info = {
-    domain : [ `host ] Domain_name.t;
-    ipv4 : Ipaddr.V4.t;
-    tls : Tls.Config.server;
-    zone : Mrmime.Date.Zone.t;
-    size : int64;
+      domain: [ `host ] Domain_name.t
+    ; ipv4: Ipaddr.V4.t
+    ; tls: Tls.Config.server
+    ; zone: Mrmime.Date.Zone.t
+    ; size: int64
   }
 
   val info : 'k server -> info
@@ -26,28 +26,28 @@ module Make
   val pp_error : error Fmt.t
 
   val resolve_recipients :
-    domain:[ `host ] Domain_name.t ->
-    Resolver.t ->
-    Relay_map.t ->
-    Colombe.Forward_path.t list ->
-    ([ `Domain of [ `host ] Domain_name.t * Mxs.t | `Ipaddr of Ipaddr.t ]
-    * Aggregate.resolved_elt)
-    list
-    IO.t
+       domain:[ `host ] Domain_name.t
+    -> Resolver.t
+    -> Relay_map.t
+    -> Colombe.Forward_path.t list
+    -> ([ `Domain of [ `host ] Domain_name.t * Mxs.t | `Ipaddr of Ipaddr.t ]
+       * Aggregate.resolved_elt)
+       list
+       IO.t
 
   val create :
-    info:info ->
-    authenticator:(Scheduler.t, 'k) Authentication.t ->
-    Mechanism.t list ->
-    'k server
+       info:info
+    -> authenticator:(Scheduler.t, 'k) Authentication.t
+    -> Mechanism.t list
+    -> 'k server
 
   val messaged : 'k server -> Md.t
 
   val accept :
-    Flow.t ->
-    Resolver.t ->
-    Random.g ->
-    'k Digestif.hash ->
-    'k server ->
-    (unit, error) result IO.t
+       Flow.t
+    -> Resolver.t
+    -> Random.g
+    -> 'k Digestif.hash
+    -> 'k server
+    -> (unit, error) result IO.t
 end

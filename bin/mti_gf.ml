@@ -1,21 +1,12 @@
 let () = Printexc.record_backtrace true
-
 let reporter = Logs_fmt.reporter ()
-
 let () = Fmt.set_utf_8 Fmt.stdout true
-
 let () = Fmt.set_utf_8 Fmt.stderr true
-
 let () = Fmt.set_style_renderer Fmt.stdout `Ansi_tty
-
 let () = Fmt.set_style_renderer Fmt.stderr `Ansi_tty
-
 let () = Logs.set_level ~all:true (Some Logs.Debug)
-
 let () = Logs.set_reporter reporter
-
 let () = Mirage_crypto_rng_unix.initialize ()
-
 let ( <.> ) f g x = f (g x)
 
 module Random = struct
@@ -24,16 +15,13 @@ module Random = struct
   let generate ?g:_ len =
     let ic = open_in "/dev/urandom" in
     let rs = Bytes.create len in
-    really_input ic rs 0 len ;
-    close_in ic ;
-    Cstruct.of_bytes rs
+    really_input ic rs 0 len ; close_in ic ; Cstruct.of_bytes rs
 end
 
 open Rresult
 
 module Resolver = struct
   type +'a io = 'a Lwt.t
-
   type t = Dns_client_lwt.t
 
   let gethostbyname t v = Dns_client_lwt.gethostbyname t v
@@ -47,7 +35,8 @@ module Resolver = struct
 end
 
 module Server =
-  Mti_gf.Make (Random) (Mclock) (Pclock) (Resolver) (Tcpip_stack_socket)
+  Mti_gf.Make (Random) (Time) (Mclock) (Pclock) (Resolver)
+    (Tcpip_stack_socket.V4)
 
 let load_file filename =
   let open Rresult in
@@ -69,35 +58,27 @@ let private_key = Rresult.R.get_ok private_key
 
 let fiber ~domain map =
   let open Lwt.Infix in
-  Tcpip_stack_socket.TCPV4.connect None >>= fun tcpv4 ->
-  Tcpip_stack_socket.UDPV4.connect None >>= fun udpv4 ->
-  Tcpip_stack_socket.connect [] udpv4 tcpv4 >>= fun stackv4 ->
-  let conf =
-    {
-      Conduit_mirage_tcp.stack = stackv4;
-      Conduit_mirage_tcp.keepalive = None;
-      Conduit_mirage_tcp.nodelay = false;
-      Conduit_mirage_tcp.port = 4242;
-    } in
+  Tcpip_stack_socket.V4.TCPV4.connect Ipaddr.V4.Prefix.global >>= fun tcpv4 ->
+  Tcpip_stack_socket.V4.UDPV4.connect Ipaddr.V4.Prefix.global >>= fun udpv4 ->
+  Tcpip_stack_socket.V4.connect udpv4 tcpv4 >>= fun stackv4 ->
   let info =
     {
-      Ptt.SMTP.domain;
-      Ptt.SMTP.ipv4 = Ipaddr.V4.any;
-      Ptt.SMTP.tls =
+      Ptt.SMTP.domain
+    ; Ptt.SMTP.ipv4= Ipaddr.V4.any
+    ; Ptt.SMTP.tls=
         Tls.Config.server
-          ~certificates:(`Single ([ cert ], private_key))
+          ~certificates:(`Single ([cert], private_key))
           ~authenticator:(fun ~host:_ _ -> Ok None)
-          ();
-      Ptt.SMTP.zone = Mrmime.Date.Zone.GMT;
-      Ptt.SMTP.size = 0x1000000L;
+          ()
+    ; Ptt.SMTP.zone= Mrmime.Date.Zone.GMT
+    ; Ptt.SMTP.size= 0x1000000L
     } in
   let resolver = Dns_client_lwt.create () in
-  Server.fiber stackv4 resolver conf map info
+  Server.fiber ~port:4242 stackv4 resolver map info
 
 let romain_calascibetta =
   let open Mrmime.Mailbox in
-  Local.[ w "romain"; w "calascibetta" ]
-  @ Domain.(domain, [ a "gmail"; a "com" ])
+  Local.[w "romain"; w "calascibetta"] @ Domain.(domain, [a "gmail"; a "com"])
 
 let () =
   let domain = Domain_name.(host_exn <.> of_string_exn) "x25519.net" in
@@ -105,6 +86,6 @@ let () =
   let map =
     let open Mrmime.Mailbox in
     Ptt.Relay_map.add
-      ~local:Local.(v [ w "romain"; w "calascibetta" ])
+      ~local:Local.(v [w "romain"; w "calascibetta"])
       romain_calascibetta map in
   Lwt_main.run (fiber ~domain map)

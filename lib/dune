@@ -10,23 +10,24 @@
 (library
  (name ptt_tuyau)
  (public_name ptt.tuyau)
- (modules ptt_tuyau lwt_backend)
- (libraries tcpip conduit-mirage conduit-mirage.tcp ptt))
+ (modules unixiz ptt_tuyau lwt_backend)
+ (libraries lwt tls-mirage bigstringaf mirage-time mirage-flow mirage-stack
+   tcpip mimic ptt))
 
 (library
  (name ptt_transmit)
  (public_name ptt.transmit)
  (modules ptt_transmit)
- (libraries ptt.tuyau received))
+ (libraries ptt.tuyau mirage-clock received))
 
 (library
  (name lipap)
  (public_name ptt.lipap)
  (modules lipap)
- (libraries tls ptt.transmit conduit-tls))
+ (libraries tls ptt.transmit mirage-random tls-mirage))
 
 (library
  (name mti_gf)
  (public_name ptt.mti-gf)
  (modules mti_gf)
- (libraries ptt.transmit))
+ (libraries mirage-random ptt.transmit))
