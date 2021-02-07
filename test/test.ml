@@ -7,10 +7,7 @@ let () = Fmt.set_style_renderer Fmt.stderr `Ansi_tty
 let () = Logs.set_level ~all:true (Some Logs.Debug)
 let () = Logs.set_reporter reporter
 let () = Mirage_crypto_rng_unix.initialize ()
-
-let () =
-  let f _ = Printexc.print_backtrace stderr in
-  Sys.set_signal Sys.sigpipe (Sys.Signal_handle f)
+let () = Sys.set_signal Sys.sigpipe Sys.Signal_ignore
 
 module Scheduler = Colombe.Sigs.Make (struct type +'a t = 'a Lwt.t end)
 
@@ -756,10 +753,6 @@ module Resolver = struct
     Lwt.return err
 end
 
-(*
-module Flow_tuyau = (val Conduit_unix.impl protocol)
-*)
-
 module Flow = struct
   type t = Lwt_unix.file_descr
   type +'a io = 'a Lwt.t
@@ -777,14 +770,24 @@ module Flow = struct
     let socket = Lwt_unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
     Lwt_unix.connect socket sockaddr >>= fun () -> Lwt.return socket
 
-  let recv socket buf off len = Lwt_unix.read socket buf off len
+  let recv socket buf off len =
+    Lwt.catch
+      (fun () -> Lwt_unix.read socket buf off len)
+      (fun exn ->
+         Logs.err (fun m -> m "[recv] Got an exception: %S." (Printexc.to_string exn)) ;
+         Lwt.fail exn)
 
   let send socket buf off len =
     let open Lwt.Infix in
     let rec go socket buf off len =
       if len > 0 then
-        Lwt_unix.write socket buf off len >>= fun res ->
-        go socket buf (off + res) (len - res)
+        Lwt.catch
+          (fun () ->
+             Lwt_unix.write socket buf off len >>= fun res ->
+             go socket buf (off + res) (len - res))
+          (fun exn ->
+             Logs.err (fun m -> m "[send] Got an exception: %S." (Printexc.to_string exn)) ;
+             Lwt.fail exn)
       else Lwt.return_unit in
     go socket (Bytes.unsafe_of_string buf) off len
 end
