@@ -2,14 +2,14 @@ module Lwt_backend = Lwt_backend
 
 module type FLOW = Ptt.Sigs.FLOW with type +'a io = 'a Lwt.t
 
-module Make (StackV4 : Mirage_stack.V4) = struct
+module Make (Stack : Mirage_stack.V4V6) = struct
   open Rresult
   open Lwt.Infix
   open Lwt_backend
-  module Flow = Unixiz.Make (StackV4.TCPV4)
+  module Flow = Unixiz.Make (Stack.TCP)
 
   module TLSFlow = struct
-    module Flow = Tls_mirage.Make (StackV4.TCPV4)
+    module Flow = Tls_mirage.Make (Stack.TCP)
     include Unixiz.Make (Flow)
 
     let failwith pp = function
@@ -28,7 +28,7 @@ module Make (StackV4 : Mirage_stack.V4) = struct
     let wr flow buf off len = Lwt_scheduler.inj (Flow.send flow buf off len) in
     {Colombe.Sigs.rd; Colombe.Sigs.wr}
 
-  let null ~host:_ _ = Ok None
+  let null ~host:_ _ = Ok None (* TODO *)
 
   let sendmail
       ~info
@@ -38,8 +38,8 @@ module Make (StackV4 : Mirage_stack.V4) = struct
       emitter
       producer
       recipients =
-    let tcp = StackV4.tcpv4 stack in
-    StackV4.TCPV4.create_connection tcp (mx_ipaddr, 25)
+    let tcp = Stack.tcp stack in
+    Stack.TCP.create_connection tcp (mx_ipaddr, 25)
     >|= R.reword_error (fun err -> `Flow err)
     >>? fun flow ->
     let flow = Flow.make flow in
@@ -67,12 +67,12 @@ module Make (StackV4 : Mirage_stack.V4) = struct
       Lwt.return (R.error_msgf "Unknown error: %s" (Printexc.to_string exn))
 end
 
-module Server (Time : Mirage_time.S) (StackV4 : Mirage_stack.V4) = struct
+module Server (Time : Mirage_time.S) (Stack : Mirage_stack.V4V6) = struct
   open Lwt.Infix
 
   type service = {
-      stack: StackV4.t
-    ; queue: StackV4.TCPV4.flow Queue.t
+      stack: Stack.t
+    ; queue: Stack.TCP.flow Queue.t
     ; condition: unit Lwt_condition.t
     ; mutex: Lwt_mutex.t
     ; mutable closed: bool
@@ -88,7 +88,7 @@ module Server (Time : Mirage_time.S) (StackV4 : Mirage_stack.V4) = struct
       ; Lwt_condition.signal condition ()
       ; Lwt_mutex.unlock mutex
       ; Lwt.return () in
-    StackV4.listen_tcpv4 ~port stack listener
+    Stack.listen_tcp ~port stack listener
     ; Lwt.return {stack; queue; condition; mutex; closed= false}
 
   let rec accept ({queue; condition; mutex; _} as t) =
@@ -108,7 +108,7 @@ module Server (Time : Mirage_time.S) (StackV4 : Mirage_stack.V4) = struct
 
   let close ({stack; condition; _} as t) =
     t.closed <- true
-    ; StackV4.disconnect stack >>= fun () ->
+    ; Stack.disconnect stack >>= fun () ->
       Lwt_condition.signal condition ()
       ; Lwt.return_unit
 

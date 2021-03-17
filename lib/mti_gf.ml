@@ -8,9 +8,9 @@ module Make
     (Mclock : Mirage_clock.MCLOCK)
     (Pclock : Mirage_clock.PCLOCK)
     (Resolver : Ptt.Sigs.RESOLVER with type +'a io = 'a Lwt.t)
-    (StackV4 : Mirage_stack.V4) =
+    (Stack : Mirage_stack.V4V6) =
 struct
-  include Ptt_tuyau.Make (StackV4)
+  include Ptt_tuyau.Make (Stack)
 
   let src = Logs.Src.create "mti-gf"
 
@@ -30,33 +30,33 @@ struct
   module Relay =
     Ptt.Relay.Make (Lwt_scheduler) (Lwt_io) (Flow) (Resolver) (Random)
 
-  module Server = Ptt_tuyau.Server (Time) (StackV4)
-  include Ptt_transmit.Make (Pclock) (StackV4) (Relay.Md)
+  module Server = Ptt_tuyau.Server (Time) (Stack)
+  include Ptt_transmit.Make (Pclock) (Stack) (Relay.Md)
 
   let smtp_relay_service ~port stack resolver conf_server =
     Server.init ~port stack >>= fun service ->
     let handler flow =
-      let ip, port = StackV4.TCPV4.dst flow in
+      let ip, port = Stack.TCP.dst flow in
       let v = Flow.make flow in
       Lwt.catch
         (fun () ->
           Relay.accept v resolver conf_server
           >|= R.reword_error (R.msgf "%a" Relay.pp_error)
           >>= fun res ->
-          StackV4.TCPV4.close flow >>= fun () -> Lwt.return res)
+          Stack.TCP.close flow >>= fun () -> Lwt.return res)
         (function
           | Failure err -> Lwt.return (R.error_msg err)
           | exn -> Lwt.return (Error (`Exn exn)))
       >>= function
       | Ok () ->
-        Log.info (fun m -> m "<%a:%d> submitted a message" Ipaddr.V4.pp ip port)
+        Log.info (fun m -> m "<%a:%d> submitted a message" Ipaddr.pp ip port)
         ; Lwt.return ()
       | Error (`Msg err) ->
-        Log.err (fun m -> m "<%a:%d> %s" Ipaddr.V4.pp ip port err)
+        Log.err (fun m -> m "<%a:%d> %s" Ipaddr.pp ip port err)
         ; Lwt.return ()
       | Error (`Exn exn) ->
         Log.err (fun m ->
-            m "<%a:%d> raised an unknown exception: %s" Ipaddr.V4.pp ip port
+            m "<%a:%d> raised an unknown exception: %s" Ipaddr.pp ip port
               (Printexc.to_string exn))
         ; Lwt.return () in
     let (`Initialized fiber) = Server.serve_when_ready ~handler service in

@@ -4,12 +4,12 @@ let icompare : int -> int -> int = fun a b -> compare a b
 
 module Make
     (Pclock : Mirage_clock.PCLOCK)
-    (StackV4 : Mirage_stack.V4)
+    (Stack : Mirage_stack.V4V6)
     (Md : Ptt.Messaged.S with type 'a s = 'a Lwt.t) =
 struct
   open Lwt.Infix
   open Ptt_tuyau.Lwt_backend
-  include Ptt_tuyau.Make (StackV4)
+  include Ptt_tuyau.Make (Stack)
 
   let local_to_forward_path ~domain:mx_domain local =
     let local =
@@ -98,8 +98,7 @@ struct
         let stream = received <+> stream in
         let rec go = function
           | [] -> Lwt.return ()
-          | {Ptt.Mxs.mx_ipaddr= Ipaddr.V6 _; _} :: rest -> go rest
-          | {Ptt.Mxs.mx_ipaddr= Ipaddr.V4 mx_ipaddr; _} :: rest -> (
+          | {Ptt.Mxs.mx_ipaddr; _} :: rest -> (
             sendmail ~info stack mx_ipaddr emitter stream recipients
             >>= function
             | Ok () -> Lwt.return ()
