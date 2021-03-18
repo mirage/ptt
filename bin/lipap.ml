@@ -36,7 +36,7 @@ end
 
 module Server =
   Lipap.Make (Random) (Time) (Mclock) (Pclock) (Resolver)
-    (Tcpip_stack_socket.V4)
+    (Tcpip_stack_socket.V4V6)
 
 let load_file filename =
   let open Rresult in
@@ -64,9 +64,13 @@ let authenticator = Ptt.Authentication.v authenticator
 
 let fiber ~domain map =
   let open Lwt.Infix in
-  Tcpip_stack_socket.V4.TCPV4.connect Ipaddr.V4.Prefix.global >>= fun tcpv4 ->
-  Tcpip_stack_socket.V4.UDPV4.connect Ipaddr.V4.Prefix.global >>= fun udpv4 ->
-  Tcpip_stack_socket.V4.connect udpv4 tcpv4 >>= fun stackv4 ->
+  let open Tcpip_stack_socket.V4V6 in
+  let ipv4_only = false and ipv6_only = false in
+  TCP.connect ~ipv4_only ~ipv6_only Ipaddr.V4.Prefix.global None
+  >>= fun tcpv4 ->
+  UDP.connect ~ipv4_only ~ipv6_only Ipaddr.V4.Prefix.global None
+  >>= fun udpv4 ->
+  connect udpv4 tcpv4 >>= fun stackv4 ->
   let info =
     {
       Ptt.SMTP.domain
