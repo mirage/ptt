@@ -4,8 +4,6 @@ install:
   - wget https://raw.githubusercontent.com/dinosaure/ocaml-travisci-skeleton/master/.travis-docgen.sh
 script: bash -ex .travis-opam.sh
 env:
-  global:
-  - PINS="colombe.dev:https://github.com/mirage/colombe.git sendmail.dev:https://github.com/mirage/colombe.git sendmail-lwt.dev:https://github.com/mirage/colombe.git received.dev:https://github.com/mirage/colombe.git mrmime.dev:https://github.com/mirage/mrmime.git"
   jobs:
   - PACKAGE="ptt" OCAML_VERSION=4.08 TESTS=true
   - PACKAGE="ptt" OCAML_VERSION=4.09 TESTS=true
