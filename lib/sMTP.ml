@@ -84,15 +84,13 @@ let m_relay_init ctx info =
   let open Monad in
   let* _from_domain =
     send ctx Value.PP_220 [Domain_name.to_string info.Logic.domain]
-    >>= fun () -> recv ctx Value.Helo
-  in
+    >>= fun () -> recv ctx Value.Helo in
   let* () =
     send ctx Value.PP_250
       [
         politely ~domain:info.Logic.domain ~ipv4:info.Logic.ipv4; "8BITMIME"
       ; "SMTPUTF8"; "STARTTLS"; Fmt.strf "SIZE %Ld" info.Logic.size
-      ]
-  in
+      ] in
   let reset = ref 0 and bad = ref 0 in
   let rec go () =
     if !reset >= 25 && !bad >= 25 then
@@ -116,8 +114,7 @@ let m_relay_init ctx info =
       | _ ->
         incr bad
         ; let* () =
-            send ctx Value.PN_530 ["Must issue a STARTTLS command first."]
-          in
+            send ctx Value.PN_530 ["Must issue a STARTTLS command first."] in
           go () in
   go ()
 
@@ -125,8 +122,7 @@ let m_submission_init ctx info ms =
   let open Monad in
   let* _from_domain =
     send ctx Value.PP_220 [Domain_name.to_string info.Logic.domain]
-    >>= fun () -> recv ctx Value.Helo
-  in
+    >>= fun () -> recv ctx Value.Helo in
   let* () =
     send ctx Value.PP_250
       [
@@ -134,8 +130,7 @@ let m_submission_init ctx info ms =
       ; "SMTPUTF8"; "STARTTLS"
       ; Fmt.strf "AUTH %a" Fmt.(list ~sep:(const string " ") Mechanism.pp) ms
       ; Fmt.strf "SIZE %Ld" info.Logic.size
-      ]
-  in
+      ] in
   let reset = ref 0 and bad = ref 0 in
   let rec go () =
     if !reset >= 25 || !bad >= 25 then
@@ -159,7 +154,6 @@ let m_submission_init ctx info ms =
       | _ ->
         incr bad
         ; let* () =
-            send ctx Value.PN_530 ["Must issue a STARTTLS command first."]
-          in
+            send ctx Value.PN_530 ["Must issue a STARTTLS command first."] in
           go () in
   go ()

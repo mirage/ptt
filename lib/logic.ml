@@ -256,8 +256,7 @@ module Make (Monad : MONAD) = struct
                 m " %a sended a bad command: %a" Domain.pp domain_from
                   Request.pp v)
           ; let* () =
-              send ctx Value.PN_530 ["Authentication required, buddy!"]
-            in
+              send ctx Value.PN_530 ["Authentication required, buddy!"] in
             auth_0 () in
     auth_0 ()
 
@@ -279,8 +278,7 @@ module Make (Monad : MONAD) = struct
         [
           politely ~domain:info.domain ~ipv4:info.ipv4; "8BITMIME"; "SMTPUTF8"
         ; Fmt.strf "SIZE %Ld" info.size
-        ]
-    in
+        ] in
     m_relay ctx ~domain_from
 
   let m_submission_init ctx info ms =
@@ -292,7 +290,6 @@ module Make (Monad : MONAD) = struct
           politely ~domain:info.domain ~ipv4:info.ipv4; "8BITMIME"; "SMTPUTF8"
         ; Fmt.strf "SIZE %Ld" info.size
         ; Fmt.strf "AUTH %a" Fmt.(list ~sep:(const string " ") Mechanism.pp) ms
-        ]
-    in
+        ] in
     m_submission ctx ~domain_from ms
 end

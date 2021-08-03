@@ -53,7 +53,7 @@ let cert = Rresult.R.get_ok cert
 let private_key =
   let open Rresult in
   load_file (Fpath.v "server.key") >>= fun raw ->
-  X509.Private_key.decode_pem raw >>= fun (`RSA v) -> R.ok v
+  X509.Private_key.decode_pem raw
 
 let private_key = Rresult.R.get_ok private_key
 

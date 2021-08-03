@@ -23,7 +23,7 @@ module Make (Flow : Mirage_flow.S) = struct
       Flow.read flow.flow >>= failwith Flow.pp_error >>= function
       | `Eof -> Lwt.return 0
       | `Data res ->
-        Ke.Rke.N.push flow.queue ~blit:blit0 ~length:Cstruct.len res
+        Ke.Rke.N.push flow.queue ~blit:blit0 ~length:Cstruct.length res
         ; let len = min p_len (Ke.Rke.length flow.queue) in
           Ke.Rke.N.keep_exn flow.queue ~blit:blit1 ~length:Bytes.length
             ~off:p_off ~len payload

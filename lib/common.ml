@@ -13,14 +13,18 @@ module Make
 struct
   type 'w resolver = {
       gethostbyname:
-        'a.    'w -> [ `host ] Domain_name.t
+        'a.
+           'w
+        -> [ `host ] Domain_name.t
         -> (Ipaddr.V4.t, ([> R.msg ] as 'a)) result IO.t
     ; getmxbyname:
-        'a.    'w -> [ `host ] Domain_name.t
+        'a.
+           'w
+        -> [ `host ] Domain_name.t
         -> (Dns.Rr_map.Mx_set.t, ([> R.msg ] as 'a)) result IO.t
     ; extension:
-        'a.    'w -> string -> string
-        -> (Ipaddr.V4.t, ([> R.msg ] as 'a)) result IO.t
+        'a.
+        'w -> string -> string -> (Ipaddr.V4.t, ([> R.msg ] as 'a)) result IO.t
   }
 
   type 'g random = ?g:'g -> bytes -> unit IO.t

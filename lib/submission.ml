@@ -91,9 +91,7 @@ struct
               let m =
                 let open SSMTP in
                 let open Monad in
-                let* () =
-                  send ctx Value.PN_535 ["Bad authentication, buddy!"]
-                in
+                let* () = send ctx Value.PN_535 ["Bad authentication, buddy!"] in
                 SSMTP.m_submission ctx ~domain_from server.mechanisms in
               run flow m >>? function
               | `Quit -> IO.return (Ok `Quit)
