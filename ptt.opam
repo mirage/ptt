@@ -27,12 +27,8 @@ depends: [
   "tcpip"
   "ke"
   "bigstringaf"
-  "conduit"
-  "conduit-tls"
-  "conduit-mirage"
   "ocaml-syntax-shims"
   "base-threads" {with-test}
-  "conduit" {with-test}
   "alcotest" {with-test}
   "base-threads" {with-test}
   "bos" {with-test}
@@ -51,16 +47,7 @@ build: ["dune" "build" "-p" name "-j" jobs]
 run-test: ["dune" "runtest" "-p" name "-j" jobs]
 dev-repo: "git+https://github.com/dinosaure/ptt.git"
 pin-depends: [
-  [
-    "conduit.dev"
-    "git+https://github.com/dinosaure/ocaml-conduit.git#6493c30186c6c32a904521f2910710294fe2de02"
-  ]
-  [
-    "conduit-mirage.dev"
-    "git+https://github.com/dinosaure/ocaml-conduit.git#6493c30186c6c32a904521f2910710294fe2de02"
-  ]
-  [
-    "conduit-tls.dev"
-    "git+https://github.com/dinosaure/ocaml-conduit.git#6493c30186c6c32a904521f2910710294fe2de02"
-  ]
+  [ "colombe.dev" "git+https://github.com/mirage/colombe.git#0bb62ddedfc178e5803b4257de651fd0ba933332" ]
+  [ "sendmail.dev" "git+https://github.com/mirage/colombe.git#0bb62ddedfc178e5803b4257de651fd0ba933332" ]
+  [ "sendmail-lwt.dev" "git+https://github.com/mirage/colombe.git#0bb62ddedfc178e5803b4257de651fd0ba933332" ]
 ]
