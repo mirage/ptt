@@ -54,8 +54,13 @@ struct
 
   let rdwr =
     let open Scheduler in
+    let rd flow buf off len =
+      inj
+      @@ (Flow.recv flow buf off len >>= function
+          | 0 -> IO.return `End
+          | len -> IO.return (`Len len)) in
     {
-      Colombe.Sigs.rd= (fun flow buf off len -> inj (Flow.recv flow buf off len))
+      Colombe.Sigs.rd
     ; Colombe.Sigs.wr=
         (fun flow buf off len -> inj (Flow.send flow buf off len))
     }
@@ -63,15 +68,12 @@ struct
   let run :
          Flow.t
       -> ('a, 'err) Colombe.State.t
-      -> ('a, [> `Error of 'err | `Connection_close ]) result IO.t =
+      -> ('a, [> `Error of 'err ]) result IO.t =
    fun flow m ->
     let rec go = function
-      | Colombe.State.Read {buffer; off; len; k} -> (
-        rdwr.rd flow buffer off len |> Scheduler.prj >>= function
-        | 0 -> IO.return (Error `Connection_close)
-        (* TODO(dinosaure): [rd] should returns [ `Close | `Len of int ]
-           instead when [0] is specific to a file-descriptor. *)
-        | n -> (go <.> k) n)
+      | Colombe.State.Read {buffer; off; len; k} ->
+        rdwr.rd flow buffer off len |> Scheduler.prj >>= fun res ->
+        (go <.> k) res
       | Colombe.State.Write {buffer; off; len; k} ->
         rdwr.wr flow buffer off len |> Scheduler.prj >>= fun () -> go (k len)
       | Colombe.State.Return v -> IO.return (Ok v)

@@ -34,11 +34,10 @@ struct
     server.count <- Int64.succ server.count
     ; v
 
-  type error = [ `Error of SMTP.error | `Connection_close | `Too_big_data ]
+  type error = [ `Error of SMTP.error | `Too_big_data ]
 
   let pp_error ppf = function
     | `Error err -> SMTP.pp_error ppf err
-    | `Connection_close -> Fmt.pf ppf "Connection close"
     | `Too_big_data -> Fmt.pf ppf "Too big data"
 
   let properly_close_tls flow ctx =

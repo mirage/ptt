@@ -361,13 +361,13 @@ let rdwr_from_flows inputs outputs =
   let open Scheduler in
   let rd () bytes off len =
     match !inputs with
-    | [] -> inj (Lwt.return 0)
+    | [] -> inj (Lwt.return `End)
     | x :: r ->
       let len = min (String.length x) len in
       Bytes.blit_string x 0 bytes off len
       ; if len = String.length x then inputs := r
         else inputs := String.sub x len (String.length x - len) :: r
-      ; inj (Lwt.return len) in
+      ; inj (Lwt.return (`Len len)) in
   let rec wr () bytes off len =
     match !outputs with
     | [] -> Fmt.failwith "Unexpected output: %S" (String.sub bytes off len)
@@ -401,10 +401,9 @@ let run_state m rdwr =
       rdwr.Colombe.Sigs.wr () buffer off len |> prj >>= fun () -> go (k len)
     | Colombe.State.Return v -> Lwt.return (Ok v)
     | Colombe.State.Error err -> Lwt.return (Error (`Error err))
-    | Colombe.State.Read {buffer; off; len; k} -> (
-      rdwr.Colombe.Sigs.rd () buffer off len |> prj >>= function
-      | 0 -> Lwt.return (Rresult.R.error `Connection_close)
-      | n -> go (k n)) in
+    | Colombe.State.Read {buffer; off; len; k} ->
+      rdwr.Colombe.Sigs.rd () buffer off len |> prj >>= fun res -> go (k res)
+  in
   go m
 
 let load_file filename =
@@ -447,11 +446,12 @@ let smtp_test_0 =
   let open Lwt.Infix in
   run_state (Ptt.SSMTP.m_relay_init ctx info) rdwr >>= function
   | Ok _ -> Alcotest.fail "Unexpected good result"
-  | Error (`Error _) -> Alcotest.fail "Unexpected protocol error"
-  | Error `Connection_close ->
+  | Error (`Error (`Protocol `End_of_input)) ->
     Alcotest.(check unit) "empty stream" (check ()) ()
     ; Alcotest.(check pass) "connection close" () ()
     ; Lwt.return_unit
+  | Error (`Error err) ->
+    Alcotest.failf "Unexpected protocol error: %a" Ptt.SSMTP.pp_error err
 
 let smtp_test_1 =
   Alcotest_lwt.test_case "SMTP (relay) 1" `Quick @@ fun _sw () ->
@@ -868,7 +868,11 @@ let sendmail ipv4 port ~domain sender recipients contents =
     {
       Colombe.Sigs.rd=
         (fun fd buf off len ->
-          let fiber = Lwt_unix.read fd buf off len in
+          let fiber =
+            Lwt.Infix.(
+              Lwt_unix.read fd buf off len >>= function
+              | 0 -> Lwt.return `End
+              | len -> Lwt.return (`Len len)) in
           Scheduler.inj fiber)
     ; Colombe.Sigs.wr=
         (fun fd buf off len ->

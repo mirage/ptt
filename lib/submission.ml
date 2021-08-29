@@ -45,14 +45,12 @@ struct
 
   type error =
     [ `Error of [ SSMTP.error | `Invalid_recipients | `Too_many_tries ]
-    | `Connection_close
     | `Too_big_data ]
 
   let pp_error ppf = function
     | `Error (#SSMTP.error as err) -> SSMTP.pp_error ppf err
     | `Error `Invalid_recipients -> Fmt.pf ppf "Invalid recipients"
     | `Error `Too_many_tries -> Fmt.pf ppf "Too many tries"
-    | `Connection_close -> Fmt.pf ppf "Connection close"
     | `Too_big_data -> Fmt.pf ppf "Too big data"
 
   let authentication ctx ~domain_from flow random hash server mechanism =
