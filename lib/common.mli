@@ -26,7 +26,7 @@ module Make
   val run :
        Flow.t
     -> ('a, 'err) Colombe.State.t
-    -> ('a, [> `Error of 'err | `Connection_close ]) result IO.t
+    -> ('a, [> `Error of 'err ]) result IO.t
   (** [run flow m] runs [m] on [flow]. [m] is a description of what we will send
       and receive. [flow] is a representation of the {i socket}. *)
 
@@ -42,7 +42,7 @@ module Make
     -> 'ctx
     -> ('ctx -> (string, 'err) Colombe.State.t)
     -> (string * int * int) consumer
-    -> (unit, [> `Error of 'err | `Connection_close | `Too_big_data ]) result
+    -> (unit, [> `Error of 'err | `Too_big_data ]) result
        IO.t
   (** [receive_mail ?limit flow ctx m consumer] runs [m] which gives to us a
       {i payload} from a given [ctx] (with [STARTTLS] or not) and a [flow].

@@ -24,7 +24,11 @@ module Make (Stack : Mirage_stack.V4V6) = struct
   end
 
   let rdwr : (Flow.t, Lwt_scheduler.t) Colombe.Sigs.rdwr =
-    let rd flow buf off len = Lwt_scheduler.inj (Flow.recv flow buf off len) in
+    let rd flow buf off len =
+      Lwt_scheduler.inj
+      @@ (Flow.recv flow buf off len >>= function
+          | 0 -> Lwt.return `End
+          | len -> Lwt.return (`Len len)) in
     let wr flow buf off len = Lwt_scheduler.inj (Flow.send flow buf off len) in
     {Colombe.Sigs.rd; Colombe.Sigs.wr}
 
