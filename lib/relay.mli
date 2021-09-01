@@ -37,5 +37,13 @@ module Make
 
   val create : info:info -> server
   val messaged : server -> Md.t
+
   val accept : Flow.t -> Resolver.t -> server -> (unit, error) result IO.t
+  (** [accept flow resolver server] is a simple SMTP process which accepts
+      an incoming email and put into the internal [server]'s queue. This process
+      does not expect authentication.
+
+      The incoming email is accepted only if recipients given by the client are
+      reachable {i via} the given [resolver] - see {!Common.Make.recipients_are_reachable}.
+      Otherwise, the incoming email is discarded! *)
 end

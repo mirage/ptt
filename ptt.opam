@@ -28,6 +28,7 @@ depends: [
   "ke"
   "bigstringaf"
   "ocaml-syntax-shims"
+  "dkim-mirage"
   "base-threads" {with-test}
   "alcotest" {with-test}
   "base-threads" {with-test}

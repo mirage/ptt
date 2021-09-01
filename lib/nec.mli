@@ -10,6 +10,7 @@ module Make
     -> port:int
     -> Stack.t
     -> Resolver.t
+    -> Mirage_crypto_pk.Rsa.priv * Dkim.unsigned Dkim.dkim
     -> Ptt.Relay_map.t
     -> Ptt.Logic.info
     -> unit Lwt.t

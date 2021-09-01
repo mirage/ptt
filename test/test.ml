@@ -11,7 +11,7 @@ let () = Sys.set_signal Sys.sigpipe Sys.Signal_ignore
 
 module Scheduler = Colombe.Sigs.Make (struct type +'a t = 'a Lwt.t end)
 
-let unix =
+let lwt =
   let open Lwt.Infix in
   let open Scheduler in
   {
@@ -71,7 +71,7 @@ let authentication_test_0 =
   let auth hash mechanism authenticator fmt =
     Fmt.kstrf
       (fun payload ->
-        Ptt.Authentication.decode_authentication unix hash mechanism
+        Ptt.Authentication.decode_authentication lwt hash mechanism
           authenticator
           (Base64.encode_exn payload)
         |> Scheduler.prj)
@@ -888,7 +888,7 @@ let sendmail ipv4 port ~domain sender recipients contents =
     (Unix.ADDR_INET (Ipaddr_unix.to_inet_addr (Ipaddr.V4 ipv4), port))
   >>= fun () ->
   let res =
-    Sendmail_with_starttls.sendmail unix rdwr socket ctx tls_config ~domain
+    Sendmail_with_starttls.sendmail lwt rdwr socket ctx tls_config ~domain
       sender recipients stream in
   let open Lwt.Infix in
   Scheduler.prj res >>= function
