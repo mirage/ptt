@@ -29,6 +29,11 @@ depends: [
   "bigstringaf"
   "ocaml-syntax-shims"
   "dkim-mirage"
+  "bos"
+  "dns-client" {>= "5.0.0"}
+  "mirage-clock-unix" {>= "3.1.0"}
+  "mirage-crypto-rng"
+  "mirage-time-unix" {>= "2.0.0"}
   "base-threads" {with-test}
   "alcotest" {with-test}
   "base-threads" {with-test}

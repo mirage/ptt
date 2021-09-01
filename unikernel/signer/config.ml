@@ -40,6 +40,10 @@ let private_key =
   let doc = Key.Arg.info ~doc:"The seed (in base64) of the private RSA key." [ "private-key" ] in
   Key.(create "private-key" Arg.(required string doc))
 
+let postmaster =
+  let doc = Key.Arg.info ~doc:"The postmaster of the SMTP service." [ "postmaster" ] in
+  Key.(create "postmaster" Arg.(required string doc))
+
 let keys =
   Key.[ abstract fields
       ; abstract dns_server
@@ -50,7 +54,8 @@ let keys =
       ; abstract destination
       ; abstract timestamp 
       ; abstract expiration
-      ; abstract private_key ]
+      ; abstract private_key
+      ; abstract postmaster ]
 
 let packages =
   [ package "randomconv"
@@ -62,14 +67,15 @@ let packages =
 
 let signer =
   foreign ~keys ~packages "Unikernel.Make" @@
-  random @-> time @-> mclock @-> pclock @-> stackv4v6 @-> job
+  random @-> time @-> mclock @-> pclock @-> kv_ro @-> stackv4v6 @-> job
 
 let random = default_random
 let time = default_time
 let mclock = default_monotonic_clock
 let pclock = default_posix_clock
 let stack = generic_stackv4v6 default_network
+let disk = generic_kv_ro "certificate"
 
 let () =
   register "signer"
-    [ signer $ random $ time $ mclock $ pclock $ stack ]
+    [ signer $ random $ time $ mclock $ pclock $ disk $ stack ]

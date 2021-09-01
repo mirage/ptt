@@ -1,6 +1,8 @@
 open Rresult
 open Lwt.Infix
 
+exception Invalid_certificate
+
 let ( >>? ) = Lwt_result.bind
 
 module Make
@@ -8,6 +10,7 @@ module Make
   (Time : Mirage_time.S)
   (Mclock : Mirage_clock.MCLOCK)
   (Pclock : Mirage_clock.PCLOCK)
+  (Disk : Mirage_kv.RO)
   (Stack : Mirage_stack.V4V6)
 = struct
   (* XXX(dinosaure): this is a fake resolver which enforce the [signer] to
@@ -78,7 +81,20 @@ module Make
           | Error _ -> assert false
         end @@ fun res -> Stack.TCP.close flow >>= fun () -> Lwt.return res
 
-  let start _random _time _mclock _pclock stack =
+  let certificates disk =
+    Disk.get disk (Mirage_kv.Key.v "server.pem")
+    >|= R.reword_error (fun _ -> R.msgf "We need a TLS certificate (PEM format)")
+    >>? fun pem ->
+    Disk.get disk (Mirage_kv.Key.v "server.key")
+    >|= R.reword_error (fun _ -> R.msgf "We need the private key for the TLS certificate (PEM format)")
+    >>? fun key ->
+    let pem = Cstruct.of_string pem in
+    let key = Cstruct.of_string key in
+    match X509.Certificate.decode_pem_multiple pem, X509.Private_key.decode_pem key with
+    | Ok crts, Ok key -> Lwt.return_ok (`Single (crts, key))
+    | _ -> Lwt.return_error (R.msgf "Invalid certificate or private key")
+
+  let start _random _time _mclock _pclock disk stack =
     let fields = match Key_gen.fields () with
       | None -> None
       | Some fields ->
@@ -89,6 +105,10 @@ module Make
           | Error _ -> R.error_msgf "Invalid field-name: %S" x in
         let fields = R.failwith_error_msg (List.fold_left f (Ok []) fields) in
         Some fields in
+    let postmaster =
+      let postmaster = Key_gen.postmaster () in
+      R.failwith_error_msg (R.reword_error (fun _ -> R.msgf "Invalid postmaster email: %S" postmaster)
+        (Emile.of_string postmaster)) in
     let selector = R.failwith_error_msg (Domain_name.of_string (Key_gen.selector ())) in
     let domain = R.failwith_error_msg (Domain_name.of_string (Key_gen.domain ())) in
     let dkim = Dkim.v
@@ -100,16 +120,14 @@ module Make
       domain in
     let private_key = private_rsa_key_from_seed (Base64.decode_exn (Key_gen.private_key ())) in
     let server = Dkim.server_of_dkim ~key:private_key dkim in
-    ns_update dkim server stack >>= function
-    | Error (`Msg err) -> Fmt.failwith "%s." err
-    | Ok () ->
-      let domain= Domain_name.host_exn domain in
-      Nec.fiber ~port:25 stack (Key_gen.destination ()) (private_key, dkim)
-        (Ptt.Relay_map.empty ~postmaster:(R.get_ok (Emile.of_string "postmaster@blaze.org"))
-          ~domain)
-        { Ptt.Logic.domain
-        ; ipv4= (Ipaddr.V4.Prefix.address (Key_gen.ipv4 ()))
-        ; tls= Tls.Config.server ()
-        ; zone= Mrmime.Date.Zone.GMT (* XXX(dinosaure): any MirageOS use GMT. *)
-        ; size= 10_000_000L (* 10M *) }
+    ns_update dkim server stack >|= R.failwith_error_msg >>= fun () ->
+    certificates disk >|= R.failwith_error_msg >>= fun certificates ->
+    let domain= Domain_name.host_exn domain in
+    Nec.fiber ~port:25 stack (Key_gen.destination ()) (private_key, dkim)
+      (Ptt.Relay_map.empty ~postmaster ~domain)
+      { Ptt.Logic.domain
+      ; ipv4= (Ipaddr.V4.Prefix.address (Key_gen.ipv4 ()))
+      ; tls= Tls.Config.server ~certificates ()
+      ; zone= Mrmime.Date.Zone.GMT (* XXX(dinosaure): any MirageOS use GMT. *)
+      ; size= 10_000_000L (* 10M *) }
 end
