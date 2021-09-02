@@ -122,7 +122,7 @@ module Make
     let server = Dkim.server_of_dkim ~key:private_key dkim in
     ns_update dkim server stack >|= R.failwith_error_msg >>= fun () ->
     certificates disk >|= R.failwith_error_msg >>= fun certificates ->
-    let domain= Domain_name.host_exn domain in
+    let domain = Domain_name.host_exn domain in
     Nec.fiber ~port:25 stack (Key_gen.destination ()) (private_key, dkim)
       (Ptt.Relay_map.empty ~postmaster ~domain)
       { Ptt.Logic.domain

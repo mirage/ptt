@@ -64,7 +64,7 @@ struct
         match m with
         | Mechanism.PLAIN -> (
           let stamp = Bytes.create 0x10 in
-          generate ~g:random stamp >>= fun () ->
+          generate ?g:random stamp >>= fun () ->
           let stamp = Bytes.unsafe_to_string stamp in
           let m =
             let open SSMTP in
@@ -101,7 +101,7 @@ struct
   let accept :
          Flow.t
       -> Resolver.t
-      -> Random.g
+      -> Random.g option
       -> 'k Digestif.hash
       -> 'k server
       -> (unit, error) result IO.t =

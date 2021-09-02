@@ -37,3 +37,9 @@
  (public_name ptt.nec)
  (modules nec)
  (libraries dkim-mirage mirage-random ptt.transmit))
+
+(library
+ (name ptt_irmin)
+ (public_name ptt.irmin)
+ (modules ptt_irmin)
+ (libraries mirage-kv ptt irmin))

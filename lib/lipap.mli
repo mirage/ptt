@@ -10,7 +10,7 @@ module Make
     -> port:int
     -> Stack.t
     -> Resolver.t
-    -> Random.g
+    -> Random.g option
     -> 'k Digestif.hash
     -> Ptt.Relay_map.t
     -> Ptt.Logic.info

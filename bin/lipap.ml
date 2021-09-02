@@ -84,7 +84,7 @@ let fiber ~domain map =
     ; Ptt.SMTP.size= 0x1000000L
     } in
   let resolver = Dns_client_lwt.create () in
-  Server.fiber ~port:4242 stackv4 resolver () Digestif.BLAKE2B map info
+  Server.fiber ~port:4242 stackv4 resolver None Digestif.BLAKE2B map info
     authenticator [Ptt.Mechanism.PLAIN]
 
 let romain_calascibetta =
