@@ -39,4 +39,6 @@ module Make (Flow : Mirage_flow.S) = struct
   let send flow payload p_off p_len =
     let cs = Cstruct.of_string payload ~off:p_off ~len:p_len in
     Flow.write flow.flow cs >>= failwith Flow.pp_write_error
+
+  let close {flow; _} = Flow.close flow
 end

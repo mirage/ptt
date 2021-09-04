@@ -22,6 +22,7 @@ module Value = struct
       | PP_221 -> Reply.Encoder.response (`PP_221 v) encoder
       | PP_235 -> Reply.Encoder.response (`Other (235, v)) encoder
       | PP_250 -> Reply.Encoder.response (`PP_250 v) encoder
+      | TP_334 -> Reply.Encoder.response (`Other (334, v)) encoder
       | TP_354 -> Reply.Encoder.response (`TP_354 v) encoder
       | TN_454 -> Reply.Encoder.response (`Other (454, v)) encoder
       | PN_503 -> Reply.Encoder.response (`PN_503 v) encoder

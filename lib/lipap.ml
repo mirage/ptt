@@ -39,12 +39,13 @@ struct
     Server.init ~port stack >>= fun service ->
     let handler flow =
       let ip, port = Stack.TCP.dst flow in
-      TLSFlow.server flow tls >>= fun v ->
       Lwt.catch
         (fun () ->
+          TLSFlow.server flow tls >>= fun v ->
           Submission.accept v resolver random hash conf_server
           >|= R.reword_error (R.msgf "%a" Submission.pp_error)
           >>= fun res ->
+          TLSFlow.close v >>= fun () ->
           Stack.TCP.close flow >>= fun () -> Lwt.return res)
         (function
           | Failure err -> Lwt.return (R.error_msg err)

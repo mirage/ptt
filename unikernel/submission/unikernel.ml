@@ -1,3 +1,5 @@
+let () = Printexc.record_backtrace true
+
 open Rresult
 open Lwt.Infix
 

@@ -69,7 +69,7 @@ struct
           let m =
             let open SSMTP in
             let open Monad in
-            send ctx Value.TP_354 [Base64.encode_string stamp] >>= fun () ->
+            send ctx Value.TP_334 [Base64.encode_string stamp] >>= fun () ->
             recv ctx Value.Payload in
           run flow m >>? fun v ->
           Logs.debug (fun m -> m "Got a payload while authentication: %S" v)

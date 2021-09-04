@@ -10,6 +10,7 @@ module Value = struct
   type pp_221 = string list
   type pp_235 = string list
   type pp_250 = string list
+  type tp_334 = string list
   type tp_354 = string list
   type tn_454 = string list
   type pn_503 = string list
@@ -36,6 +37,7 @@ module Value = struct
     | PP_221 : pp_221 send
     | PP_250 : pp_250 send
     | PP_235 : pp_235 send
+    | TP_334 : tp_334 send
     | TP_354 : tp_354 send
     | TN_454 : tn_454 send
     | PN_503 : pn_503 send
