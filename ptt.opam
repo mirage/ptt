@@ -58,7 +58,9 @@ build: ["dune" "build" "-p" name "-j" jobs]
 run-test: ["dune" "runtest" "-p" name "-j" jobs]
 dev-repo: "git+https://github.com/dinosaure/ptt.git"
 pin-depends: [
+  [ "mrmime.dev" "git+https://github.com/mirage/mrmime.git#39dc147e8f81d994d0ac2b78a46ccfc998d92022" ]
   [ "colombe.dev" "git+https://github.com/mirage/colombe.git#3706e30e2834719e2f567bc6e150dffee3032238" ]
+  [ "received.dev" "git+https://github.com/mirage/colombe.git#3706e30e2834719e2f567bc6e150dffee3032238" ]
   [ "sendmail.dev" "git+https://github.com/mirage/colombe.git#3706e30e2834719e2f567bc6e150dffee3032238" ]
   [ "sendmail-lwt.dev" "git+https://github.com/mirage/colombe.git#3706e30e2834719e2f567bc6e150dffee3032238" ]
   [ "dkim.dev" "git+https://github.com/dinosaure/ocaml-dkim.git#e14d1ffdde84cdf8737249b4744f105d59e10e1e" ]
