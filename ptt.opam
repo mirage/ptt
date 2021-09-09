@@ -76,4 +76,6 @@ pin-depends: [
   [ "ppx_irmin.dev" "git+https://github.com/mirage/irmin.git#ae15cc291ce4d6e77c130e1db41e3f92dae00e69" ]
   [ "repr.dev" "git+https://github.com/mirage/repr#0c0b7b76bd6531ce3d3adc341bf3df72046f5855" ]
   [ "ppx_repr.dev" "git+https://github.com/mirage/repr#0c0b7b76bd6531ce3d3adc341bf3df72046f5855" ]
+  [ "dns.dev" "git+https://github.com/mirage/ocaml-dns.git#eb8bac066cdc97e1a12bb1ccda854dd539092cf1" ]
+  [ "dns-client.dev" "git+https://github.com/mirage/ocaml-dns.git#eb8bac066cdc97e1a12bb1ccda854dd539092cf1" ]
 ]
