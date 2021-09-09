@@ -4,7 +4,7 @@ open Lwt.Infix
 let ( >>? ) = Lwt_result.bind
 
 module Store = Irmin_unix.Git.Mem.KV (Ptt_irmin)
-module Sync = Irmin.Sync (Store)
+module Sync = Irmin.Sync.Make (Store)
 
 let ssh_edn, ssh_protocol = Mimic.register ~name:"ssh" (module SSH)
 
@@ -50,8 +50,8 @@ let add remote local password targets =
   let v = {Ptt_irmin.targets; password} in
   let info () =
     let date = Int64.of_float (Unix.gettimeofday ())
-    and mesg = Fmt.str "New user %a added" Emile.pp_local local in
-    Irmin.Info.v ~date ~author:"ptt.adduser" mesg in
+    and message = Fmt.str "New user %a added" Emile.pp_local local in
+    Irmin.Info.Default.v ~author:"ptt.adduser" ~message date in
   Store.set ~info store [local_to_string local] v
   >|= R.reword_error (fun err -> `Set err)
   >>? fun _ -> Sync.push store remote >|= R.reword_error (fun err -> `Push err)

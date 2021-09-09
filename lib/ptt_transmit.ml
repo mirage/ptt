@@ -11,6 +11,10 @@ struct
   open Ptt_tuyau.Lwt_backend
   include Ptt_tuyau.Make (Stack)
 
+  let src = Logs.Src.create "ptt-tuyau"
+
+  module Log = (val Logs.src_log src)
+
   let local_to_forward_path ~domain:mx_domain local =
     let local =
       `Dot_string (List.map (function `Atom x -> x | `String x -> x) local)
@@ -48,7 +52,7 @@ struct
       Lwt_scheduler.inj res in
     next
 
-  let transmit ~info stack (key, queue, consumer) resolved =
+  let transmit ~info ~tls stack (key, queue, consumer) resolved =
     let producers, targets =
       List.fold_left
         (fun (producers, targets) target ->
@@ -99,10 +103,15 @@ struct
         let rec go = function
           | [] -> Lwt.return ()
           | {Ptt.Mxs.mx_ipaddr; _} :: rest -> (
-            sendmail ~info stack mx_ipaddr emitter stream recipients
+            sendmail ~info ~tls stack mx_ipaddr emitter stream recipients
             >>= function
             | Ok () -> Lwt.return ()
-            | Error _ -> go rest) in
+            | Error err ->
+              Log.err (fun m ->
+                  m "Impossible to send the given email to %a: %a." Domain.pp
+                    mx_domain pp_error err)
+              ; (* TODO(dinosaure): report the error to the sender. *)
+                go rest) in
         let sort =
           List.sort
             (fun {Ptt.Mxs.preference= a; _} {Ptt.Mxs.preference= b; _} ->

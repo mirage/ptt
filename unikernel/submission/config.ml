@@ -158,11 +158,21 @@ let certificate =
   let doc = Key.Arg.info ~doc:"The location of the TLS certificate." [ "certificate" ] in
   Key.(create "certificate" Arg.(required ~stage:`Both string doc))
 
+let key_fingerprint =
+  let doc = Key.Arg.info ~doc:"Authenticate TLS using public key fingerprint." [ "key-fingerprint" ] in
+  Key.(create "key-fingerprint" Arg.(opt (some string) None doc))
+
+let certificate_fingerprint =
+  let doc = Key.Arg.info ~doc:"Authenticate TLS using certificate fingerprint." [ "cert-fingerprint" ] in
+  Key.(create "cert-fingerprint" Arg.(opt (some string) None doc))
+
 let keys =
   Key.[ abstract domain
       ; abstract postmaster
       ; abstract remote
-      ; abstract destination ]
+      ; abstract destination
+      ; abstract key_fingerprint
+      ; abstract certificate_fingerprint ]
 
 let packages =
   [ package "randomconv"
@@ -174,6 +184,7 @@ let packages =
   ; package "dns-tsig"
   ; package "domain-name"
   ; package "art"
+  ; package "ca-certs-nss"
   ; package "dns-mirage" ]
 
 let submission =

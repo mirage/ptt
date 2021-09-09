@@ -63,24 +63,7 @@ struct
     let (`Initialized fiber) = Server.serve_when_ready ?stop ~handler service in
     fiber
 
-  let ( <+> ) s0 s1 =
-    let current = ref s0 in
-    let rec next () =
-      !current () >>= function
-      | Some _ as v -> Lwt.return v
-      | None ->
-        if !current == s0 then (
-          current := s1
-          ; next ())
-        else Lwt.return_none in
-    next
-
-  let to_lwt_stream stream () =
-    match stream () with
-    | Some str -> Lwt.return_some (str, 0, String.length str)
-    | None -> Lwt.return_none
-
-  let smtp_logic ~info stack resolver messaged (private_key, dkim) map =
+  let smtp_logic ~info ~tls stack resolver messaged (private_key, dkim) map =
     let rec go () =
       Signer.Md.await messaged >>= fun () ->
       Signer.Md.pop messaged >>= function
@@ -88,26 +71,23 @@ struct
       | Some (key, queue, consumer) ->
         let sign_and_transmit () =
           Dkim_mirage.sign ~key:private_key ~newline:Dkim.CRLF consumer dkim
-          >>= fun (dkim', consumer') ->
-          Signer.resolve_recipients ~domain:info.Ptt.SSMTP.domain resolver map
-            (List.map fst (Ptt.Messaged.recipients key))
-          >>= fun recipients ->
-          let dkim' =
-            to_lwt_stream
-            @@ Prettym.to_stream ~new_line:"\r\n" Dkim.Encoder.as_field dkim'
-          in
-          transmit ~info stack (key, queue, dkim' <+> consumer') recipients
-        in
+          >>= fun (_dkim', consumer') ->
+          Log.debug (fun m -> m "Incoming email signed.")
+          ; Signer.resolve_recipients ~domain:info.Ptt.SSMTP.domain resolver map
+              (List.map fst (Ptt.Messaged.recipients key))
+            >>= fun recipients ->
+            Log.debug (fun m -> m "Send the signed email to the destination.")
+            ; transmit ~info ~tls stack (key, queue, consumer') recipients in
         Lwt.async sign_and_transmit
         ; Lwt.pause () >>= go in
     go ()
 
-  let fiber ?stop ~port stack resolver (private_key, dkim) map info =
+  let fiber ?stop ~port ~tls stack resolver (private_key, dkim) map info =
     let conf_server = Signer.create ~info in
     let messaged = Signer.messaged conf_server in
     Lwt.join
       [
         smtp_signer_service ?stop ~port stack resolver conf_server
-      ; smtp_logic ~info stack resolver messaged (private_key, dkim) map
+      ; smtp_logic ~info ~tls stack resolver messaged (private_key, dkim) map
       ]
 end

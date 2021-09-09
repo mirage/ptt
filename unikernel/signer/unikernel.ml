@@ -28,6 +28,7 @@ module Make
   module Nec = Nec.Make (Random) (Time) (Mclock) (Pclock) (Resolver) (Stack)
   module DKIM = Dkim_mirage.Make (Random) (Time) (Mclock) (Pclock) (Stack)
   module DNS = Dns_mirage.Make (Stack)
+  module Nss = Ca_certs_nss.Make (Pclock)
 
   let private_rsa_key_from_seed seed =
     let g =
@@ -36,10 +37,15 @@ module Make
     Mirage_crypto_pk.Rsa.generate ~g ~bits:2048 ()
 
   let ns_check dkim server stack =
-    DKIM.server stack dkim >>= function
-    | Ok server' when Dkim.equal_server server server' -> Lwt.return `Already_registered
-    | Ok _ -> Lwt.return `Must_be_updated
-    | Error _ -> Lwt.return `Not_found
+    DKIM.server ~nameserver:(`Tcp, (Key_gen.dns_server (), Key_gen.dns_port ())) stack dkim >>= function
+    | Ok server' ->
+      Logs.info (fun m -> m "The DNS server already has a DKIM public key: %a (expected: %a)."
+        Dkim.pp_server server' Dkim.pp_server server) ;
+      if Dkim.equal_server server server'
+      then Lwt.return `Already_registered else Lwt.return `Must_be_updated
+    | Error _ ->
+      Logs.info (fun m -> m "The DNS server does not have the DKIM public key.") ;
+      Lwt.return `Not_found
 
   let ns_update dkim server stack =
     ns_check dkim server stack >>= function
@@ -94,6 +100,39 @@ module Make
     | Ok crts, Ok key -> Lwt.return_ok (`Single (crts, key))
     | _ -> Lwt.return_error (R.msgf "Invalid certificate or private key")
 
+  let time () = match Ptime.v (Pclock.now_d_ps ()) with
+    | v -> Some v | exception _ -> None
+
+  let parse_alg str = match String.lowercase_ascii str with
+    | "sha1" -> Ok `SHA1
+    | "sha256" -> Ok `SHA256
+    | _ -> R.error_msgf "Invalid hash algorithm: %S" str
+
+  let authenticator () = match Key_gen.key_fingerprint (), Key_gen.cert_fingerprint () with
+    | None, None -> Nss.authenticator ()
+    | Some str, _ ->
+      let res = match String.split_on_char ':' str with
+        | [ host; alg; fingerprint ] ->
+          let open Rresult in
+          Domain_name.of_string host >>= Domain_name.host >>= fun host ->
+          parse_alg alg >>= fun alg ->
+          Base64.decode ~pad:false fingerprint >>= fun fingerprint ->
+          R.ok (host, alg, fingerprint)
+        | _ -> R.error_msgf "Invalid key fingerprint." in
+      let (host, hash, fingerprint) = R.failwith_error_msg res in
+      R.ok @@ X509.Authenticator.server_key_fingerprint ~time ~hash ~fingerprints:[ host, Cstruct.of_string fingerprint ]
+    | None, Some str ->
+      let res = match String.split_on_char ':' str with
+        | [ host; alg; fingerprint ] ->
+          let open Rresult in
+          Domain_name.of_string host >>= Domain_name.host >>= fun host ->
+          parse_alg alg >>= fun alg ->
+          Base64.decode ~pad:false fingerprint >>= fun fingerprint ->
+          R.ok (host, alg, fingerprint)
+        | _ -> R.error_msgf "Invalid key fingerprint." in
+      let (host, hash, fingerprint) = R.failwith_error_msg res in
+      R.ok @@ X509.Authenticator.server_cert_fingerprint ~time ~hash ~fingerprints:[ host, Cstruct.of_string fingerprint ]
+
   let start _random _time _mclock _pclock disk stack =
     let fields = match Key_gen.fields () with
       | None -> None
@@ -120,10 +159,12 @@ module Make
       domain in
     let private_key = private_rsa_key_from_seed (Base64.decode_exn (Key_gen.private_key ())) in
     let server = Dkim.server_of_dkim ~key:private_key dkim in
+    let authenticator = R.failwith_error_msg (authenticator ()) in
+    let tls = Tls.Config.client ~authenticator () in
     ns_update dkim server stack >|= R.failwith_error_msg >>= fun () ->
     certificates disk >|= R.failwith_error_msg >>= fun certificates ->
     let domain = Domain_name.host_exn domain in
-    Nec.fiber ~port:25 stack (Key_gen.destination ()) (private_key, dkim)
+    Nec.fiber ~port:25 ~tls stack (Key_gen.destination ()) (private_key, dkim)
       (Ptt.Relay_map.empty ~postmaster ~domain)
       { Ptt.Logic.domain
       ; ipv4= (Ipaddr.V4.Prefix.address (Key_gen.ipv4 ()))

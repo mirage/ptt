@@ -8,6 +8,7 @@ module Make
   val fiber :
        ?stop:Lwt_switch.t
     -> port:int
+    -> tls:Tls.Config.client
     -> Stack.t
     -> Resolver.t
     -> Mirage_crypto_pk.Rsa.priv * Dkim.unsigned Dkim.dkim

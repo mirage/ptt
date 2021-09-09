@@ -1,1 +1,1 @@
-true: package(digestif.c)
+true: package(digestif.c), package(checkseum.c)

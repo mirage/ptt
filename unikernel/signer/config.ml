@@ -1,5 +1,30 @@
 open Mirage
 
+let docteur_solo5 (remote : string option Key.key) =
+  impl @@ object
+       inherit base_configurable
+       method ty = kv_ro
+       method name = Fmt.str "docteur-solo5-%a" Key.pp (Key.abstract remote)
+       method module_name = "Docteur_solo5.Fast"
+       method! keys = [ Key.abstract remote ]
+       method! packages = Key.pure [ package "docteur-solo5" ]
+       method! build info =
+         let ctx = Info.context info in
+         let remote = Option.get (Key.get ctx remote) in
+         Bos.OS.Cmd.run Bos.Cmd.(v "docteur.make" % (Fmt.str "%s" remote) % "disk.img")
+       method! configure _info =
+         let name = Key.name (Key.abstract remote) in
+         Hashtbl.add Mirage_impl_block.all_blocks name
+           { Mirage_impl_block.filename= name; number= 0; } ;
+         Ok ()
+       method! connect _info modname _ =
+         let name = Key.name (Key.abstract remote) in
+         Fmt.str {ocaml|let ( <.> ) f g = fun x -> f (g x) in
+                        let f = Rresult.R.(failwith_error_msg <.> reword_error (msgf "%%a" %s.pp_error)) in
+                        Lwt.map f (%s.connect %S)|ocaml}
+           modname modname name
+  end
+
 let fields =
   let doc = Key.Arg.info ~doc:"List of fields to sign (separated by a colon)." [ "fields" ] in
   Key.(create "fields" Arg.(opt (some string) None doc))
@@ -44,6 +69,18 @@ let postmaster =
   let doc = Key.Arg.info ~doc:"The postmaster of the SMTP service." [ "postmaster" ] in
   Key.(create "postmaster" Arg.(required string doc))
 
+let certificate =
+  let doc = Key.Arg.info ~doc:"The location of the TLS certificate." [ "certificate" ] in
+  Key.(create "certificate" Arg.(required ~stage:`Both string doc))
+
+let key_fingerprint =
+  let doc = Key.Arg.info ~doc:"Authenticate TLS using public key fingerprint." [ "key-fingerprint" ] in
+  Key.(create "key-fingerprint" Arg.(opt (some string) None doc))
+
+let certificate_fingerprint =
+  let doc = Key.Arg.info ~doc:"Authenticate TLS using certificate fingerprint." [ "cert-fingerprint" ] in
+  Key.(create "cert-fingerprint" Arg.(opt (some string) None doc))
+
 let keys =
   Key.[ abstract fields
       ; abstract dns_server
@@ -55,7 +92,9 @@ let keys =
       ; abstract timestamp 
       ; abstract expiration
       ; abstract private_key
-      ; abstract postmaster ]
+      ; abstract postmaster
+      ; abstract key_fingerprint
+      ; abstract certificate_fingerprint ]
 
 let packages =
   [ package "randomconv"
@@ -63,7 +102,8 @@ let packages =
   ; package "ptt"
   ; package "dns-tsig"
   ; package "domain-name"
-  ; package "dns-mirage" ]
+  ; package "dns-mirage"
+  ; package "ca-certs-nss" ]
 
 let signer =
   foreign ~keys ~packages "Unikernel.Make" @@
@@ -74,7 +114,7 @@ let time = default_time
 let mclock = default_monotonic_clock
 let pclock = default_posix_clock
 let stack = generic_stackv4v6 default_network
-let disk = generic_kv_ro "certificate"
+let disk = docteur_solo5 certificate
 
 let () =
   register "signer"

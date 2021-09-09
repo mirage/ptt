@@ -5,8 +5,9 @@ open Lwt.Infix
 
 let ( >>? ) = Lwt_result.bind
 
-module Store = Irmin_mirage_git.Mem.KV (Ptt_irmin)
-module Sync = Irmin.Sync (Store)
+module Maker = Irmin_mirage_git.KV (Irmin_git.Mem)
+module Store = Maker.Make (Ptt_irmin)
+module Sync = Irmin.Sync.Make (Store)
 
 let failwith_error_pull = function
   | Error (`Conflict err) -> Fmt.failwith "Conflict: %s" err
@@ -27,6 +28,8 @@ module Make
   (Stack : Mirage_stack.V4V6)
   (_ : sig end)
 = struct
+  module Nss = Ca_certs_nss.Make (Pclock)
+
   (* XXX(dinosaure): this is a fake resolver which enforce the [signer] to
    * transmit **any** emails to only one and unique SMTP server. *)
 
@@ -49,11 +52,11 @@ module Make
     Sync.pull store upstream `Set
     >|= failwith_error_pull
     >>= fun _ ->
-    Store.list store [] >>= fun values ->
+    Store.(list store (Schema.Path.v [])) >>= fun values ->
     let f () (name, k) = match Store.Tree.destruct k with
       | `Node _ -> Lwt.return_unit
       | `Contents _ ->
-        Store.get store [ name ] >>= fun { Ptt_irmin.password; _ } ->
+        Store.(get store (Schema.Path.v [ name ])) >>= fun { Ptt_irmin.password; _ } ->
         let local = Art.key name in
         Art.insert tree local password ; Lwt.return_unit in
     Lwt_list.fold_left_s f () values >>= fun () ->
@@ -80,6 +83,39 @@ module Make
     | Ok crts, Ok key -> Lwt.return_ok (`Single (crts, key))
     | _ -> Lwt.return_error (R.msgf "Invalid certificate or private key")
 
+  let time () = match Ptime.v (Pclock.now_d_ps ()) with
+    | v -> Some v | exception _ -> None
+
+  let parse_alg str = match String.lowercase_ascii str with
+    | "sha1" -> Ok `SHA1
+    | "sha256" -> Ok `SHA256
+    | _ -> R.error_msgf "Invalid hash algorithm: %S" str
+
+  let authenticator () = match Key_gen.key_fingerprint (), Key_gen.cert_fingerprint () with
+    | None, None -> Nss.authenticator ()
+    | Some str, _ ->
+      let res = match String.split_on_char ':' str with
+        | [ host; alg; fingerprint ] ->
+          let open Rresult in
+          Domain_name.of_string host >>= Domain_name.host >>= fun host ->
+          parse_alg alg >>= fun alg ->
+          Base64.decode ~pad:false fingerprint >>= fun fingerprint ->
+          R.ok (host, alg, fingerprint)
+        | _ -> R.error_msgf "Invalid key fingerprint." in
+      let (host, hash, fingerprint) = R.failwith_error_msg res in
+      R.ok @@ X509.Authenticator.server_key_fingerprint ~time ~hash ~fingerprints:[ host, Cstruct.of_string fingerprint ]
+    | None, Some str ->
+      let res = match String.split_on_char ':' str with
+        | [ host; alg; fingerprint ] ->
+          let open Rresult in
+          Domain_name.of_string host >>= Domain_name.host >>= fun host ->
+          parse_alg alg >>= fun alg ->
+          Base64.decode ~pad:false fingerprint >>= fun fingerprint ->
+          R.ok (host, alg, fingerprint)
+        | _ -> R.error_msgf "Invalid key fingerprint." in
+      let (host, hash, fingerprint) = R.failwith_error_msg res in
+      R.ok @@ X509.Authenticator.server_cert_fingerprint ~time ~hash ~fingerprints:[ host, Cstruct.of_string fingerprint ]
+
   let start _random _time _mclock _pclock disk stack ctx =
     let domain = R.failwith_error_msg (Domain_name.of_string (Key_gen.domain ())) in
     let domain = Domain_name.host_exn domain in
@@ -87,9 +123,11 @@ module Make
       let postmaster = Key_gen.postmaster () in
       R.failwith_error_msg (R.reword_error (fun _ -> R.msgf "Invalid postmaster email: %S" postmaster)
         (Emile.of_string postmaster)) in
+    let authenticator = R.failwith_error_msg (authenticator ()) in
+    let tls = Tls.Config.client ~authenticator () in
     certificates disk >|= R.failwith_error_msg >>= fun certificates ->
     authentication ctx (Key_gen.remote ()) >>= fun authentication ->
-    Lipap.fiber ~port:465 stack (Key_gen.destination ()) None Digestif.BLAKE2B
+    Lipap.fiber ~port:465 ~tls stack (Key_gen.destination ()) None Digestif.BLAKE2B
       (Ptt.Relay_map.empty ~postmaster ~domain)
       { Ptt.Logic.domain
       ; ipv4= (Ipaddr.V4.Prefix.address (Key_gen.ipv4 ()))

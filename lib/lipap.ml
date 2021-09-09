@@ -65,7 +65,7 @@ struct
     let (`Initialized fiber) = Server.serve_when_ready ?stop ~handler service in
     fiber
 
-  let smtp_logic ~info stack resolver messaged map =
+  let smtp_logic ~info ~tls stack resolver messaged map =
     let rec go () =
       Submission.Md.await messaged >>= fun () ->
       Submission.Md.pop messaged >>= function
@@ -75,18 +75,28 @@ struct
           Submission.resolve_recipients ~domain:info.Ptt.SSMTP.domain resolver
             map
             (List.map fst (Ptt.Messaged.recipients key))
-          >>= fun recipients -> transmit ~info stack v recipients in
+          >>= fun recipients -> transmit ~info ~tls stack v recipients in
         Lwt.async transmit
         ; Lwt.pause () >>= go in
     go ()
 
   let fiber
-      ?stop ~port stack resolver random hash map info authenticator mechanisms =
+      ?stop
+      ~port
+      ~tls
+      stack
+      resolver
+      random
+      hash
+      map
+      info
+      authenticator
+      mechanisms =
     let conf_server = Submission.create ~info ~authenticator mechanisms in
     let messaged = Submission.messaged conf_server in
     Lwt.join
       [
         smtp_submission_service ?stop ~port stack resolver random hash
-          conf_server; smtp_logic ~info stack resolver messaged map
+          conf_server; smtp_logic ~info ~tls stack resolver messaged map
       ]
 end
