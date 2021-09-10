@@ -30,7 +30,6 @@ struct
     let rec go () =
       consumer () >>= function
       | Some ((str, off, len) as v) ->
-        Fmt.epr "<~ %S\n%!" (String.sub str off len) ;
         List.iter (fun producer -> producer (Some v)) producers
         ; Lwt.pause () >>= go
       | None ->
