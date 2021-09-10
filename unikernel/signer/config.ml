@@ -1,30 +1,5 @@
 open Mirage
 
-let docteur_solo5 (remote : string option Key.key) =
-  impl @@ object
-       inherit base_configurable
-       method ty = kv_ro
-       method name = Fmt.str "docteur-solo5-%a" Key.pp (Key.abstract remote)
-       method module_name = "Docteur_solo5.Fast"
-       method! keys = [ Key.abstract remote ]
-       method! packages = Key.pure [ package "docteur-solo5" ]
-       method! build info =
-         let ctx = Info.context info in
-         let remote = Option.get (Key.get ctx remote) in
-         Bos.OS.Cmd.run Bos.Cmd.(v "docteur.make" % (Fmt.str "%s" remote) % "disk.img")
-       method! configure _info =
-         let name = Key.name (Key.abstract remote) in
-         Hashtbl.add Mirage_impl_block.all_blocks name
-           { Mirage_impl_block.filename= name; number= 0; } ;
-         Ok ()
-       method! connect _info modname _ =
-         let name = Key.name (Key.abstract remote) in
-         Fmt.str {ocaml|let ( <.> ) f g = fun x -> f (g x) in
-                        let f = Rresult.R.(failwith_error_msg <.> reword_error (msgf "%%a" %s.pp_error)) in
-                        Lwt.map f (%s.connect %S)|ocaml}
-           modname modname name
-  end
-
 let fields =
   let doc = Key.Arg.info ~doc:"List of fields to sign (separated by a colon)." [ "fields" ] in
   Key.(create "fields" Arg.(opt (some string) None doc))
@@ -81,6 +56,14 @@ let certificate_fingerprint =
   let doc = Key.Arg.info ~doc:"Authenticate TLS using certificate fingerprint." [ "cert-fingerprint" ] in
   Key.(create "cert-fingerprint" Arg.(opt (some string) None doc))
 
+let cert_der =
+  let doc = Key.Arg.info ~doc:"The certificate (DER x Base64)." [ "cert-der" ] in
+  Key.(create "cert-der" Arg.(required string doc))
+
+let cert_key =
+  let doc = Key.Arg.info ~doc:"The private key of the certificate (seed in Base64)." [ "cert-key" ] in
+  Key.(create "cert-key" Arg.(required string doc))
+
 let keys =
   Key.[ abstract fields
       ; abstract dns_server
@@ -94,7 +77,9 @@ let keys =
       ; abstract private_key
       ; abstract postmaster
       ; abstract key_fingerprint
-      ; abstract certificate_fingerprint ]
+      ; abstract certificate_fingerprint
+      ; abstract cert_der
+      ; abstract cert_key ]
 
 let packages =
   [ package "randomconv"
@@ -107,15 +92,14 @@ let packages =
 
 let signer =
   foreign ~keys ~packages "Unikernel.Make" @@
-  random @-> time @-> mclock @-> pclock @-> kv_ro @-> stackv4v6 @-> job
+  random @-> time @-> mclock @-> pclock @-> stackv4v6 @-> job
 
 let random = default_random
 let time = default_time
 let mclock = default_monotonic_clock
 let pclock = default_posix_clock
 let stack = generic_stackv4v6 default_network
-let disk = docteur_solo5 certificate
 
 let () =
   register "signer"
-    [ signer $ random $ time $ mclock $ pclock $ disk $ stack ]
+    [ signer $ random $ time $ mclock $ pclock $ stack ]

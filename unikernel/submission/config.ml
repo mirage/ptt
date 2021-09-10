@@ -103,31 +103,6 @@ let mimic_dns_conf =
 let mimic_dns_impl random mclock time stackv4v6 mimic_tcp =
   mimic_dns_conf $ random $ mclock $ time $ stackv4v6 $ mimic_tcp
 
-let docteur_solo5 (remote : string option Key.key) =
-  impl @@ object
-       inherit base_configurable
-       method ty = kv_ro
-       method name = Fmt.str "docteur-solo5-%a" Key.pp (Key.abstract remote)
-       method module_name = "Docteur_solo5.Fast"
-       method! keys = [ Key.abstract remote ]
-       method! packages = Key.pure [ package "docteur-solo5" ]
-       method! build info =
-         let ctx = Info.context info in
-         let remote = Option.get (Key.get ctx remote) in
-         Bos.OS.Cmd.run Bos.Cmd.(v "docteur.make" % (Fmt.str "%s" remote) % "disk.img")
-       method! configure _info =
-         let name = Key.name (Key.abstract remote) in
-         Hashtbl.add Mirage_impl_block.all_blocks name
-           { Mirage_impl_block.filename= name; number= 0; } ;
-         Ok ()
-       method! connect _info modname _ =
-         let name = Key.name (Key.abstract remote) in
-         Fmt.str {ocaml|let ( <.> ) f g = fun x -> f (g x) in
-                        let f = Rresult.R.(failwith_error_msg <.> reword_error (msgf "%%a" %s.pp_error)) in
-                        Lwt.map f (%s.connect %S)|ocaml}
-           modname modname name
-  end
-
 (* / *)
 
 let remote =
@@ -166,13 +141,23 @@ let certificate_fingerprint =
   let doc = Key.Arg.info ~doc:"Authenticate TLS using certificate fingerprint." [ "cert-fingerprint" ] in
   Key.(create "cert-fingerprint" Arg.(opt (some string) None doc))
 
+let cert_der =
+  let doc = Key.Arg.info ~doc:"The certificate (DER x Base64)." [ "cert-der" ] in
+  Key.(create "cert-der" Arg.(required string doc))
+
+let cert_key =
+  let doc = Key.Arg.info ~doc:"The private key of the certificate (seed in Base64)." [ "cert-key" ] in
+  Key.(create "cert-key" Arg.(required string doc))
+
 let keys =
   Key.[ abstract domain
       ; abstract postmaster
       ; abstract remote
       ; abstract destination
       ; abstract key_fingerprint
-      ; abstract certificate_fingerprint ]
+      ; abstract certificate_fingerprint
+      ; abstract cert_der
+      ; abstract cert_key ]
 
 let packages =
   [ package "randomconv"
@@ -189,7 +174,7 @@ let packages =
 
 let submission =
   foreign ~keys ~packages "Unikernel.Make" @@
-  random @-> time @-> mclock @-> pclock @-> kv_ro @-> stackv4v6 @-> mimic @-> job
+  random @-> time @-> mclock @-> pclock @-> stackv4v6 @-> mimic @-> job
 
 let mimic ~kind ~seed ~auth stackv4v6 random mclock time =
   let mtcp = mimic_tcp_impl stackv4v6 in
@@ -202,9 +187,8 @@ let time = default_time
 let mclock = default_monotonic_clock
 let pclock = default_posix_clock
 let stack = generic_stackv4v6 default_network
-let disk = docteur_solo5 certificate
 let mimic = mimic ~kind:`Rsa ~seed:ssh_seed ~auth:ssh_auth stack random mclock time
 
 let () =
   register "submission"
-    [ submission $ random $ time $ mclock $ pclock $ disk $ stack $ mimic ]
+    [ submission $ random $ time $ mclock $ pclock $ stack $ mimic ]

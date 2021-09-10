@@ -1,8 +1,28 @@
 #!/bin/bash
 
+CERT_FGP="osau.re:SHA256:MKXWSBC/CWPg2jsAatdBfZzf0gRSpEVGu997udkJa9A="
+CERT_KEY="MavegYDjFXYCwSaYPz1mRcQ1eP6DAge2CtbYy2d8xF0="
+
+CERT_DER=""
+CERT_DER+="MIIDhTCCAm2gAwIBAgIBADANBgkqhkiG9w0BAQsFADAtMQwwCgYDVQQDDANQVFQxHTAbBgNVBAMMFEVw"
+CERT_DER+="aGVtZXJhbCBDQSBmb3IgUFRUMB4XDTIxMDkwOTE3MzIwN1oXDTIyMDkwOTE3MzIwN1owLTEMMAoGA1UE"
+CERT_DER+="AwwDUFRUMR0wGwYDVQQDDBRFcGhlbWVyYWwgQ0EgZm9yIFBUVDCCASIwDQYJKoZIhvcNAQEBBQADggEP"
+CERT_DER+="ADCCAQoCggEBANLu4CpYjb3+UqXmhm+umB2kozh2kVGJL7WfmpTC5lJAfSBfZ+uv/rzAjjz3GVK8GOOn"
+CERT_DER+="xxrGnbayfJKiGdJRXEgAOIGqTuGKCv3HajgCdXcrOImsulomBIjD1BFUx0C1f5BXCC802in1EKnCtsPQ"
+CERT_DER+="LxB2MHdI0yOehcSGil0ed8tZU6nFCfjC0Q8Cgt/2GEOf7B4vUVRsf9hNzUZFpXCngHwgMKG8uCmzgi5z"
+CERT_DER+="ZXmB9YXs5HIbsesK60v9wF2ShbLbdDEIClN1qX/fKj0TDTmb1jTbpmnXqZoHZmE/EJxHrKG+IrSI2S58"
+CERT_DER+="Iyb5hFp2yrd6PGxpRepNfm2TCUlWkcHj4/kCAwEAAaOBrzCBrDAdBgNVHQ4EFgQUTmLPOCEYtNw670eO"
+CERT_DER+="lD7I/FqmTt0wDwYDVR0PAQH/BAUDAwfgADAVBgNVHREBAf8ECzAJggdvc2F1LnJlMAwGA1UdEwEB/wQC"
+CERT_DER+="MAAwVQYDVR0jBE4wTIAUTmLPOCEYtNw670eOlD7I/FqmTt2hMaQvMC0xDDAKBgNVBAMMA1BUVDEdMBsG"
+CERT_DER+="A1UEAwwURXBoZW1lcmFsIENBIGZvciBQVFSCAQAwDQYJKoZIhvcNAQELBQADggEBAHJZRP8ZfLzxvtaM"
+CERT_DER+="payfeDSzBRL7AFO7rVZxSMPBtL1uDGO4O8uL1F89s1hxSvpRhb2qTb7o0++qBueyL2KZf3fb3ZoXZABo"
+CERT_DER+="Lxpk2V1wbI7100dVD7Fx11zqOrRvf43p7ldbTAs2Cq6i88QIy6KUVTa2xfUcncQaMtpW9t8IAHheE5+p"
+CERT_DER+="t6vLuV5QcpBus1sCwB5xGT/QKm6XChKbtbXhh/x31QTWNkHxttJVHH01NJKe+SE841pXGyJcHPr4dWoL"
+CERT_DER+="qejykuDf+T2L+00A9Vnh8pcr8cSgGSxb8NgsRnXEMNmszYZxY4r5K288d4VAte6C9HZ+hfXAfutyClFf"
+CERT_DER+="RuDOsX4="
+
 albatross-client-local create relay relay.hvt \
 	--net=service:br1 \
-	--block=certificate:certificate-relay \
 	--arg="--ipv4=192.168.1.6/24" \
 	--arg="--ipv4-gateway=192.168.1.2" \
 	--arg="--remote git@192.168.1.2:smtp.git" \
@@ -10,4 +30,5 @@ albatross-client-local create relay relay.hvt \
 	--arg="--resolver tcp://192.168.1.7:53/" \
 	--arg="--domain osau.re" \
 	--arg="--postmaster hostmaster@osau.re" \
-	--arg="-l debug"
+	--arg="--cert-key=$CERT_KEY" \
+	--arg="--cert-der=$CERT_DER"

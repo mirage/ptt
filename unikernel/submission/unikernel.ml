@@ -24,7 +24,6 @@ module Make
   (Time : Mirage_time.S)
   (Mclock : Mirage_clock.MCLOCK)
   (Pclock : Mirage_clock.PCLOCK)
-  (Disk : Mirage_kv.RO)
   (Stack : Mirage_stack.V4V6)
   (_ : sig end)
 = struct
@@ -70,18 +69,15 @@ module Make
         (fun local v -> inj (authentication local v)) in
     Lwt.return authentication
 
-  let certificates disk =
-    Disk.get disk (Mirage_kv.Key.v "server.pem")
-    >|= R.reword_error (fun _ -> R.msgf "We need a TLS certificate (PEM format)")
-    >>? fun pem ->
-    Disk.get disk (Mirage_kv.Key.v "server.key")
-    >|= R.reword_error (fun _ -> R.msgf "We need the private key for the TLS certificate (PEM format)")
-    >>? fun key ->
-    let pem = Cstruct.of_string pem in
-    let key = Cstruct.of_string key in
-    match X509.Certificate.decode_pem_multiple pem, X509.Private_key.decode_pem key with
-    | Ok crts, Ok key -> Lwt.return_ok (`Single (crts, key))
-    | _ -> Lwt.return_error (R.msgf "Invalid certificate or private key")
+  let certificate () =
+    let open Rresult in
+    Base64.decode (Key_gen.cert_der ()) |> R.reword_error (fun _ -> R.msgf "Invalid DER certificate")
+    >>| Cstruct.of_string >>= X509.Certificate.decode_der >>= fun certificate ->
+    Base64.decode (Key_gen.cert_key ()) |> R.reword_error (fun _ -> R.msgf "Invalid private key")
+    >>| Cstruct.of_string >>= fun seed ->
+    let g = Mirage_crypto_rng.(create ~seed (module Fortuna)) in
+    let private_key = Mirage_crypto_pk.Rsa.generate ~g ~bits:2048 () in
+    R.ok (`Single ([ certificate ], `RSA private_key))
 
   let time () = match Ptime.v (Pclock.now_d_ps ()) with
     | v -> Some v | exception _ -> None
@@ -116,7 +112,7 @@ module Make
       let (host, hash, fingerprint) = R.failwith_error_msg res in
       R.ok @@ X509.Authenticator.server_cert_fingerprint ~time ~hash ~fingerprints:[ host, Cstruct.of_string fingerprint ]
 
-  let start _random _time _mclock _pclock disk stack ctx =
+  let start _random _time _mclock _pclock stack ctx =
     let domain = R.failwith_error_msg (Domain_name.of_string (Key_gen.domain ())) in
     let domain = Domain_name.host_exn domain in
     let postmaster =
@@ -125,7 +121,7 @@ module Make
         (Emile.of_string postmaster)) in
     let authenticator = R.failwith_error_msg (authenticator ()) in
     let tls = Tls.Config.client ~authenticator () in
-    certificates disk >|= R.failwith_error_msg >>= fun certificates ->
+    certificate () |> Lwt.return >|= R.failwith_error_msg >>= fun certificates ->
     authentication ctx (Key_gen.remote ()) >>= fun authentication ->
     Lipap.fiber ~port:465 ~tls stack (Key_gen.destination ()) None Digestif.BLAKE2B
       (Ptt.Relay_map.empty ~postmaster ~domain)

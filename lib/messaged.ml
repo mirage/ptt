@@ -108,6 +108,7 @@ struct
             ~len buf
           ; Ke.N.shift_exn queue len
           ; Mutex.unlock mutex
+          ; Fmt.epr "== %S\n%!" (Bytes.sub_string buf 0 len)
           ; return (Some (Bytes.unsafe_to_string buf, 0, len))) in
 
       let rec producer = function

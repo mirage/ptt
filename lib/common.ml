@@ -139,6 +139,7 @@ struct
         | "." -> producer None >>= fun () -> return (Ok ())
         | v ->
           let len = String.length v in
+          Fmt.epr "~> %S\n%!" v ;
           producer (Some (v ^ "\r\n", 0, len + 2)) >>= go (count + len + 2)
     in
     go 0 ()
