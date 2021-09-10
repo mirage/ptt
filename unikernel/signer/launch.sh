@@ -34,5 +34,4 @@ albatross-client-local create signer signer.hvt \
 	--arg="--postmaster hostmaster@osau.re" \
 	--arg="--cert-fingerprint=osau.re:SHA256:MKXWSBC/CWPg2jsAatdBfZzf0gRSpEVGu997udkJa9A=" \
 	--arg="--cert-key=$CERT_KEY" \
-	--arg="--cert-der=$CERT_DER" \
-	--arg="-l debug"
+	--arg="--cert-der=$CERT_DER"

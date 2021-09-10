@@ -29,7 +29,7 @@ struct
   let plug_consumer_to_producers consumer producers =
     let rec go () =
       consumer () >>= function
-      | Some ((str, off, len) as v) ->
+      | Some v ->
         List.iter (fun producer -> producer (Some v)) producers
         ; Lwt.pause () >>= go
       | None ->

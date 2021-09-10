@@ -88,8 +88,7 @@ struct
     if chunk <= 0 then
       Fmt.invalid_arg "stream_of_queue: chunk must be bigger than 0"
 
-    ; let buf = Bytes.create chunk in
-      let close = ref false in
+    ; let close = ref false in
       let mutex = Mutex.create () in
       let condition = Condition.create () in
 
@@ -100,15 +99,16 @@ struct
             Condition.wait condition mutex >>= wait
           else return () in
         wait () >>= fun () ->
-        let len = min (Ke.length queue) (Bytes.length buf) in
+        let len = min (Ke.length queue) chunk in
 
         if len = 0 && !close then (Mutex.unlock mutex ; return None)
-        else (
+        else
+          let buf = Bytes.create chunk in
           Ke.N.keep_exn queue ~blit:blit_to_bytes ~length:Bytes.length ~off:0
             ~len buf
           ; Ke.N.shift_exn queue len
           ; Mutex.unlock mutex
-          ; return (Some (Bytes.unsafe_to_string buf, 0, len))) in
+          ; return (Some (Bytes.unsafe_to_string buf, 0, len)) in
 
       let rec producer = function
         | None ->

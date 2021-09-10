@@ -260,7 +260,7 @@ let messaged_test_0 =
     let v = v () (* XXX(dinosaure): really create the stream. *) in
     let rec consume () =
       v () >>= function
-      | Some ((str, off, len) as chunk) -> producer (Some chunk) >>= consume
+      | Some chunk -> producer (Some chunk) >>= consume
       | None -> producer None in
     consume () in
   let contents = ref "" in
