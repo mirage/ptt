@@ -32,6 +32,18 @@ This is the usual design of an SMTP service **to be able to send an email**.
 The reception of an email does not exists - and it's not the purpose of `ptt`
 which does not (yet) implement IMAP.
 
+## How to use?
+
+`ptt` provides these unikernels and they can be deployed as a simple MirageOS:
+- as a simple executable (see `mirage configure -t unix`)
+- as a full operating system
+
+Currently, `ptt` is used as a full operating system with the `hvt` target. We
+deploy these _unikernels_ via KVM & Solo5. DNS resolver and primary DNS server
+are _unikernels_ too (see [robur.io][roburio] -- but, as far as we can say,
+this SMTP stack is usable with a simple DNS server (as far as it implements
+`nsupdate`).
+
 ## Experimental
 
 `ptt` is not yet stable or reliable but we currently try to deploy/use it
