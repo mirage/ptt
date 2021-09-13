@@ -32,4 +32,5 @@ albatross-client-local create submission submission.hvt \
 	--arg="--postmaster hostmaster@osau.re" \
 	--arg="--cert-fingerprint=osau.re:SHA256:C3wx1vJSWjE/4P6HeDc/qFwFws95GVo9iWdvM7zbtXM=" \
 	--arg="--cert-key=$CERT_KEY" \
-	--arg="--cert-der=$CERT_DER"
+	--arg="--cert-der=$CERT_DER" \
+	--arg="-l debug"

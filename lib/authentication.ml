@@ -28,7 +28,7 @@ let decode_plain_authentication ({return; _} as scheduler) hash ?stamp t v =
     char '\000' *> available >>= take >>= fun v2 -> return (v0, v1, v2) in
   match
     ( stamp
-    , Base64.decode v
+    , Base64.decode ~pad:false (* XXX(dinosaure): not really sure. *) v
       >>= (R.reword_error (fun _ -> `Msg "Invalid input")
           <.> Angstrom.parse_string ~consume:All parser) )
   with
@@ -37,7 +37,7 @@ let decode_plain_authentication ({return; _} as scheduler) hash ?stamp t v =
       match Angstrom.parse_string ~consume:All Emile.Parser.local_part v1 with
       | Ok username -> authenticate scheduler hash username v2 t
       | Error _ -> return (R.error_msgf "Invalid username: %S" v1)
-    else return (R.error_msgf "Invalid stamp")
+    else return (R.error_msgf "Invalid stamp (%S <> %S)" stamp v0)
   | None, Ok ("", v1, v2) -> (
     match Angstrom.parse_string ~consume:All Emile.Parser.local_part v1 with
     | Ok username -> authenticate scheduler hash username v2 t

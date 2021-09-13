@@ -66,13 +66,14 @@ struct
           let stamp = Bytes.create 0x10 in
           generate ?g:random stamp >>= fun () ->
           let stamp = Bytes.unsafe_to_string stamp in
+          Log.debug (fun m -> m "Generate the stamp %S." stamp) ;
           let m =
             let open SSMTP in
             let open Monad in
-            send ctx Value.TP_334 [Base64.encode_string stamp] >>= fun () ->
+            send ctx Value.TP_334 [Base64.encode_string ~pad:true stamp] >>= fun () ->
             recv ctx Value.Payload in
           run flow m >>? fun v ->
-          Logs.debug (fun m -> m "Got a payload while authentication: %S" v)
+          Log.debug (fun m -> m "Got a payload while authentication: %S" v)
           ; Authentication.decode_authentication scheduler hash
               (Authentication.PLAIN (Some stamp)) server.authenticator v
             |> Scheduler.prj

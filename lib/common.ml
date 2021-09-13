@@ -11,6 +11,9 @@ module Make
     (Resolver : RESOLVER with type 'a io = 'a IO.t)
     (Random : RANDOM with type 'a io = 'a IO.t) =
 struct
+  let src = Logs.Src.create "ptt-common"
+  module Log = (val (Logs.src_log src))
+
   type 'w resolver = {
       gethostbyname:
         'a.
@@ -34,16 +37,19 @@ struct
     let open Resolver in
     {gethostbyname; getmxbyname; extension}
 
-  let generate =
-    let open Random in
-    generate
-
   let return = IO.return
   let ( >>= ) = IO.bind
   let ( >|= ) x f = x >>= fun x -> return (f x)
 
   let ( >>? ) x f =
     x >>= function Ok x -> f x | Error err -> return (Error err)
+
+  let generate ?g buf =
+    let open Random in
+    generate ?g buf >>= fun () ->
+    for i = 0 to Bytes.length buf
+    do if Bytes.get buf i = '\000' then Bytes.set buf i '\001' done ;
+    return ()
 
   let scheduler =
     let open Scheduler in
@@ -89,6 +95,8 @@ struct
   let recipients_are_reachable ~ipv4 w recipients =
     let open Colombe in
     let fold m {Dns.Mx.mail_exchange; Dns.Mx.preference} =
+      Log.debug (fun m -> m "Try to resolve %a (MX) as a SMTP recipients box." 
+        Domain_name.pp mail_exchange) ;
       resolver.gethostbyname w mail_exchange >>= function
       | Ok mx_ipaddr ->
         let mx_ipaddr = Ipaddr.V4 mx_ipaddr in
@@ -106,8 +114,12 @@ struct
       | Forward_path.Domain (Domain.Domain v) :: r -> (
         try
           let domain = Domain_name.(host_exn <.> of_strings_exn) v in
+          Log.debug (fun m -> m "Try to resolve %a as a recipients box."
+            Domain_name.pp domain) ;
           resolver.getmxbyname w domain >>= function
           | Ok m ->
+            Log.debug (fun pf -> pf "Got %d SMTP recipients box from %a."
+              (Dns.Rr_map.Mx_set.cardinal m) Domain_name.pp domain) ;
             list_fold_left_s ~f:fold Mxs.empty (Dns.Rr_map.Mx_set.elements m)
             >>= fun s -> go (s :: acc) r
           | Error (`Msg _err) -> go acc r

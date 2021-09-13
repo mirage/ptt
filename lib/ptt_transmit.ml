@@ -103,6 +103,8 @@ struct
         let rec go = function
           | [] -> Lwt.return ()
           | {Ptt.Mxs.mx_ipaddr; _} :: rest -> (
+            Log.debug (fun m -> m "Transmit the incoming email to %a (%a)." Ipaddr.pp mx_ipaddr 
+              Domain.pp mx_domain) ;
             sendmail ~info ~tls stack mx_ipaddr emitter stream recipients
             >>= function
             | Ok () -> Lwt.return ()
