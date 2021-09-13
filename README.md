@@ -48,3 +48,8 @@ this SMTP stack is usable with a simple DNS server (as far as it implements
 
 `ptt` is not yet stable or reliable but we currently try to deploy/use it
 and improve it. Don't use it!
+
+## Credits
+
+`ptt` has received funding from the Next Generation Internet Initiative (NGI)
+within the framework of the DAPSI Project.
