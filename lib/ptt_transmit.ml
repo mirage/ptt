@@ -103,17 +103,18 @@ struct
         let rec go = function
           | [] -> Lwt.return ()
           | {Ptt.Mxs.mx_ipaddr; _} :: rest -> (
-            Log.debug (fun m -> m "Transmit the incoming email to %a (%a)." Ipaddr.pp mx_ipaddr 
-              Domain.pp mx_domain) ;
-            sendmail ~info ~tls stack mx_ipaddr emitter stream recipients
-            >>= function
-            | Ok () -> Lwt.return ()
-            | Error err ->
-              Log.err (fun m ->
-                  m "Impossible to send the given email to %a: %a." Domain.pp
-                    mx_domain pp_error err)
-              ; (* TODO(dinosaure): report the error to the sender. *)
-                go rest) in
+            Log.debug (fun m ->
+                m "Transmit the incoming email to %a (%a)." Ipaddr.pp mx_ipaddr
+                  Domain.pp mx_domain)
+            ; sendmail ~info ~tls stack mx_ipaddr emitter stream recipients
+              >>= function
+              | Ok () -> Lwt.return ()
+              | Error err ->
+                Log.err (fun m ->
+                    m "Impossible to send the given email to %a: %a." Domain.pp
+                      mx_domain pp_error err)
+                ; (* TODO(dinosaure): report the error to the sender. *)
+                  go rest) in
         let sort =
           List.sort
             (fun {Ptt.Mxs.preference= a; _} {Ptt.Mxs.preference= b; _} ->
