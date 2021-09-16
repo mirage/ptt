@@ -120,7 +120,7 @@ let authentication_test_0 =
                     >>= fun invalid_stamp ->
                     Alcotest.(check (result bool msg))
                       "no stamp"
-                      (Error (`Msg "Invalid stamp"))
+                      (Error (`Msg "Invalid stamp (\"stamp\" <> \"\")"))
                       invalid_stamp
                     ; auth Digestif.SHA1 plain_none auth0 "\000\000%s" "tutu"
                       >>= fun invalid_username ->
