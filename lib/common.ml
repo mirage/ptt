@@ -48,7 +48,7 @@ struct
   let generate ?g buf =
     let open Random in
     generate ?g buf >>= fun () ->
-    for i = 0 to Bytes.length buf do
+    for i = 0 to Bytes.length buf - 1 do
       if Bytes.get buf i = '\000' then Bytes.set buf i '\001'
     done
     ; return ()
