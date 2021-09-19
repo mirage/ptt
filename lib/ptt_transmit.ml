@@ -29,7 +29,8 @@ struct
   let plug_consumer_to_producers consumer producers =
     let rec go () =
       consumer () >>= function
-      | Some v ->
+      | Some ((str, off, len) as v) ->
+        Log.debug (fun m -> m "Send to recipients %S" (String.sub str off len));
         List.iter (fun producer -> producer (Some v)) producers
         ; Lwt.pause () >>= go
       | None ->
@@ -123,5 +124,6 @@ struct
         go sorted in
       List.map sendmail targets in
     Lwt.join (List.map (apply ()) (transmit :: sendmails)) >>= fun () ->
+    Log.debug (fun m -> m "Email sended!") ;
     Md.close queue
 end
