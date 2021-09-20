@@ -123,6 +123,8 @@ struct
         let sorted = Ptt.Mxs.elements mxs |> sort in
         go sorted in
       List.map sendmail targets in
+    Log.debug (fun m -> m "Start to send the incoming email to %d recipient(s)."
+      (List.length targets)) ;
     Lwt.join (List.map (apply ()) (transmit :: sendmails)) >>= fun () ->
     Log.debug (fun m -> m "Email sended!") ;
     Md.close queue

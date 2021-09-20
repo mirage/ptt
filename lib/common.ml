@@ -165,6 +165,11 @@ struct
     in
     go 0 ()
 
+  let pp_recipients ~domain ppf = function
+    | `All -> Fmt.pf ppf "*@%a" Domain_name.pp domain
+    | `Local vs -> Fmt.pf ppf "@[<hov>%a@]@%a" Fmt.(Dump.list Emile.pp_local) vs Domain_name.pp domain
+    | `Postmaster -> Fmt.pf ppf "Postmaster@%a" Domain_name.pp domain
+
   let resolve_recipients ~domain w relay_map recipients =
     let module Resolved = Map.Make (struct
       type t =
@@ -190,7 +195,10 @@ struct
     let unresolved, resolved = Relay_map.expand relay_map unresolved resolved in
     let fold resolved (domain, recipients) =
       resolver.getmxbyname w domain >>= function
-      | Error (`Msg _err) -> IO.return resolved
+      | Error (`Msg _err) ->
+        Log.err (fun m -> m "%a is unreachable (no MX information)."
+          (pp_recipients ~domain) recipients) ;
+        IO.return resolved
       | Ok mxs -> (
         let fold mxs {Dns.Mx.mail_exchange; Dns.Mx.preference} =
           resolver.gethostbyname w mail_exchange >>= function
@@ -201,7 +209,9 @@ struct
                   (v ~preference ~domain:mail_exchange (Ipaddr.V4 mx_ipaddr))
                   mxs) in
             IO.return mxs
-          | Error (`Msg _err) -> IO.return mxs in
+          | Error (`Msg _err) ->
+            Log.err (fun m -> m "%a as the SMTP service is unreachable." Domain_name.pp mail_exchange) ;
+            IO.return mxs in
         list_fold_left_s ~f:fold Mxs.empty (Dns.Rr_map.Mx_set.elements mxs)
         >>= fun mxs ->
         if Mxs.is_empty mxs then IO.return resolved

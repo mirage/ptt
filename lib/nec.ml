@@ -69,6 +69,7 @@ struct
       Signer.Md.pop messaged >>= function
       | None -> Lwt.pause () >>= go
       | Some (key, queue, consumer) ->
+        Log.debug (fun m -> m "Got an email.") ;
         let sign_and_transmit () =
           Dkim_mirage.sign ~key:private_key ~newline:Dkim.CRLF consumer dkim
           >>= fun (_dkim', consumer') ->
