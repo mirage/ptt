@@ -31,8 +31,7 @@ module Value_with_tls = Sendmail_with_starttls.Make_with_tls (Value)
 module Monad = struct
   type context = Sendmail_with_starttls.Context_with_tls.t
 
-  include
-    State.Scheduler (Sendmail_with_starttls.Context_with_tls) (Value_with_tls)
+  include State.Scheduler (Sendmail_with_starttls.Context_with_tls) (Value_with_tls)
 end
 
 type context = Sendmail_with_starttls.Context_with_tls.t
