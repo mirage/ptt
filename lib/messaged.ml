@@ -65,7 +65,8 @@ end
 module Make (Scheduler : SCHEDULER) (IO : IO with type 'a t = 'a Scheduler.s) =
 struct
   let src = Logs.Src.create "messaged"
-  module Log = (val (Logs.src_log src))
+
+  module Log = (val Logs.src_log src)
 
   type +'a s = 'a IO.t
 
@@ -107,21 +108,22 @@ struct
         if len = 0 && !close then (Mutex.unlock mutex ; return None)
         else
           let buf = Bytes.create chunk in
-          Log.debug (fun m -> m "Transmit %d byte(s) from the client." len) ;
-          Ke.N.keep_exn queue ~blit:blit_to_bytes ~length:Bytes.length ~off:0
-            ~len buf
+          Log.debug (fun m -> m "Transmit %d byte(s) from the client." len)
+          ; Ke.N.keep_exn queue ~blit:blit_to_bytes ~length:Bytes.length ~off:0
+              ~len buf
           ; Ke.N.shift_exn queue len
           ; Mutex.unlock mutex
           ; return (Some (Bytes.unsafe_to_string buf, 0, len)) in
 
       let rec producer = function
         | None ->
-          Log.debug (fun m -> m "The client finished the transmission of the message.") ;
-          Mutex.lock mutex >>= fun () ->
-          close := true
-          ; Condition.broadcast condition
-          ; Mutex.unlock mutex
-          ; return ()
+          Log.debug (fun m ->
+              m "The client finished the transmission of the message.")
+          ; Mutex.lock mutex >>= fun () ->
+            close := true
+            ; Condition.broadcast condition
+            ; Mutex.unlock mutex
+            ; return ()
         | Some (buf, off, len) as v -> (
           Mutex.lock mutex >>= fun () ->
           if !close then (Mutex.unlock mutex ; return ())

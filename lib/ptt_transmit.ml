@@ -30,8 +30,8 @@ struct
     let rec go () =
       consumer () >>= function
       | Some ((str, off, len) as v) ->
-        Log.debug (fun m -> m "Send to recipients %S" (String.sub str off len));
-        List.iter (fun producer -> producer (Some v)) producers
+        Log.debug (fun m -> m "Send to recipients %S" (String.sub str off len))
+        ; List.iter (fun producer -> producer (Some v)) producers
         ; Lwt.pause () >>= go
       | None ->
         List.iter (fun producer -> producer None) producers
@@ -109,7 +109,24 @@ struct
                   Domain.pp mx_domain)
             ; sendmail ~info ~tls stack mx_ipaddr emitter stream recipients
               >>= function
-              | Ok () -> Lwt.return ()
+              | Ok () -> Lwt.return_unit
+              | Error `STARTTLS_unavailable -> (
+                Log.warn (fun m ->
+                    m
+                      "The SMTP receiver %a does not implement STARTTLS, \
+                       restart in clear."
+                      Domain.pp mx_domain)
+                ; sendmail_without_tls ~info stack mx_ipaddr emitter stream
+                    recipients
+                  >>= function
+                  | Ok () -> Lwt.return_unit
+                  | Error err ->
+                    Log.err (fun m ->
+                        m
+                          "Impossible to send the given email to %a (without \
+                           STARTTLS): %a."
+                          Domain.pp mx_domain pp_error err)
+                    ; go rest)
               | Error err ->
                 Log.err (fun m ->
                     m "Impossible to send the given email to %a: %a." Domain.pp
@@ -123,9 +140,10 @@ struct
         let sorted = Ptt.Mxs.elements mxs |> sort in
         go sorted in
       List.map sendmail targets in
-    Log.debug (fun m -> m "Start to send the incoming email to %d recipient(s)."
-      (List.length targets)) ;
-    Lwt.join (List.map (apply ()) (transmit :: sendmails)) >>= fun () ->
-    Log.debug (fun m -> m "Email sended!") ;
-    Md.close queue
+    Log.debug (fun m ->
+        m "Start to send the incoming email to %d recipient(s)."
+          (List.length targets))
+    ; Lwt.join (List.map (apply ()) (transmit :: sendmails)) >>= fun () ->
+      Log.debug (fun m -> m "Email sended!")
+      ; Md.close queue
 end
