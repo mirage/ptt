@@ -50,6 +50,9 @@ depends: [
   "mirage-random" {>= "2.0.0"}
   "mirage-time" {>= "2.0.1"}
   "tls-mirage" {>= "0.12.8"}
+  "dns-mirage"
+  "dns-tsig"
+  "spf"
   "alcotest-lwt" {>= "1.2.3" & with-test}
   "ipaddr" {>= "5.0.1" & with-test}
   "mirage-crypto-rng" {>= "0.8.10" & with-test}
@@ -78,4 +81,7 @@ pin-depends: [
   [ "ppx_repr.dev" "git+https://github.com/mirage/repr#0c0b7b76bd6531ce3d3adc341bf3df72046f5855" ]
   [ "dns.dev" "git+https://github.com/mirage/ocaml-dns.git#eb8bac066cdc97e1a12bb1ccda854dd539092cf1" ]
   [ "dns-client.dev" "git+https://github.com/mirage/ocaml-dns.git#eb8bac066cdc97e1a12bb1ccda854dd539092cf1" ]
+  [ "dns-mirage.dev" "git+https://github.com/mirage/ocaml-dns.git#eb8bac066cdc97e1a12bb1ccda854dd539092cf1" ]
+  [ "dns-tsig.dev" "git+https://github.com/mirage/ocaml-dns.git#eb8bac066cdc97e1a12bb1ccda854dd539092cf1" ]
+  [ "spf.dev" "git+https://github.com/dinosaure/ocaml-spf.git#2ba31df91f620174073c6baf1d09edb3170c8b42" ]
 ]

@@ -178,11 +178,11 @@ module Make (Monad : MONAD) = struct
         let+ command = recv ctx Value.Any in
         match command with
         | Ok `Quit -> m_politely_close ctx
-        | Ok `Mail from ->
+        | Ok (`Mail from) ->
           let* () = send ctx Value.PP_250 ["Ok, buddy!"] in
           recipients ~from []
-        | Error err -> fail err
-          (* TODO(dinosaure): catch [`Invalid_reverse_path _]. *)
+        | Error err ->
+          fail err (* TODO(dinosaure): catch [`Invalid_reverse_path _]. *)
         | Ok `Reset ->
           incr reset
           ; send ctx Value.PP_250 ["Yes buddy!"] >>= fun () -> mail_from ()
