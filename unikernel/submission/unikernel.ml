@@ -29,7 +29,7 @@ module Make
 = struct
   module Nss = Ca_certs_nss.Make (Pclock)
 
-  (* XXX(dinosaure): this is a fake resolver which enforce the [signer] to
+  (* XXX(dinosaure): this is a fake resolver which enforce the [submission] to
    * transmit **any** emails to only one and unique SMTP server. *)
 
   module Resolver = struct
@@ -69,15 +69,36 @@ module Make
         (fun local v -> inj (authentication local v)) in
     Lwt.return authentication
 
-  let certificate () =
-    let open Rresult in
-    Base64.decode (Key_gen.cert_der ()) |> R.reword_error (fun _ -> R.msgf "Invalid DER certificate")
-    >>| Cstruct.of_string >>= X509.Certificate.decode_der >>= fun certificate ->
-    Base64.decode (Key_gen.cert_key ()) |> R.reword_error (fun _ -> R.msgf "Invalid private key")
-    >>| Cstruct.of_string >>= fun seed ->
-    let g = Mirage_crypto_rng.(create ~seed (module Fortuna)) in
-    let private_key = Mirage_crypto_pk.Rsa.generate ~g ~bits:2048 () in
-    R.ok (`Single ([ certificate ], `RSA private_key))
+  let certificate stackv4v6 = match Key_gen.cert_der (), Key_gen.cert_key (),
+                             Key_gen.hostname () with
+    | Some cert_der, Some cert_key, _ ->
+      let open Rresult in
+      Base64.decode (Key_gen.cert_der ()) |> R.reword_error (fun _ -> R.msgf "Invalid DER certificate")
+      >>| Cstruct.of_string >>= X509.Certificate.decode_der >>= fun certificate ->
+      Base64.decode (Key_gen.cert_key ()) |> R.reword_error (fun _ -> R.msgf "Invalid private key")
+      >>| Cstruct.of_string >>= fun seed ->
+      let g = Mirage_crypto_rng.(create ~seed (module Fortuna)) in
+      let private_key = Mirage_crypto_pk.Rsa.generate ~g ~bits:2048 () in
+      Lwt.return_ok (`Single ([ certificate ], `RSA private_key))
+    | _, _, Some hostname ->
+      Lwt.return Rresult.(Domain_name.of_string hostname >>= Domain_name.host) >>? fun hostname ->
+      Paf.init ~port:80 stackv4v6 >>= fun t ->
+      let service = Paf.http_service ~error_handler:ignore_error LE.request_handler in
+      let stop = Lwt_switch.create () in
+      let `Initialized th0 = Paf.serve ~stop service t in
+      let th1 =
+        LE.provision_certificate
+          ~production:(Key_gen.production ())
+          { LE.certificate_seed= Key_gen.cert_seed ()
+          ; LE.email= Option.bind (Key_gen.email ()) (R.to_option <.> Emile.to_string)
+          ; LE.seed= Key_gen.account_seed ()
+          ; LE.hostname= hostname }
+          (LE.ctx
+            ~gethostbyname:(fun dns domain_name -> DNS.gethostbyname dns domain_name >>? fun ipv4 -> Lwt.return_ok (Ipaddr.V4 ipv4))
+            ~authenticator:(R.failwith_error_msg (NSS.authenticator ()))
+            (DNS.create stackv4v6) stackv4v6) >>= fun res ->
+          Lwt_switch.turn_off stop >>= fun () -> Lwt.return res in
+      Lwt.both th0 th1 >>= fun ((), v) -> Lwt.return v
 
   let time () = match Ptime.v (Pclock.now_d_ps ()) with
     | v -> Some v | exception _ -> None

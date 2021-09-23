@@ -159,18 +159,37 @@ let keys =
       ; abstract cert_der
       ; abstract cert_key ]
 
+let pin_irmin = "git+https://github.com/mirage/irmin.git#ae15cc291ce4d6e77c130e1db41e3f92dae00e69"
+let pin_git = "git+https://github.com/mirage/ocaml-git.git#42cd15baa8cb6e82f003f62126cf18f42cce8c63"
+let pin_repr = "git+https://github.com/mirage/repr#0c0b7b76bd6531ce3d3adc341bf3df72046f5855"
+let pin_dns = "git+https://github.com/mirage/ocaml-dns.git#eb8bac066cdc97e1a12bb1ccda854dd539092cf1"
+
 let packages =
   [ package "randomconv"
   ; package "ptt" ~sublibs:[ "lipap" ]
   ; package "ptt" ~sublibs:[ "irmin" ]
-  ; package "irmin-mirage-git"
+  ; package ~pin:pin_irmin "irmin-mirage-git"
+  ; package ~pin:pin_irmin "irmin-mirage"
+  ; package ~pin:pin_git "git-mirage"
+  ; package ~pin:pin_git "git-paf"
+  ; package ~pin:pin_git "git-unix"
+  ; package ~pin:pin_git "git-cohttp"
+  ; package ~pin:pin_git "git-cohttp-unix"
+  ; package ~pin:pin_git "git"
   ; package "ptt"
-  ; package "irmin"
-  ; package "dns-tsig"
+  ; package ~pin:pin_irmin "irmin"
+  ; package ~pin:pin_irmin "irmin-git"
+  ; package ~pin:pin_irmin "ppx_irmin"
+  ; package ~pin:pin_repr "repr"
+  ; package ~pin:pin_repr "ppx_repr"
+  ; package ~pin:pin_dns "dns"
+  ; package ~pin:pin_dns "dns-client"
+  ; package ~pin:pin_dns "dns-mirage"
+  ; package ~pin:pin_dns "dns-tsig"
   ; package "domain-name"
   ; package "art"
   ; package "ca-certs-nss"
-  ; package "dns-mirage" ]
+  ; package ~pin:pin_dns "dns-mirage" ]
 
 let submission =
   foreign ~keys ~packages "Unikernel.Make" @@

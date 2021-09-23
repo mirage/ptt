@@ -108,11 +108,11 @@ let remote =
 
 let user =
   let doc = "The username." in
-  Arg.(required & pos 0 (some user) None & info [] ~doc)
+  Arg.(required & pos 0 (some user) None & info [] ~doc ~docv:"<username>")
 
 let password =
   let doc = "The password." in
-  Arg.(required & pos 1 (some password) None & info [] ~doc)
+  Arg.(required & pos 1 (some password) None & info [] ~doc ~docv:"<password>")
 
 let targets =
   let doc = "Targets of the email." in
