@@ -1,9 +1,8 @@
-let () = Printexc.record_backtrace true
-
 open Rresult
 open Lwt.Infix
 
 let ( >>? ) = Lwt_result.bind
+let ( <.> ) f g = fun x -> f (g x)
 
 module Maker = Irmin_mirage_git.KV (Irmin_git.Mem)
 module Store = Maker.Make (Ptt_irmin)
@@ -28,6 +27,8 @@ module Make
   (_ : sig end)
 = struct
   module Nss = Ca_certs_nss.Make (Pclock)
+  module Paf = Paf_mirage.Make (Time) (Stack)
+  module LE = LE.Make (Time) (Stack)
 
   (* XXX(dinosaure): this is a fake resolver which enforce the [submission] to
    * transmit **any** emails to only one and unique SMTP server. *)
@@ -69,18 +70,24 @@ module Make
         (fun local v -> inj (authentication local v)) in
     Lwt.return authentication
 
-  let certificate stackv4v6 = match Key_gen.cert_der (), Key_gen.cert_key (),
-                             Key_gen.hostname () with
+  let ignore_error _ ?request:_ _ _ = ()
+
+  let certificate stackv4v6 =
+    match Key_gen.cert_der (), Key_gen.cert_key (),
+          Key_gen.hostname () with
     | Some cert_der, Some cert_key, _ ->
       let open Rresult in
-      Base64.decode (Key_gen.cert_der ()) |> R.reword_error (fun _ -> R.msgf "Invalid DER certificate")
-      >>| Cstruct.of_string >>= X509.Certificate.decode_der >>= fun certificate ->
-      Base64.decode (Key_gen.cert_key ()) |> R.reword_error (fun _ -> R.msgf "Invalid private key")
-      >>| Cstruct.of_string >>= fun seed ->
+      let res =
+        Base64.decode cert_der |> R.reword_error (fun _ -> R.msgf "Invalid DER certificate")
+        >>| Cstruct.of_string >>= X509.Certificate.decode_der >>= fun certificate ->
+        Base64.decode cert_key |> R.reword_error (fun _ -> R.msgf "Invalid private key")
+        >>| Cstruct.of_string >>= fun seed -> R.ok (certificate, seed) in
+      Lwt.return res >>? fun (certificate, seed) ->
       let g = Mirage_crypto_rng.(create ~seed (module Fortuna)) in
       let private_key = Mirage_crypto_pk.Rsa.generate ~g ~bits:2048 () in
       Lwt.return_ok (`Single ([ certificate ], `RSA private_key))
     | _, _, Some hostname ->
+      let module DNS = Dns_client_mirage.Make (Random) (Time) (Mclock) (Stack) in
       Lwt.return Rresult.(Domain_name.of_string hostname >>= Domain_name.host) >>? fun hostname ->
       Paf.init ~port:80 stackv4v6 >>= fun t ->
       let service = Paf.http_service ~error_handler:ignore_error LE.request_handler in
@@ -90,12 +97,12 @@ module Make
         LE.provision_certificate
           ~production:(Key_gen.production ())
           { LE.certificate_seed= Key_gen.cert_seed ()
-          ; LE.email= Option.bind (Key_gen.email ()) (R.to_option <.> Emile.to_string)
+          ; LE.email= Option.bind (Key_gen.email ()) (R.to_option <.> Emile.of_string)
           ; LE.seed= Key_gen.account_seed ()
           ; LE.hostname= hostname }
           (LE.ctx
             ~gethostbyname:(fun dns domain_name -> DNS.gethostbyname dns domain_name >>? fun ipv4 -> Lwt.return_ok (Ipaddr.V4 ipv4))
-            ~authenticator:(R.failwith_error_msg (NSS.authenticator ()))
+            ~authenticator:(R.failwith_error_msg (Nss.authenticator ()))
             (DNS.create stackv4v6) stackv4v6) >>= fun res ->
           Lwt_switch.turn_off stop >>= fun () -> Lwt.return res in
       Lwt.both th0 th1 >>= fun ((), v) -> Lwt.return v
@@ -142,7 +149,7 @@ module Make
         (Emile.of_string postmaster)) in
     let authenticator = R.failwith_error_msg (authenticator ()) in
     let tls = Tls.Config.client ~authenticator () in
-    certificate () |> Lwt.return >|= R.failwith_error_msg >>= fun certificates ->
+    certificate stack >|= R.failwith_error_msg >>= fun certificates ->
     authentication ctx (Key_gen.remote ()) >>= fun authentication ->
     Lipap.fiber ~port:465 ~tls stack (Key_gen.destination ()) None Digestif.BLAKE2B
       (Ptt.Relay_map.empty ~postmaster ~domain)

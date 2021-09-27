@@ -42,7 +42,7 @@ struct
       Lwt.catch
         (fun () ->
           TLSFlow.server flow tls >>= fun v ->
-          Submission.accept v resolver random hash conf_server
+          Submission.accept ~ipaddr:ip v resolver random hash conf_server
           >|= R.reword_error (R.msgf "%a" Submission.pp_error)
           >>= fun res ->
           TLSFlow.close v >>= fun () ->

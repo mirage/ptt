@@ -11,6 +11,7 @@ open Lwt.Infix
 module Make (Flow : Mirage_flow.S) = struct
   type +'a io = 'a Lwt.t
   type t = {queue: (char, Bigarray.int8_unsigned_elt) Ke.Rke.t; flow: Flow.flow}
+  type flow = t
 
   let make flow = {flow; queue= Ke.Rke.create ~capacity:0x1000 Bigarray.char}
 
@@ -35,6 +36,9 @@ module Make (Flow : Mirage_flow.S) = struct
         ~len payload
       ; Ke.Rke.N.shift_exn flow.queue len
       ; Lwt.return len
+
+  let input flow payload p_off p_len =
+    recv flow payload p_off p_len
 
   let send flow payload p_off p_len =
     let cs = Cstruct.of_string payload ~off:p_off ~len:p_len in

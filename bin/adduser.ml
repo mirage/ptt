@@ -29,7 +29,7 @@ let local_to_string local =
     | `String v -> Fmt.pf ppf "%S" v in
   Fmt.str "%a" Fmt.(list ~sep:(always ".") pp) local
 
-let add remote local password targets =
+let add remote local password targets insecure =
   let tmp = R.failwith_error_msg (Bos.OS.Dir.tmp "git-%s") in
   let _ = R.failwith_error_msg (Bos.OS.Dir.create Fpath.(tmp / ".git")) in
   let _ =
@@ -47,7 +47,7 @@ let add remote local password targets =
   let remote = Store.remote ~ctx remote in
   Sync.pull store remote `Set >|= R.reword_error (fun err -> `Pull err)
   >>? fun _ ->
-  let v = {Ptt_irmin.targets; password} in
+  let v = {Ptt_irmin.targets; password; insecure} in
   let info () =
     let date = Int64.of_float (Unix.gettimeofday ())
     and message = Fmt.str "New user %a added" Emile.pp_local local in
@@ -61,8 +61,8 @@ let pp_sockaddr ppf = function
   | Unix.ADDR_INET (inet_addr, port) ->
     Fmt.pf ppf "%s:%d" (Unix.string_of_inet_addr inet_addr) port
 
-let run _ remote user pass targets =
-  match Lwt_main.run (add remote user pass targets) with
+let run _ remote user pass targets insecure =
+  match Lwt_main.run (add remote user pass targets insecure) with
   | Ok _ -> `Ok 0
   | Error (`Pull _err) -> `Error (false, Fmt.str "Unreachable Git repository.")
   | Error (`Set _err) ->
@@ -118,14 +118,18 @@ let targets =
   let doc = "Targets of the email." in
   Arg.(value & opt (list ~sep:',' target) [] & info ["t"; "targets"] ~doc)
 
+let insecure =
+  let doc = "Allow to send an email without STARTTLS." in
+  Arg.(value & flag & info ["insecure"] ~doc)
+
 let common_options = "COMMON OPTIONS"
 
 let verbosity =
-  let env = Arg.env_var "CONTRUNO_LOGS" in
+  let env = Arg.env_var "PTT_LOGS" in
   Logs_cli.level ~docs:common_options ~env ()
 
 let renderer =
-  let env = Arg.env_var "CONTRUNO_FMT" in
+  let env = Arg.env_var "PTT_FMT" in
   Fmt_cli.style_renderer ~docs:common_options ~env ()
 
 let reporter ppf =
@@ -151,7 +155,9 @@ let setup_logs = Term.(const setup_logs $ renderer $ verbosity)
 let cmd =
   let doc = "Add an user into the SMTP database." in
   let man = [] in
-  ( Term.(ret (const run $ setup_logs $ remote $ user $ password $ targets))
+  ( Term.(
+      ret
+        (const run $ setup_logs $ remote $ user $ password $ targets $ insecure))
   , Term.info "useradd" ~doc ~man )
 
 let () = Term.(exit_status @@ eval cmd)

@@ -19,7 +19,11 @@ let ( <.> ) f g x = f (g x)
 let mailbox =
   Irmin.Type.(map string) (R.get_ok <.> Emile.of_string) Emile.to_string
 
-type t = {targets: Emile.mailbox list; password: Digestif.BLAKE2B.t}
+type t = {
+    targets: Emile.mailbox list
+  ; password: Digestif.BLAKE2B.t
+  ; insecure: bool
+}
 
 let blake2b =
   Irmin.Type.(map string) Digestif.BLAKE2B.of_hex Digestif.BLAKE2B.to_hex
@@ -43,9 +47,11 @@ let local_of_key key =
 
 let t =
   let open Irmin.Type in
-  record "relay" (fun targets password -> {targets; password})
+  record "relay" (fun targets password insecure ->
+      {targets; password; insecure})
   |+ field "targets" (list mailbox) (fun t -> t.targets)
   |+ field "password" blake2b (fun t -> t.password)
+  |+ field "insecure" bool (fun t -> t.insecure)
   |> sealr
 
 let merge = Irmin.Merge.(option (idempotent t))

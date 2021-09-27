@@ -4,7 +4,7 @@
  (modules ptt aggregate authentication common logic mechanism messaged mxs
    relay_map relay sigs sMTP sSMTP submission)
  (libraries digestif mrmime colombe.emile domain-name dns sendmail.starttls
-   logs)
+   logs ipaddr)
  (preprocess future_syntax))
 
 (library
@@ -37,6 +37,12 @@
  (public_name ptt.nec)
  (modules nec)
  (libraries dkim-mirage mirage-random ptt.transmit))
+
+(library
+ (name hm)
+ (public_name ptt.hm)
+ (modules hm)
+ (libraries dns-client.mirage dmarc.lwt mirage-random ptt.transmit))
 
 (library
  (name ptt_irmin)

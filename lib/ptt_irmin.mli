@@ -1,4 +1,8 @@
-type t = {targets: Emile.mailbox list; password: Digestif.BLAKE2B.t}
+type t = {
+    targets: Emile.mailbox list
+  ; password: Digestif.BLAKE2B.t
+  ; insecure: bool
+}
 
 include Irmin.Contents.S with type t := t
 

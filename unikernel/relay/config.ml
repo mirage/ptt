@@ -148,7 +148,7 @@ let keys =
 let pin_irmin = "git+https://github.com/mirage/irmin.git#ae15cc291ce4d6e77c130e1db41e3f92dae00e69"
 let pin_git = "git+https://github.com/mirage/ocaml-git.git#42cd15baa8cb6e82f003f62126cf18f42cce8c63"
 let pin_repr = "git+https://github.com/mirage/repr#0c0b7b76bd6531ce3d3adc341bf3df72046f5855"
-let pin_dns = "git+https://github.com/mirage/ocaml-dns.git#eb8bac066cdc97e1a12bb1ccda854dd539092cf1"
+let pin_dns = "git+https://github.com/mirage/ocaml-dns.git#d99eff3429f60a5a9eef262f45b4e7d12ab251e5"
 
 let packages =
   [ package "randomconv"

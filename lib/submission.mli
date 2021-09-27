@@ -44,7 +44,8 @@ module Make
   val messaged : 'k server -> Md.t
 
   val accept :
-       Flow.t
+       ipaddr:Ipaddr.t
+    -> Flow.t
     -> Resolver.t
     -> Random.g option
     -> 'k Digestif.hash

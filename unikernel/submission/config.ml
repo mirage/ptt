@@ -143,11 +143,31 @@ let certificate_fingerprint =
 
 let cert_der =
   let doc = Key.Arg.info ~doc:"The certificate (DER x Base64)." [ "cert-der" ] in
-  Key.(create "cert-der" Arg.(required string doc))
+  Key.(create "cert-der" Arg.(opt (some string) None doc))
 
 let cert_key =
   let doc = Key.Arg.info ~doc:"The private key of the certificate (seed in Base64)." [ "cert-key" ] in
-  Key.(create "cert-key" Arg.(required string doc))
+  Key.(create "cert-key" Arg.(opt (some string) None doc))
+
+let hostname =
+  let doc = Key.Arg.info ~doc:"domain-name of the SMTP service." [ "hostname" ] in
+  Key.(create "hostname" Arg.(opt (some string) None doc))
+
+let production =
+  let doc = Key.Arg.info ~doc:"Generate a production certificate." [ "production" ] in
+  Key.(create "production" Arg.(opt bool false doc))
+
+let email =
+  let doc = Key.Arg.info ~doc:"Email associated to the let's encrypt certificate generation." [ "email" ] in
+  Key.(create "email" Arg.(opt (some string) None doc))
+
+let account_seed =
+  let doc = Key.Arg.info ~doc:"Let's encrypt account seed." [ "account-seed" ] in
+  Key.(create "account_seed" Arg.(opt (some string) None doc))
+
+let cert_seed =
+  let doc = Key.Arg.info ~doc:"Let's encrypt certificate seed." [ "cert-seed" ] in
+  Key.(create "cert_seed" Arg.(opt (some string) None doc))
 
 let keys =
   Key.[ abstract domain
@@ -157,12 +177,17 @@ let keys =
       ; abstract key_fingerprint
       ; abstract certificate_fingerprint
       ; abstract cert_der
-      ; abstract cert_key ]
+      ; abstract cert_key
+      ; abstract hostname
+      ; abstract production
+      ; abstract email
+      ; abstract account_seed
+      ; abstract cert_seed ]
 
 let pin_irmin = "git+https://github.com/mirage/irmin.git#ae15cc291ce4d6e77c130e1db41e3f92dae00e69"
 let pin_git = "git+https://github.com/mirage/ocaml-git.git#42cd15baa8cb6e82f003f62126cf18f42cce8c63"
 let pin_repr = "git+https://github.com/mirage/repr#0c0b7b76bd6531ce3d3adc341bf3df72046f5855"
-let pin_dns = "git+https://github.com/mirage/ocaml-dns.git#eb8bac066cdc97e1a12bb1ccda854dd539092cf1"
+let pin_dns = "git+https://github.com/mirage/ocaml-dns.git#d99eff3429f60a5a9eef262f45b4e7d12ab251e5"
 
 let packages =
   [ package "randomconv"
@@ -184,11 +209,15 @@ let packages =
   ; package ~pin:pin_repr "ppx_repr"
   ; package ~pin:pin_dns "dns"
   ; package ~pin:pin_dns "dns-client"
+  ; package ~pin:pin_dns ~sublibs:[ "mirage" ] "dns-client"
   ; package ~pin:pin_dns "dns-mirage"
   ; package ~pin:pin_dns "dns-tsig"
+  ; package "paf" ~sublibs:[ "mirage" ]
+  ; package "paf-le"
   ; package "domain-name"
   ; package "art"
   ; package "ca-certs-nss"
+  ; package "emile"
   ; package ~pin:pin_dns "dns-mirage" ]
 
 let submission =

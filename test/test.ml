@@ -255,7 +255,7 @@ let messaged_test_0 =
         ~domain_from:
           ((Rresult.R.get_ok <.> Colombe_emile.to_domain) domain_from)
         ~from:((Rresult.R.get_ok <.> Colombe_emile.to_reverse_path) from, [])
-        ~recipients:[] 0L in
+        ~recipients:[] ~ipaddr:(Ipaddr.V4 Ipaddr.V4.localhost) 0L in
     Md.push md key >>= fun producer ->
     let v = v () (* XXX(dinosaure): really create the stream. *) in
     let rec consume () =
@@ -309,7 +309,7 @@ let messaged_test_1 =
           ~domain_from:
             ((Rresult.R.get_ok <.> Colombe_emile.to_domain) domain_from)
           ~from:((Rresult.R.get_ok <.> Colombe_emile.to_reverse_path) from, [])
-          ~recipients:[] 0L in
+          ~recipients:[] ~ipaddr:(Ipaddr.V4 Ipaddr.V4.localhost) 0L in
       Md.push md key >>= fun producer ->
       let rec consume () =
         v () >>= function
@@ -802,7 +802,8 @@ let serve_when_ready ?stop ~handler socket =
        ; t in
      let rec loop () =
        Lwt_unix.accept socket >>= fun (flow, _) ->
-       Lwt.async (fun () -> handler flow)
+       let[@warning "-8"] Unix.ADDR_INET (inet_addr, _) = Lwt_unix.getpeername flow in
+       Lwt.async (fun () -> handler (Ipaddr_unix.of_inet_addr inet_addr) flow)
        ; Lwt.pause () >>= loop in
      let stop =
        Lwt.pick [switched_off; loop ()] >>= fun `Stopped ->
@@ -824,9 +825,9 @@ let make_submission_smtp_server ?stop ~port info =
     Lwt_unix.bind socket sockaddr >|= fun () ->
     Lwt_unix.listen socket 40
 
-    ; let handler flow =
+    ; let handler ipaddr flow =
         let open Lwt.Infix in
-        SMTP.accept flow () conf_server >>= fun res ->
+        SMTP.accept ~ipaddr flow () conf_server >>= fun res ->
         Lwt_unix.close flow >>= fun () ->
         match res with Ok _ -> Lwt.return () | Error _err -> Lwt.return () in
       serve_when_ready ?stop ~handler socket in
@@ -935,7 +936,7 @@ let full_test_0 =
     "inbox" contents
     [
       Ptt.Messaged.v ~domain_from:recoil ~from:(anil, [])
-        ~recipients:[romain_calascibetta, []] 0L
+        ~recipients:[romain_calascibetta, []] ~ipaddr:(Ipaddr.V4 Ipaddr.V4.localhost) 0L
     ]
   ; Lwt.return_unit
 
@@ -993,9 +994,9 @@ let full_test_1 =
     "inbox" contents
     [
       Ptt.Messaged.v ~domain_from:gazagnaire ~from:(thomas, [])
-        ~recipients:[romain_calascibetta, []] 1L
+        ~recipients:[romain_calascibetta, []] ~ipaddr:(Ipaddr.V4 Ipaddr.V4.localhost) 1L
     ; Ptt.Messaged.v ~domain_from:recoil ~from:(anil, [])
-        ~recipients:[romain_calascibetta, []] 0L
+        ~recipients:[romain_calascibetta, []] ~ipaddr:(Ipaddr.V4 Ipaddr.V4.localhost) 0L
     ]
   ; Lwt.return_unit
 

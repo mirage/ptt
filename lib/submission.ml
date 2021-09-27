@@ -102,13 +102,14 @@ struct
     go 1 mechanism
 
   let accept :
-         Flow.t
+         ipaddr:Ipaddr.t
+      -> Flow.t
       -> Resolver.t
       -> Random.g option
       -> 'k Digestif.hash
       -> 'k server
       -> (unit, error) result IO.t =
-   fun flow resolver random hash server ->
+   fun ~ipaddr flow resolver random hash server ->
     let ctx = Colombe.State.Context.make () in
     let m = SSMTP.m_submission_init ctx server.info server.mechanisms in
     run flow m >>? function
@@ -126,7 +127,7 @@ struct
           >>= function
           | true ->
             let id = succ server in
-            let key = Messaged.v ~domain_from ~from ~recipients id in
+            let key = Messaged.v ~domain_from ~from ~recipients ~ipaddr id in
             Md.push server.messaged key >>= fun producer ->
             let m = SSMTP.m_mail ctx in
             run flow m >>? fun () ->

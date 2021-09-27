@@ -10,13 +10,15 @@ type key = {
   ; from: from
   ; recipients: recipient list
   ; id: int64
+  ; ip: Ipaddr.t
 }
 
 let domain_from {domain_from; _} = domain_from
 let from {from; _} = from
 let recipients {recipients; _} = recipients
 let id {id; _} = id
-let v ~domain_from ~from ~recipients id = {domain_from; from; recipients; id}
+let ipaddr {ip; _} = ip
+let v ~domain_from ~from ~recipients ~ipaddr:ip id = {domain_from; from; recipients; id; ip}
 
 let pp ppf key =
   Fmt.pf ppf
@@ -45,6 +47,7 @@ let equal a b =
   && Reverse_path.equal (fst a.from) (fst b.from)
   && equal_recipients (List.map fst a.recipients) (List.map fst b.recipients)
   && a.id = b.id
+  && (Ipaddr.compare a.ip b.ip = 0)
 
 module type S = sig
   type +'a s

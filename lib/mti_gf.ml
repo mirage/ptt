@@ -40,7 +40,7 @@ struct
       let v = Flow.make flow in
       Lwt.catch
         (fun () ->
-          Relay.accept v resolver conf_server
+          Relay.accept ~ipaddr:ip v resolver conf_server
           >|= R.reword_error (R.msgf "%a" Relay.pp_error)
           >>= fun res ->
           Stack.TCP.close flow >>= fun () -> Lwt.return res)
