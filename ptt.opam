@@ -53,6 +53,9 @@ depends: [
   "dns-mirage"
   "dns-tsig"
   "spf"
+  "ipaddr"
+  "dmarc"
+  "ptime"
   "alcotest-lwt" {>= "1.2.3" & with-test}
   "ipaddr" {>= "5.0.1" & with-test}
   "mirage-crypto-rng" {>= "0.8.10" & with-test}
@@ -61,13 +64,13 @@ build: ["dune" "build" "-p" name "-j" jobs]
 run-test: ["dune" "runtest" "-p" name "-j" jobs]
 dev-repo: "git+https://github.com/dinosaure/ptt.git"
 pin-depends: [
-  [ "mrmime.dev" "git+https://github.com/mirage/mrmime.git#39dc147e8f81d994d0ac2b78a46ccfc998d92022" ]
+  [ "mrmime.dev" "git+https://github.com/mirage/mrmime.git#f55a772100e3058eb1ac0d82f2968b946aab4514" ]
   [ "colombe.dev" "git+https://github.com/mirage/colombe.git#044b4ce4cd069e9667fd40804c3e940b95077157" ]
   [ "received.dev" "git+https://github.com/mirage/colombe.git#044b4ce4cd069e9667fd40804c3e940b95077157" ]
   [ "sendmail.dev" "git+https://github.com/mirage/colombe.git#044b4ce4cd069e9667fd40804c3e940b95077157" ]
   [ "sendmail-lwt.dev" "git+https://github.com/mirage/colombe.git#044b4ce4cd069e9667fd40804c3e940b95077157" ]
-  [ "dkim.dev" "git+https://github.com/dinosaure/ocaml-dkim.git#59ab3cacb6fe45aed1731e8720af54ef3f03bb83" ]
-  [ "dkim-mirage.dev" "git+https://github.com/dinosaure/ocaml-dkim.git#59ab3cacb6fe45aed1731e8720af54ef3f03bb83" ]
+  [ "dkim.dev" "git+https://github.com/dinosaure/ocaml-dkim.git#88eb8ad3a1fc117afa6f1e90ed4650e6ee337415" ]
+  [ "dkim-mirage.dev" "git+https://github.com/dinosaure/ocaml-dkim.git#88eb8ad3a1fc117afa6f1e90ed4650e6ee337415" ]
   [ "irmin.dev" "git+https://github.com/mirage/irmin.git#ae15cc291ce4d6e77c130e1db41e3f92dae00e69" ]
   [ "irmin-git.dev" "git+https://github.com/mirage/irmin.git#ae15cc291ce4d6e77c130e1db41e3f92dae00e69" ]
   [ "irmin-http.dev" "git+https://github.com/mirage/irmin.git#ae15cc291ce4d6e77c130e1db41e3f92dae00e69" ]
@@ -85,5 +88,6 @@ pin-depends: [
   [ "dns-client.dev" "git+https://github.com/mirage/ocaml-dns.git#d99eff3429f60a5a9eef262f45b4e7d12ab251e5" ]
   [ "dns-mirage.dev" "git+https://github.com/mirage/ocaml-dns.git#d99eff3429f60a5a9eef262f45b4e7d12ab251e5" ]
   [ "dns-tsig.dev" "git+https://github.com/mirage/ocaml-dns.git#d99eff3429f60a5a9eef262f45b4e7d12ab251e5" ]
-  [ "spf.dev" "git+https://github.com/dinosaure/ocaml-spf.git#2ba31df91f620174073c6baf1d09edb3170c8b42" ]
+  [ "spf.dev" "git+https://github.com/dinosaure/ocaml-spf.git#b1c80233e0c9dc47acc7537df5ff0fd9b1c82538" ]
+  [ "dmarc.dev" "git+https://github.com/dinosaure/ocaml-dmarc.git#4bcbbb514e29d27afbab13566c1e918da374bcb6" ]
 ]
