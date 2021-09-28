@@ -89,6 +89,6 @@ pin-depends: [
   [ "dns-mirage.dev" "git+https://github.com/mirage/ocaml-dns.git#d99eff3429f60a5a9eef262f45b4e7d12ab251e5" ]
   [ "dns-tsig.dev" "git+https://github.com/mirage/ocaml-dns.git#d99eff3429f60a5a9eef262f45b4e7d12ab251e5" ]
   [ "spf.dev" "git+https://github.com/dinosaure/ocaml-spf.git#b1c80233e0c9dc47acc7537df5ff0fd9b1c82538" ]
-  [ "dmarc.dev" "git+https://github.com/dinosaure/ocaml-dmarc.git#4bcbbb514e29d27afbab13566c1e918da374bcb6" ]
-  [ "public-suffix.dev" "git+https://github.com/dinosaure/ocaml-dmarc.git#4bcbbb514e29d27afbab13566c1e918da374bcb6" ]
+  [ "dmarc.dev" "git+https://github.com/dinosaure/ocaml-dmarc.git#8318a109034dc61e0e8292f8c35a02899908761e" ]
+  [ "public-suffix.dev" "git+https://github.com/dinosaure/ocaml-dmarc.git#8318a109034dc61e0e8292f8c35a02899908761e" ]
 ]
