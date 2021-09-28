@@ -53,16 +53,44 @@ struct
     | `Error `Too_many_tries -> Fmt.pf ppf "Too many tries"
     | `Too_big_data -> Fmt.pf ppf "Too big data"
 
-  let authentication ctx ~domain_from flow random hash server mechanism =
-    let rec go limit m =
+  let authentication ctx ~domain_from flow random hash server ?payload mechanism
+      =
+    let rec go limit ?payload m =
       if limit >= 3 then
         let e = `Too_many_tries in
         let m =
           SSMTP.m_properly_close_and_fail ctx ~message:"Too many tries" e in
         run flow m
       else
-        match m with
-        | Mechanism.PLAIN -> (
+        match m, payload with
+        | Mechanism.PLAIN, Some v -> (
+          Authentication.decode_authentication scheduler hash
+            (Authentication.PLAIN None) server.authenticator v
+          |> Scheduler.prj
+          >>= function
+          | Ok true ->
+            let m = SSMTP.(Monad.send ctx Value.PP_235 ["Accepted, buddy!"]) in
+            run flow m >>? fun () -> IO.return (Ok `Authenticated)
+          | (Error _ | Ok false) as res -> (
+            let () =
+              match res with
+              | Error (`Msg err) ->
+                Log.err (fun m -> m "Got an authentication error: %s" err)
+              | _ -> () in
+            let m =
+              let open SSMTP in
+              let open Monad in
+              let* () = send ctx Value.PN_535 ["Bad authentication, buddy!"] in
+              SSMTP.m_submission ctx ~domain_from server.mechanisms in
+            run flow m >>? function
+            | `Quit -> IO.return (Ok `Quit)
+            | `Authentication (_domain_from, m) ->
+              (* assert (_domain_from = domain_from) ; *)
+              go (limit + 1) m
+            | `Authentication_with_payload (_domain_from, m, payload) ->
+              (* assert (_domain_from = domain_from) ; *)
+              go (limit + 1) ~payload m))
+        | Mechanism.PLAIN, None -> (
           let stamp = Bytes.create 0x10 in
           generate ?g:random stamp >>= fun () ->
           let stamp = Bytes.unsafe_to_string stamp in
@@ -98,8 +126,15 @@ struct
                 | `Quit -> IO.return (Ok `Quit)
                 | `Authentication (_domain_from, m) ->
                   (* assert (_domain_from = domain_from) ; *)
-                  go (limit + 1) m)) in
-    go 1 mechanism
+                  go (limit + 1) m
+                | `Authentication_with_payload (_domain_from, m, payload) ->
+                  (* assert (_domain_from = domain_from) ; *)
+                  go (limit + 1) ~payload m)) in
+    go 1 ?payload mechanism
+
+  type authentication =
+    [ `Authentication_with_payload of Colombe.Domain.t * Mechanism.t * string
+    | `Authentication of Colombe.Domain.t * Mechanism.t ]
 
   let accept :
          ipaddr:Ipaddr.t
@@ -114,8 +149,14 @@ struct
     let m = SSMTP.m_submission_init ctx server.info server.mechanisms in
     run flow m >>? function
     | `Quit -> IO.return (Ok ())
-    | `Authentication (domain_from, m) -> (
-      authentication ctx ~domain_from flow random hash server m >>? function
+    | #authentication as auth -> (
+      let domain_from, m, payload =
+        match auth with
+        | `Authentication_with_payload (domain_from, m, v) ->
+          domain_from, m, Some v
+        | `Authentication (domain_from, m) -> domain_from, m, None in
+      authentication ctx ~domain_from flow random hash server ?payload m
+      >>? function
       | `Quit -> IO.return (Ok ())
       | `Authenticated -> (
         let m = SSMTP.m_relay ctx ~domain_from in

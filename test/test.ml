@@ -666,7 +666,8 @@ let smtp_test_6 =
     Alcotest.(check unit) "empty stream" (check ()) ()
     ; Alcotest.(check pass) "quit" () ()
     ; Lwt.return_unit
-  | Ok (`Authentication _) -> Alcotest.failf "Unexpected authentication"
+  | Ok (`Authentication _ | `Authentication_with_payload _) ->
+    Alcotest.failf "Unexpected authentication"
   | Ok (`Submission _) -> Alcotest.failf "Unexpected submission"
   | Error (`Error err) ->
     Alcotest.failf "Unexpected protocol error: %a" Ptt.SSMTP.pp_error err
@@ -693,7 +694,7 @@ let smtp_test_7 =
   let open Lwt.Infix in
   run_state (Ptt.SSMTP.m_submission_init ctx info [Ptt.Mechanism.PLAIN]) rdwr
   >>= function
-  | Ok (`Authentication (v, m)) ->
+  | Ok (`Authentication (v, m) | `Authentication_with_payload (v, m, _)) ->
     let gmail =
       let open Mrmime.Mailbox in
       Domain.(v domain [a "gmail"; a "com"]) in
