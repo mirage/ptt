@@ -48,7 +48,12 @@ struct
     in
     run flow m
 
-  let accept : ipaddr:Ipaddr.t -> Flow.t -> Resolver.t -> server -> (unit, error) result IO.t =
+  let accept :
+         ipaddr:Ipaddr.t
+      -> Flow.t
+      -> Resolver.t
+      -> server
+      -> (unit, error) result IO.t =
    fun ~ipaddr flow resolver server ->
     let ctx = Sendmail_with_starttls.Context_with_tls.make () in
     let m = SMTP.m_relay_init ctx server.info in

@@ -110,7 +110,8 @@ struct
             ; sendmail ~info ~tls stack mx_ipaddr emitter stream recipients
               >>= function
               | Ok () -> Lwt.return_unit
-              | Error `STARTTLS_unavailable -> (
+              | Error `STARTTLS_unavailable
+              (* TODO(dinosaure): when [insecure]. *) -> (
                 Log.warn (fun m ->
                     m
                       "The SMTP receiver %a does not implement STARTTLS, \

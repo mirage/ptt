@@ -37,8 +37,7 @@ module Make (Flow : Mirage_flow.S) = struct
       ; Ke.Rke.N.shift_exn flow.queue len
       ; Lwt.return len
 
-  let input flow payload p_off p_len =
-    recv flow payload p_off p_len
+  let input flow payload p_off p_len = recv flow payload p_off p_len
 
   let send flow payload p_off p_len =
     let cs = Cstruct.of_string payload ~off:p_off ~len:p_len in

@@ -802,7 +802,8 @@ let serve_when_ready ?stop ~handler socket =
        ; t in
      let rec loop () =
        Lwt_unix.accept socket >>= fun (flow, _) ->
-       let[@warning "-8"] Unix.ADDR_INET (inet_addr, _) = Lwt_unix.getpeername flow in
+       let[@warning "-8"] (Unix.ADDR_INET (inet_addr, _)) =
+         Lwt_unix.getpeername flow in
        Lwt.async (fun () -> handler (Ipaddr_unix.of_inet_addr inet_addr) flow)
        ; Lwt.pause () >>= loop in
      let stop =
@@ -936,7 +937,8 @@ let full_test_0 =
     "inbox" contents
     [
       Ptt.Messaged.v ~domain_from:recoil ~from:(anil, [])
-        ~recipients:[romain_calascibetta, []] ~ipaddr:(Ipaddr.V4 Ipaddr.V4.localhost) 0L
+        ~recipients:[romain_calascibetta, []]
+        ~ipaddr:(Ipaddr.V4 Ipaddr.V4.localhost) 0L
     ]
   ; Lwt.return_unit
 
@@ -994,9 +996,11 @@ let full_test_1 =
     "inbox" contents
     [
       Ptt.Messaged.v ~domain_from:gazagnaire ~from:(thomas, [])
-        ~recipients:[romain_calascibetta, []] ~ipaddr:(Ipaddr.V4 Ipaddr.V4.localhost) 1L
+        ~recipients:[romain_calascibetta, []]
+        ~ipaddr:(Ipaddr.V4 Ipaddr.V4.localhost) 1L
     ; Ptt.Messaged.v ~domain_from:recoil ~from:(anil, [])
-        ~recipients:[romain_calascibetta, []] ~ipaddr:(Ipaddr.V4 Ipaddr.V4.localhost) 0L
+        ~recipients:[romain_calascibetta, []]
+        ~ipaddr:(Ipaddr.V4 Ipaddr.V4.localhost) 0L
     ]
   ; Lwt.return_unit
 

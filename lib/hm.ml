@@ -26,8 +26,7 @@ struct
       | `No_data of [ `raw ] Domain_name.t * Dns.Soa.t
       | `No_domain of [ `raw ] Domain_name.t * Dns.Soa.t ]
 
-    let getrrecord dns key domain_name =
-      get_resource_record dns key domain_name
+    let getrrecord dns key domain_name = get_resource_record dns key domain_name
   end
 
   module Random = struct
@@ -77,7 +76,8 @@ struct
     let (`Initialized fiber) = Server.serve_when_ready ?stop ~handler service in
     fiber
 
-  let epoch () = Int64.of_float (Ptime.to_float_s (Ptime.v (Pclock.now_d_ps ())))
+  let epoch () =
+    Int64.of_float (Ptime.to_float_s (Ptime.v (Pclock.now_d_ps ())))
 
   let smtp_logic ~info:_ ~tls:_ stack _resolver messaged _map =
     let dns = Dns.create stack in
@@ -90,16 +90,14 @@ struct
         ; let verify_and_transmit () =
             let sender, _ = Ptt.Messaged.from key in
             let ctx =
-              Spf.empty
-              |> Spf.with_ip (Ptt.Messaged.ipaddr key)
-              |> fun ctx -> Option.fold
-                ~none:ctx
-                ~some:(fun sender -> Spf.with_sender (`MAILFROM sender) ctx) sender in
-            DMARC.verify ~newline:Dmarc.CRLF
-              ~ctx ~epoch dns consumer >>= function
+              Spf.empty |> Spf.with_ip (Ptt.Messaged.ipaddr key) |> fun ctx ->
+              Option.fold ~none:ctx
+                ~some:(fun sender -> Spf.with_sender (`MAILFROM sender) ctx)
+                sender in
+            DMARC.verify ~newline:Dmarc.CRLF ~ctx ~epoch dns consumer
+            >>= function
             | Ok _ -> assert false
-            | Error _ -> assert false
-          in
+            | Error _ -> assert false in
           Lwt.async verify_and_transmit
           ; Lwt.pause () >>= go in
     go ()

@@ -14,7 +14,12 @@ val pp : key Fmt.t
 val equal : key -> key -> bool
 
 val v :
-  domain_from:Domain.t -> from:from -> recipients:recipient list -> ipaddr:Ipaddr.t -> int64 -> key
+     domain_from:Domain.t
+  -> from:from
+  -> recipients:recipient list
+  -> ipaddr:Ipaddr.t
+  -> int64
+  -> key
 
 module type S = sig
   type +'a s
