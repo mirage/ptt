@@ -155,13 +155,17 @@ struct
   let receive_mail ?(limit = 0x100000) flow ctx m producer =
     let rec go count () =
       if count >= limit then return (Error `Too_big_data)
-      else
-        run flow (m ctx) >>? function
-        | ".." -> producer dot >>= go (count + 3)
-        | "." -> producer None >>= fun () -> return (Ok ())
-        | v ->
-          let len = String.length v in
-          producer (Some (v ^ "\r\n", 0, len + 2)) >>= go (count + len + 2)
+      else (
+        Log.debug (fun m -> m "Start to read a line of the incoming email.")
+        ; run flow (m ctx) >>? function
+          | ".." -> producer dot >>= go (count + 3)
+          | "." ->
+            Log.debug (fun m -> m "End of email.")
+            ; producer None >>= fun () -> return (Ok ())
+          | v ->
+            Log.debug (fun m -> m "Receive %S.\n%!" v)
+            ; let len = String.length v in
+              producer (Some (v ^ "\r\n", 0, len + 2)) >>= go (count + len + 2))
     in
     go 0 ()
 

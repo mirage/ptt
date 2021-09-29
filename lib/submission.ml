@@ -172,14 +172,15 @@ struct
             Md.push server.messaged key >>= fun producer ->
             let m = SSMTP.m_mail ctx in
             run flow m >>? fun () ->
-            receive_mail
-              ~limit:(Int64.to_int server.info.size)
-              flow ctx
-              SSMTP.(fun ctx -> Monad.recv ctx Value.Payload)
-              producer
-            >>? fun () ->
-            let m = SSMTP.m_end ctx in
-            run flow m >>? fun `Quit -> IO.return (Ok ())
+            Log.debug (fun m -> m "Start to receive the incoming email.")
+            ; receive_mail
+                ~limit:(Int64.to_int server.info.size)
+                flow ctx
+                SSMTP.(fun ctx -> Monad.recv ctx Value.Payload)
+                producer
+              >>? fun () ->
+              let m = SSMTP.m_end ctx in
+              run flow m >>? fun `Quit -> IO.return (Ok ())
           | false ->
             let e = `Invalid_recipients in
             let m =
