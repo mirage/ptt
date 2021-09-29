@@ -158,7 +158,9 @@ struct
       else (
         Log.debug (fun m -> m "Start to read a line of the incoming email.")
         ; run flow (m ctx) >>? function
-          | ".." -> producer dot >>= go (count + 3)
+          | ".." ->
+            Log.debug (fun m -> m "Received a double dot.")
+            ; producer dot >>= go (count + 3)
           | "." ->
             Log.debug (fun m -> m "End of email.")
             ; producer None >>= fun () -> return (Ok ())

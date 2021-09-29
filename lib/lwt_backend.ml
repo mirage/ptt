@@ -31,6 +31,7 @@ module Lwt_io = struct
 
   let bind = Lwt.bind
   let return = Lwt.return
+  let pause = Lwt.pause
 end
 
 let lwt =
