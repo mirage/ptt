@@ -80,6 +80,11 @@ module type MONAD = sig
     -> ('a -> ('b, 'err) Colombe.State.t)
     -> ('b, 'err) Colombe.State.t
 
+  val ( let+ ) :
+       ('a, 'err) Colombe.State.t
+    -> (('a, 'err) result -> ('b, 'err) Colombe.State.t)
+    -> ('b, 'err) Colombe.State.t
+
   val ( >>= ) :
        ('a, 'err) Colombe.State.t
     -> ('a -> ('b, 'err) Colombe.State.t)
@@ -170,16 +175,18 @@ module Make (Monad : MONAD) = struct
         m_properly_close_and_fail ctx ~message:"You reached the limit buddy!"
           `Too_many_bad_commands
       else
-        let* command = recv ctx Value.Any in
+        let+ command = recv ctx Value.Any in
         match command with
-        | `Quit -> m_politely_close ctx
-        | `Mail from ->
+        | Ok `Quit -> m_politely_close ctx
+        | Ok (`Mail from) ->
           let* () = send ctx Value.PP_250 ["Ok, buddy!"] in
           recipients ~from []
-        | `Reset ->
+        | Error err ->
+          fail err (* TODO(dinosaure): catch [`Invalid_reverse_path _]. *)
+        | Ok `Reset ->
           incr reset
           ; send ctx Value.PP_250 ["Yes buddy!"] >>= fun () -> mail_from ()
-        | v ->
+        | Ok v ->
           incr bad
           ; Log.warn (fun m ->
                 m "%a sended a bad command: %a" Domain.pp domain_from Request.pp
