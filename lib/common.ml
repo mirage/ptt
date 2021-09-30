@@ -34,16 +34,20 @@ struct
     let open Resolver in
     {gethostbyname; getmxbyname; extension}
 
-  let generate =
-    let open Random in
-    generate
-
   let return = IO.return
   let ( >>= ) = IO.bind
   let ( >|= ) x f = x >>= fun x -> return (f x)
 
   let ( >>? ) x f =
     x >>= function Ok x -> f x | Error err -> return (Error err)
+
+  let generate ?g buf =
+    let open Random in
+    generate ?g buf >>= fun () ->
+    for i = 0 to Bytes.length buf - 1 do
+      if Bytes.get buf i = '\000' then Bytes.set buf i '\001'
+    done
+    ; return ()
 
   let scheduler =
     let open Scheduler in
