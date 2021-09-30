@@ -251,6 +251,16 @@ module Make (Monad : MONAD) = struct
           with Invalid_argument _ | Unrecognized_authentication ->
             incr bad
             ; send ctx Value.PN_504 ["Unrecognized authentication!"] >>= auth_0)
+        | `Verb ("AUTH", [mechanism; payload]) -> (
+          try
+            let mechanism = Mechanism.of_string_exn mechanism in
+            if List.exists (Mechanism.equal mechanism) ms then
+              return
+                (`Authentication_with_payload (domain_from, mechanism, payload))
+            else raise Unrecognized_authentication
+          with Invalid_argument _ | Unrecognized_authentication ->
+            incr bad
+            ; send ctx Value.PN_504 ["Unrecognized authentication!"] >>= auth_0)
         | `Verb ("AUTH", []) ->
           incr bad
           ; let* () = send ctx Value.PN_555 ["Syntax error, buddy!"] in

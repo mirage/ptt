@@ -66,7 +66,9 @@ val m_submission :
      context
   -> domain_from:Domain.t
   -> Mechanism.t list
-  -> ( [> `Quit | `Authentication of Domain.t * Mechanism.t ]
+  -> ( [> `Quit
+       | `Authentication of Domain.t * Mechanism.t
+       | `Authentication_with_payload of Domain.t * Mechanism.t * string ]
      , [> error ] )
      Colombe.State.t
 
@@ -87,6 +89,8 @@ val m_submission_init :
      context
   -> info
   -> Mechanism.t list
-  -> ( [> `Quit | `Authentication of Domain.t * Mechanism.t ]
+  -> ( [> `Quit
+       | `Authentication of Domain.t * Mechanism.t
+       | `Authentication_with_payload of Domain.t * Mechanism.t * string ]
      , [> error ] )
      Colombe.State.t
