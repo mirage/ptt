@@ -15,3 +15,10 @@
  (public_name ptt.adduser)
  (modules adduser sSH)
  (libraries ca-certs irmin-unix ptt.irmin cmdliner))
+
+(executable
+ (name spf)
+ (public_name ptt.spf)
+ (modules spf)
+ (libraries cmdliner dns-tsig ptime.clock.os dns-client.lwt mirage-crypto-rng
+   tcpip.stack-socket spf spf.lwt dns-mirage))
