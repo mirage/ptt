@@ -31,3 +31,9 @@
  (public_name ptt.mti-gf)
  (modules mti_gf)
  (libraries mirage-random ptt.transmit))
+
+(library
+ (name nec)
+ (public_name ptt.nec)
+ (modules nec)
+ (libraries dkim-mirage mirage-random ptt.transmit))
