@@ -9,11 +9,17 @@ val domain_from : key -> Domain.t
 val from : key -> from
 val recipients : key -> recipient list
 val id : key -> int64
+val ipaddr : key -> Ipaddr.t
 val pp : key Fmt.t
 val equal : key -> key -> bool
 
 val v :
-  domain_from:Domain.t -> from:from -> recipients:recipient list -> int64 -> key
+     domain_from:Domain.t
+  -> from:from
+  -> recipients:recipient list
+  -> ipaddr:Ipaddr.t
+  -> int64
+  -> key
 
 module type S = sig
   type +'a s

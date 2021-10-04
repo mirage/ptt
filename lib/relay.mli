@@ -37,5 +37,11 @@ module Make
 
   val create : info:info -> server
   val messaged : server -> Md.t
-  val accept : Flow.t -> Resolver.t -> server -> (unit, error) result IO.t
+
+  val accept :
+       ipaddr:Ipaddr.t
+    -> Flow.t
+    -> Resolver.t
+    -> server
+    -> (unit, error) result IO.t
 end

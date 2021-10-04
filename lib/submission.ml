@@ -53,8 +53,9 @@ struct
     | `Error `Too_many_tries -> Fmt.pf ppf "Too many tries"
     | `Too_big_data -> Fmt.pf ppf "Too big data"
 
-  let authentication ctx ~domain_from flow random hash server mechanism =
-    let rec go limit m =
+  let authentication ctx ~domain_from flow random hash server ?payload mechanism
+      =
+    let rec go limit ?payload m =
       if limit >= 3 then
         let e = `Too_many_tries in
         let m =
@@ -136,13 +137,14 @@ struct
     | `Authentication of Colombe.Domain.t * Mechanism.t ]
 
   let accept :
-         Flow.t
+         ipaddr:Ipaddr.t
+      -> Flow.t
       -> Resolver.t
       -> Random.g
       -> 'k Digestif.hash
       -> 'k server
       -> (unit, error) result IO.t =
-   fun flow resolver random hash server ->
+   fun ~ipaddr flow resolver random hash server ->
     let ctx = Colombe.State.Context.make () in
     let m = SSMTP.m_submission_init ctx server.info server.mechanisms in
     run flow m >>? function
@@ -166,7 +168,7 @@ struct
           >>= function
           | true ->
             let id = succ server in
-            let key = Messaged.v ~domain_from ~from ~recipients id in
+            let key = Messaged.v ~domain_from ~from ~recipients ~ipaddr id in
             Md.push server.messaged key >>= fun producer ->
             let m = SSMTP.m_mail ctx in
             run flow m >>? fun () ->
