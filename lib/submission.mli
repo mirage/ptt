@@ -47,7 +47,7 @@ module Make
        ipaddr:Ipaddr.t
     -> Flow.t
     -> Resolver.t
-    -> Random.g
+    -> Random.g option
     -> 'k Digestif.hash
     -> 'k server
     -> (unit, error) result IO.t

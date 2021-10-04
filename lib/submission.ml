@@ -92,7 +92,7 @@ struct
               go (limit + 1) ~payload m))
         | Mechanism.PLAIN, None -> (
           let stamp = Bytes.create 0x10 in
-          generate ~g:random stamp >>= fun () ->
+          generate ?g:random stamp >>= fun () ->
           let stamp = Bytes.unsafe_to_string stamp in
           Log.debug (fun m -> m "Generate the stamp %S." stamp)
           ; let m =
@@ -140,7 +140,7 @@ struct
          ipaddr:Ipaddr.t
       -> Flow.t
       -> Resolver.t
-      -> Random.g
+      -> Random.g option
       -> 'k Digestif.hash
       -> 'k server
       -> (unit, error) result IO.t =
