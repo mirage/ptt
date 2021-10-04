@@ -62,7 +62,7 @@ struct
     let (`Initialized fiber) = Server.serve_when_ready ?stop ~handler service in
     fiber
 
-  let smtp_logic ~info stack resolver messaged map =
+  let smtp_logic ~info ~tls stack resolver messaged map =
     let rec go () =
       Relay.Md.await messaged >>= fun () ->
       Relay.Md.pop messaged >>= function
@@ -71,17 +71,17 @@ struct
         let transmit () =
           Relay.resolve_recipients ~domain:info.Ptt.SSMTP.domain resolver map
             (List.map fst (Ptt.Messaged.recipients key))
-          >>= fun recipients -> transmit ~info stack v recipients in
+          >>= fun recipients -> transmit ~info ~tls stack v recipients in
         Lwt.async transmit
         ; Lwt.pause () >>= go in
     go ()
 
-  let fiber ?stop ~port stack resolver map info =
+  let fiber ?stop ~port ~tls stack resolver map info =
     let conf_server = Relay.create ~info in
     let messaged = Relay.messaged conf_server in
     Lwt.join
       [
         smtp_relay_service ?stop ~port stack resolver conf_server
-      ; smtp_logic ~info stack resolver messaged map
+      ; smtp_logic ~info ~tls stack resolver messaged map
       ]
 end

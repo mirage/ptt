@@ -65,7 +65,7 @@ struct
     let (`Initialized fiber) = Server.serve_when_ready ?stop ~handler service in
     fiber
 
-  let smtp_logic ~info stack resolver messaged map =
+  let smtp_logic ~info ~tls stack resolver messaged map =
     let rec go () =
       Submission.Md.await messaged >>= fun () ->
       Submission.Md.pop messaged >>= function
@@ -83,6 +83,7 @@ struct
   let fiber
       ?stop
       ~port
+      ~tls
       stack
       resolver
       random
@@ -96,6 +97,6 @@ struct
     Lwt.join
       [
         smtp_submission_service ?stop ~port stack resolver random hash
-          conf_server; smtp_logic ~info stack resolver messaged map
+          conf_server; smtp_logic ~info ~tls stack resolver messaged map
       ]
 end

@@ -19,7 +19,7 @@ module Make (Stack : Mirage_stack.V4V6) : sig
 
   val sendmail :
        info:Ptt.Logic.info
-    -> ?tls:Tls.Config.client
+    -> tls:Tls.Config.client
     -> Stack.t
     -> Ipaddr.t
     -> Colombe.Reverse_path.t

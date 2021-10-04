@@ -32,16 +32,7 @@ module Make (Stack : Mirage_stack.V4V6) = struct
     let wr flow buf off len = Lwt_scheduler.inj (Flow.send flow buf off len) in
     {Colombe.Sigs.rd; Colombe.Sigs.wr}
 
-  let null ~host:_ _ = Ok None (* TODO *)
-
-  let sendmail
-      ~info
-      ?(tls = Tls.Config.client ~authenticator:null ())
-      stack
-      mx_ipaddr
-      emitter
-      producer
-      recipients =
+  let sendmail ~info ~tls stack mx_ipaddr emitter producer recipients =
     let tcp = Stack.tcp stack in
     Stack.TCP.create_connection tcp (mx_ipaddr, 25)
     >|= R.reword_error (fun err -> `Flow err)

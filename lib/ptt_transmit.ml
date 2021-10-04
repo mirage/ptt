@@ -48,7 +48,7 @@ struct
       Lwt_scheduler.inj res in
     next
 
-  let transmit ~info stack (key, queue, consumer) resolved =
+  let transmit ~info ~tls stack (key, queue, consumer) resolved =
     let producers, targets =
       List.fold_left
         (fun (producers, targets) target ->
@@ -99,7 +99,7 @@ struct
         let rec go = function
           | [] -> Lwt.return ()
           | {Ptt.Mxs.mx_ipaddr; _} :: rest -> (
-            sendmail ~info stack mx_ipaddr emitter stream recipients
+            sendmail ~info ~tls stack mx_ipaddr emitter stream recipients
             >>= function
             | Ok () -> Lwt.return ()
             | Error _ -> go rest) in

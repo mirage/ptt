@@ -4,6 +4,7 @@ module Make
     (Md : Ptt.Messaged.S with type 'a s = 'a Lwt.t) : sig
   val transmit :
        info:Ptt.Logic.info
+    -> tls:Tls.Config.client
     -> Stack.t
     -> Ptt.Messaged.key * Md.queue * Md.chunk Md.consumer
     -> ([ `Domain of [ `host ] Domain_name.t * Ptt.Mxs.t | `Ipaddr of Ipaddr.t ]
