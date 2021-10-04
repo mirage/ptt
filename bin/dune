@@ -9,3 +9,9 @@
  (modules lipap)
  (libraries digestif.c mirage-time-unix bos mirage-clock-unix dns-client.lwt
    tcpip.stack-socket ptt.lipap logs.fmt mirage-crypto-rng))
+
+(executable
+ (name adduser)
+ (public_name ptt.adduser)
+ (modules adduser sSH)
+ (libraries ca-certs irmin-unix ptt.irmin cmdliner))
