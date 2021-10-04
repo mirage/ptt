@@ -33,7 +33,8 @@ struct
   module Server = Ptt_tuyau.Server (Time) (Stack)
   include Ptt_transmit.Make (Pclock) (Stack) (Submission.Md)
 
-  let smtp_submission_service ~port stack resolver random hash conf_server =
+  let smtp_submission_service ?stop ~port stack resolver random hash conf_server
+      =
     let tls = (Submission.info conf_server).Ptt.SSMTP.tls in
     Server.init ~port stack >>= fun service ->
     let handler flow =
@@ -61,7 +62,7 @@ struct
             m "<%a:%d> raised an unknown exception: %s" Ipaddr.pp ip port
               (Printexc.to_string exn))
         ; Lwt.return () in
-    let (`Initialized fiber) = Server.serve_when_ready ~handler service in
+    let (`Initialized fiber) = Server.serve_when_ready ?stop ~handler service in
     fiber
 
   let smtp_logic ~info stack resolver messaged map =
@@ -74,17 +75,27 @@ struct
           Submission.resolve_recipients ~domain:info.Ptt.SSMTP.domain resolver
             map
             (List.map fst (Ptt.Messaged.recipients key))
-          >>= fun recipients -> transmit ~info stack v recipients in
+          >>= fun recipients -> transmit ~info ~tls stack v recipients in
         Lwt.async transmit
         ; Lwt.pause () >>= go in
     go ()
 
-  let fiber ~port stack resolver random hash map info authenticator mechanisms =
+  let fiber
+      ?stop
+      ~port
+      stack
+      resolver
+      random
+      hash
+      map
+      info
+      authenticator
+      mechanisms =
     let conf_server = Submission.create ~info ~authenticator mechanisms in
     let messaged = Submission.messaged conf_server in
     Lwt.join
       [
-        smtp_submission_service ~port stack resolver random hash conf_server
-      ; smtp_logic ~info stack resolver messaged map
+        smtp_submission_service ?stop ~port stack resolver random hash
+          conf_server; smtp_logic ~info stack resolver messaged map
       ]
 end

@@ -6,7 +6,8 @@ module Make
     (Resolver : Ptt.Sigs.RESOLVER with type +'a io = 'a Lwt.t)
     (Stack : Mirage_stack.V4V6) : sig
   val fiber :
-       port:int
+       ?stop:Lwt_switch.t
+    -> port:int
     -> Stack.t
     -> Resolver.t
     -> Random.g

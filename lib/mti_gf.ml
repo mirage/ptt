@@ -33,7 +33,7 @@ struct
   module Server = Ptt_tuyau.Server (Time) (Stack)
   include Ptt_transmit.Make (Pclock) (Stack) (Relay.Md)
 
-  let smtp_relay_service ~port stack resolver conf_server =
+  let smtp_relay_service ?stop ~port stack resolver conf_server =
     Server.init ~port stack >>= fun service ->
     let handler flow =
       let ip, port = Stack.TCP.dst flow in
@@ -59,7 +59,7 @@ struct
             m "<%a:%d> raised an unknown exception: %s" Ipaddr.pp ip port
               (Printexc.to_string exn))
         ; Lwt.return () in
-    let (`Initialized fiber) = Server.serve_when_ready ~handler service in
+    let (`Initialized fiber) = Server.serve_when_ready ?stop ~handler service in
     fiber
 
   let smtp_logic ~info stack resolver messaged map =
@@ -76,12 +76,12 @@ struct
         ; Lwt.pause () >>= go in
     go ()
 
-  let fiber ~port stack resolver map info =
+  let fiber ?stop ~port stack resolver map info =
     let conf_server = Relay.create ~info in
     let messaged = Relay.messaged conf_server in
     Lwt.join
       [
-        smtp_relay_service ~port stack resolver conf_server
+        smtp_relay_service ?stop ~port stack resolver conf_server
       ; smtp_logic ~info stack resolver messaged map
       ]
 end
