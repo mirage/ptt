@@ -12,7 +12,7 @@ module Make
 struct
   include Ptt_tuyau.Make (Stack)
 
-  let src = Logs.Src.create "mti-gf"
+  let src = Logs.Src.create "nec"
 
   module Log : Logs.LOG = (val Logs.src_log src)
 
@@ -27,21 +27,22 @@ struct
       ; Lwt.return ()
   end
 
-  module Relay =
+  module Signer =
     Ptt.Relay.Make (Lwt_scheduler) (Lwt_io) (Flow) (Resolver) (Random)
+  (* XXX(dinosaure): the [signer] is a simple relay. *)
 
   module Server = Ptt_tuyau.Server (Time) (Stack)
-  include Ptt_transmit.Make (Pclock) (Stack) (Relay.Md)
+  include Ptt_transmit.Make (Pclock) (Stack) (Signer.Md)
 
-  let smtp_relay_service ?stop ~port stack resolver conf_server =
+  let smtp_signer_service ?stop ~port stack resolver conf_server =
     Server.init ~port stack >>= fun service ->
     let handler flow =
       let ip, port = Stack.TCP.dst flow in
       let v = Flow.make flow in
       Lwt.catch
         (fun () ->
-          Relay.accept ~ipaddr:ip v resolver conf_server
-          >|= R.reword_error (R.msgf "%a" Relay.pp_error)
+          Signer.accept ~ipaddr:ip v resolver conf_server
+          >|= R.reword_error (R.msgf "%a" Signer.pp_error)
           >>= fun res ->
           Stack.TCP.close flow >>= fun () -> Lwt.return res)
         (function
@@ -62,26 +63,34 @@ struct
     let (`Initialized fiber) = Server.serve_when_ready ?stop ~handler service in
     fiber
 
-  let smtp_logic ~info ~tls stack resolver messaged map =
+  let smtp_logic ~info ~tls stack resolver messaged (private_key, dkim) map =
     let rec go () =
-      Relay.Md.await messaged >>= fun () ->
-      Relay.Md.pop messaged >>= function
+      Signer.Md.await messaged >>= fun () ->
+      Signer.Md.pop messaged >>= function
       | None -> Lwt.pause () >>= go
-      | Some ((key, _, _) as v) ->
-        let transmit () =
-          Relay.resolve_recipients ~domain:info.Ptt.SSMTP.domain resolver map
-            (List.map fst (Ptt.Messaged.recipients key))
-          >>= fun recipients -> transmit ~info ~tls stack v recipients in
-        Lwt.async transmit
-        ; Lwt.pause () >>= go in
+      | Some (key, queue, consumer) ->
+        Log.debug (fun m -> m "Got an email.")
+        ; let sign_and_transmit () =
+            Dkim_mirage.sign ~key:private_key ~newline:Dkim.CRLF consumer dkim
+            >>= fun (_dkim', consumer') ->
+            Log.debug (fun m -> m "Incoming email signed.")
+            ; Signer.resolve_recipients ~domain:info.Ptt.SSMTP.domain resolver
+                map
+                (List.map fst (Ptt.Messaged.recipients key))
+              >>= fun recipients ->
+              Log.debug (fun m -> m "Send the signed email to the destination.")
+              ; transmit ~info ~tls stack (key, queue, consumer') recipients
+          in
+          Lwt.async sign_and_transmit
+          ; Lwt.pause () >>= go in
     go ()
 
-  let fiber ?stop ~port ~tls stack resolver map info =
-    let conf_server = Relay.create ~info in
-    let messaged = Relay.messaged conf_server in
+  let fiber ?stop ~port ~tls stack resolver (private_key, dkim) map info =
+    let conf_server = Signer.create ~info in
+    let messaged = Signer.messaged conf_server in
     Lwt.join
       [
-        smtp_relay_service ?stop ~port stack resolver conf_server
-      ; smtp_logic ~info ~tls stack resolver messaged map
+        smtp_signer_service ?stop ~port stack resolver conf_server
+      ; smtp_logic ~info ~tls stack resolver messaged (private_key, dkim) map
       ]
 end

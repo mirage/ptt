@@ -1,11 +1,26 @@
 (executable
  (name mti_gf)
+ (public_name ptt.mti_gf)
  (modules mti_gf)
- (libraries bos mirage-time-unix mirage-clock-unix dns-client.lwt
+ (libraries bos ca-certs mirage-time-unix mirage-clock-unix dns-client.lwt
    tcpip.stack-socket ptt.mti-gf logs.fmt mirage-crypto-rng))
 
 (executable
  (name lipap)
+ (public_name ptt.lipap)
  (modules lipap)
- (libraries digestif.c mirage-time-unix bos mirage-clock-unix dns-client.lwt
-   tcpip.stack-socket ptt.lipap logs.fmt mirage-crypto-rng))
+ (libraries digestif.c ca-certs mirage-time-unix bos mirage-clock-unix
+   dns-client.lwt tcpip.stack-socket ptt.lipap logs.fmt mirage-crypto-rng))
+
+(executable
+ (name adduser)
+ (public_name ptt.adduser)
+ (modules adduser sSH)
+ (libraries ca-certs irmin-unix ptt.irmin cmdliner))
+
+(executable
+ (name spf)
+ (public_name ptt.spf)
+ (modules spf)
+ (libraries cmdliner dns-tsig ptime.clock.os dns-client.lwt mirage-crypto-rng
+   tcpip.stack-socket spf spf.lwt dns-mirage))

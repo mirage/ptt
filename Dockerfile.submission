@@ -1,0 +1,15 @@
+FROM ocurrent/opam:alpine-3.10-ocaml-4.10
+RUN cd ~/opam-repository && git pull origin master && git reset --hard 9781c2082d3aeb2e5046968883dfcd423e303b84 && opam update
+RUN opam depext -ui mirage
+RUN mkdir -p /home/opam/src
+WORKDIR /home/opam/src
+COPY --chown=opam:root unikernel/submission/config.ml /home/opam/src
+ARG TARGET=hvt
+ARG EXTRA_FLAGS=
+RUN opam config exec -- mirage configure -t $TARGET $EXTRA_FLAGS
+COPY --chown=opam:root unikernel/submission/ /home/opam/src
+RUN opam pin add ptt -ny git+https://github.com/dinosaure/ptt.git#5065c2bbd86b8fca23eb1b0b62152767dba31198
+RUN opam depext -ui ptt
+RUN opam config exec -- make depends
+RUN opam config exec -- mirage build
+RUN if [ $TARGET = hvt ]; then sudo cp submission.$TARGET /unikernel.$TARGET; fi

@@ -11,11 +11,8 @@ module Make
     -> tls:Tls.Config.client
     -> Stack.t
     -> Resolver.t
-    -> Random.g option
-    -> 'k Digestif.hash
+    -> Mirage_crypto_pk.Rsa.priv * Dkim.unsigned Dkim.dkim
     -> Ptt.Relay_map.t
     -> Ptt.Logic.info
-    -> (Ptt_tuyau.Lwt_backend.Lwt_scheduler.t, 'k) Ptt.Authentication.t
-    -> Ptt.Mechanism.t list
     -> unit Lwt.t
 end

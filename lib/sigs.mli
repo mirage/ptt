@@ -32,6 +32,7 @@ module type IO = sig
 
   val bind : 'a t -> ('a -> 'b t) -> 'b t
   val return : 'a -> 'a t
+  val pause : unit -> unit t
 end
 
 module type RESOLVER = sig

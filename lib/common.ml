@@ -11,6 +11,10 @@ module Make
     (Resolver : RESOLVER with type 'a io = 'a IO.t)
     (Random : RANDOM with type 'a io = 'a IO.t) =
 struct
+  let src = Logs.Src.create "ptt-common"
+
+  module Log = (val Logs.src_log src)
+
   type 'w resolver = {
       gethostbyname:
         'a.
@@ -34,16 +38,20 @@ struct
     let open Resolver in
     {gethostbyname; getmxbyname; extension}
 
-  let generate =
-    let open Random in
-    generate
-
   let return = IO.return
   let ( >>= ) = IO.bind
   let ( >|= ) x f = x >>= fun x -> return (f x)
 
   let ( >>? ) x f =
     x >>= function Ok x -> f x | Error err -> return (Error err)
+
+  let generate ?g buf =
+    let open Random in
+    generate ?g buf >>= fun () ->
+    for i = 0 to Bytes.length buf - 1 do
+      if Bytes.get buf i = '\000' then Bytes.set buf i '\001'
+    done
+    ; return ()
 
   let scheduler =
     let open Scheduler in
@@ -89,15 +97,22 @@ struct
   let recipients_are_reachable ~ipv4 w recipients =
     let open Colombe in
     let fold m {Dns.Mx.mail_exchange; Dns.Mx.preference} =
-      resolver.gethostbyname w mail_exchange >>= function
-      | Ok mx_ipaddr ->
-        let mx_ipaddr = Ipaddr.V4 mx_ipaddr in
-        (* TODO: [gethostbyname] should return a [Ipaddr.t]. *)
-        IO.return
-          (Mxs.add
-             {Mxs.preference; Mxs.mx_ipaddr; Mxs.mx_domain= Some mail_exchange}
-             m)
-      | Error (`Msg _err) -> IO.return m in
+      Log.debug (fun m ->
+          m "Try to resolve %a (MX) as a SMTP recipients box." Domain_name.pp
+            mail_exchange)
+      ; resolver.gethostbyname w mail_exchange >>= function
+        | Ok mx_ipaddr ->
+          let mx_ipaddr = Ipaddr.V4 mx_ipaddr in
+          (* TODO: [gethostbyname] should return a [Ipaddr.t]. *)
+          IO.return
+            (Mxs.add
+               {
+                 Mxs.preference
+               ; Mxs.mx_ipaddr
+               ; Mxs.mx_domain= Some mail_exchange
+               }
+               m)
+        | Error (`Msg _err) -> IO.return m in
     let rec go acc = function
       | [] -> IO.return acc
       | Forward_path.Postmaster :: r ->
@@ -106,11 +121,18 @@ struct
       | Forward_path.Domain (Domain.Domain v) :: r -> (
         try
           let domain = Domain_name.(host_exn <.> of_strings_exn) v in
-          resolver.getmxbyname w domain >>= function
-          | Ok m ->
-            list_fold_left_s ~f:fold Mxs.empty (Dns.Rr_map.Mx_set.elements m)
-            >>= fun s -> go (s :: acc) r
-          | Error (`Msg _err) -> go acc r
+          Log.debug (fun m ->
+              m "Try to resolve %a as a recipients box." Domain_name.pp domain)
+          ; resolver.getmxbyname w domain >>= function
+            | Ok m ->
+              Log.debug (fun pf ->
+                  pf "Got %d SMTP recipients box from %a."
+                    (Dns.Rr_map.Mx_set.cardinal m)
+                    Domain_name.pp domain)
+              ; list_fold_left_s ~f:fold Mxs.empty
+                  (Dns.Rr_map.Mx_set.elements m)
+                >>= fun s -> go (s :: acc) r
+            | Error (`Msg _err) -> go acc r
         with _exn -> go (Mxs.empty :: acc) r)
       | Forward_path.Forward_path {Path.domain= Domain.IPv4 mx_ipaddr; _} :: r
       | Forward_path.Domain (Domain.IPv4 mx_ipaddr) :: r ->
@@ -143,6 +165,14 @@ struct
     in
     go 0 ()
 
+  let pp_recipients ~domain ppf = function
+    | `All -> Fmt.pf ppf "*@%a" Domain_name.pp domain
+    | `Local vs ->
+      Fmt.pf ppf "@[<hov>%a@]@%a"
+        Fmt.(Dump.list Emile.pp_local)
+        vs Domain_name.pp domain
+    | `Postmaster -> Fmt.pf ppf "Postmaster@%a" Domain_name.pp domain
+
   let resolve_recipients ~domain w relay_map recipients =
     let module Resolved = Map.Make (struct
       type t =
@@ -168,7 +198,11 @@ struct
     let unresolved, resolved = Relay_map.expand relay_map unresolved resolved in
     let fold resolved (domain, recipients) =
       resolver.getmxbyname w domain >>= function
-      | Error (`Msg _err) -> IO.return resolved
+      | Error (`Msg _err) ->
+        Log.err (fun m ->
+            m "%a is unreachable (no MX information)." (pp_recipients ~domain)
+              recipients)
+        ; IO.return resolved
       | Ok mxs -> (
         let fold mxs {Dns.Mx.mail_exchange; Dns.Mx.preference} =
           resolver.gethostbyname w mail_exchange >>= function
@@ -179,7 +213,11 @@ struct
                   (v ~preference ~domain:mail_exchange (Ipaddr.V4 mx_ipaddr))
                   mxs) in
             IO.return mxs
-          | Error (`Msg _err) -> IO.return mxs in
+          | Error (`Msg _err) ->
+            Log.err (fun m ->
+                m "%a as the SMTP service is unreachable." Domain_name.pp
+                  mail_exchange)
+            ; IO.return mxs in
         list_fold_left_s ~f:fold Mxs.empty (Dns.Rr_map.Mx_set.elements mxs)
         >>= fun mxs ->
         if Mxs.is_empty mxs then IO.return resolved

@@ -28,6 +28,17 @@ depends: [
   "ke"
   "bigstringaf"
   "ocaml-syntax-shims"
+  "dkim-mirage"
+  "bos"
+  "irmin-unix"
+  "ca-certs"
+  "cmdliner"
+  "irmin"
+  "mirage-kv"
+  "dns-client" {>= "5.0.0"}
+  "mirage-clock-unix" {>= "3.1.0"}
+  "mirage-crypto-rng"
+  "mirage-time-unix" {>= "2.0.0"}
   "base-threads" {with-test}
   "alcotest" {with-test}
   "base-threads" {with-test}
@@ -39,6 +50,12 @@ depends: [
   "mirage-random" {>= "2.0.0"}
   "mirage-time" {>= "2.0.1"}
   "tls-mirage" {>= "0.12.8"}
+  "dns-mirage"
+  "dns-tsig"
+  "spf"
+  "ipaddr"
+  "dmarc"
+  "ptime"
   "alcotest-lwt" {>= "1.2.3" & with-test}
   "ipaddr" {>= "5.0.1" & with-test}
   "mirage-crypto-rng" {>= "0.8.10" & with-test}
@@ -47,7 +64,31 @@ build: ["dune" "build" "-p" name "-j" jobs]
 run-test: ["dune" "runtest" "-p" name "-j" jobs]
 dev-repo: "git+https://github.com/dinosaure/ptt.git"
 pin-depends: [
-  [ "colombe.dev" "git+https://github.com/mirage/colombe.git#0bb62ddedfc178e5803b4257de651fd0ba933332" ]
-  [ "sendmail.dev" "git+https://github.com/mirage/colombe.git#0bb62ddedfc178e5803b4257de651fd0ba933332" ]
-  [ "sendmail-lwt.dev" "git+https://github.com/mirage/colombe.git#0bb62ddedfc178e5803b4257de651fd0ba933332" ]
+  [ "mrmime.dev" "git+https://github.com/mirage/mrmime.git#f55a772100e3058eb1ac0d82f2968b946aab4514" ]
+  [ "colombe.dev" "git+https://github.com/mirage/colombe.git#044b4ce4cd069e9667fd40804c3e940b95077157" ]
+  [ "received.dev" "git+https://github.com/mirage/colombe.git#044b4ce4cd069e9667fd40804c3e940b95077157" ]
+  [ "sendmail.dev" "git+https://github.com/mirage/colombe.git#044b4ce4cd069e9667fd40804c3e940b95077157" ]
+  [ "sendmail-lwt.dev" "git+https://github.com/mirage/colombe.git#044b4ce4cd069e9667fd40804c3e940b95077157" ]
+  [ "dkim.dev" "git+https://github.com/dinosaure/ocaml-dkim.git#88eb8ad3a1fc117afa6f1e90ed4650e6ee337415" ]
+  [ "dkim-mirage.dev" "git+https://github.com/dinosaure/ocaml-dkim.git#88eb8ad3a1fc117afa6f1e90ed4650e6ee337415" ]
+  [ "irmin.dev" "git+https://github.com/mirage/irmin.git#ae15cc291ce4d6e77c130e1db41e3f92dae00e69" ]
+  [ "irmin-git.dev" "git+https://github.com/mirage/irmin.git#ae15cc291ce4d6e77c130e1db41e3f92dae00e69" ]
+  [ "irmin-http.dev" "git+https://github.com/mirage/irmin.git#ae15cc291ce4d6e77c130e1db41e3f92dae00e69" ]
+  [ "irmin-fs.dev" "git+https://github.com/mirage/irmin.git#ae15cc291ce4d6e77c130e1db41e3f92dae00e69" ]
+  [ "irmin-pack.dev" "git+https://github.com/mirage/irmin.git#ae15cc291ce4d6e77c130e1db41e3f92dae00e69" ]
+  [ "irmin-graphql.dev" "git+https://github.com/mirage/irmin.git#ae15cc291ce4d6e77c130e1db41e3f92dae00e69" ]
+  [ "irmin-layers.dev" "git+https://github.com/mirage/irmin.git#ae15cc291ce4d6e77c130e1db41e3f92dae00e69" ]
+  [ "irmin-mirage.dev" "git+https://github.com/mirage/irmin.git#ae15cc291ce4d6e77c130e1db41e3f92dae00e69" ]
+  [ "irmin-mirage-git.dev" "git+https://github.com/mirage/irmin.git#ae15cc291ce4d6e77c130e1db41e3f92dae00e69" ]
+  [ "irmin-unix.dev" "git+https://github.com/mirage/irmin.git#ae15cc291ce4d6e77c130e1db41e3f92dae00e69" ]
+  [ "ppx_irmin.dev" "git+https://github.com/mirage/irmin.git#ae15cc291ce4d6e77c130e1db41e3f92dae00e69" ]
+  [ "repr.dev" "git+https://github.com/mirage/repr#0c0b7b76bd6531ce3d3adc341bf3df72046f5855" ]
+  [ "ppx_repr.dev" "git+https://github.com/mirage/repr#0c0b7b76bd6531ce3d3adc341bf3df72046f5855" ]
+  [ "dns.dev" "git+https://github.com/mirage/ocaml-dns.git#d99eff3429f60a5a9eef262f45b4e7d12ab251e5" ]
+  [ "dns-client.dev" "git+https://github.com/mirage/ocaml-dns.git#d99eff3429f60a5a9eef262f45b4e7d12ab251e5" ]
+  [ "dns-mirage.dev" "git+https://github.com/mirage/ocaml-dns.git#d99eff3429f60a5a9eef262f45b4e7d12ab251e5" ]
+  [ "dns-tsig.dev" "git+https://github.com/mirage/ocaml-dns.git#d99eff3429f60a5a9eef262f45b4e7d12ab251e5" ]
+  [ "spf.dev" "git+https://github.com/dinosaure/ocaml-spf.git#b1c80233e0c9dc47acc7537df5ff0fd9b1c82538" ]
+  [ "dmarc.dev" "git+https://github.com/dinosaure/ocaml-dmarc.git#8318a109034dc61e0e8292f8c35a02899908761e" ]
+  [ "public-suffix.dev" "git+https://github.com/dinosaure/ocaml-dmarc.git#8318a109034dc61e0e8292f8c35a02899908761e" ]
 ]

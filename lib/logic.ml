@@ -10,6 +10,7 @@ module Value = struct
   type pp_221 = string list
   type pp_235 = string list
   type pp_250 = string list
+  type tp_334 = string list
   type tp_354 = string list
   type tn_454 = string list
   type pn_503 = string list
@@ -36,6 +37,7 @@ module Value = struct
     | PP_221 : pp_221 send
     | PP_250 : pp_250 send
     | PP_235 : pp_235 send
+    | TP_334 : tp_334 send
     | TP_354 : tp_354 send
     | TN_454 : tn_454 send
     | PN_503 : pn_503 send
@@ -76,6 +78,11 @@ module type MONAD = sig
   val ( let* ) :
        ('a, 'err) Colombe.State.t
     -> ('a -> ('b, 'err) Colombe.State.t)
+    -> ('b, 'err) Colombe.State.t
+
+  val ( let+ ) :
+       ('a, 'err) Colombe.State.t
+    -> (('a, 'err) result -> ('b, 'err) Colombe.State.t)
     -> ('b, 'err) Colombe.State.t
 
   val ( >>= ) :
@@ -168,16 +175,18 @@ module Make (Monad : MONAD) = struct
         m_properly_close_and_fail ctx ~message:"You reached the limit buddy!"
           `Too_many_bad_commands
       else
-        let* command = recv ctx Value.Any in
+        let+ command = recv ctx Value.Any in
         match command with
-        | `Quit -> m_politely_close ctx
-        | `Mail from ->
+        | Ok `Quit -> m_politely_close ctx
+        | Ok (`Mail from) ->
           let* () = send ctx Value.PP_250 ["Ok, buddy!"] in
           recipients ~from []
-        | `Reset ->
+        | Error err ->
+          fail err (* TODO(dinosaure): catch [`Invalid_reverse_path _]. *)
+        | Ok `Reset ->
           incr reset
           ; send ctx Value.PP_250 ["Yes buddy!"] >>= fun () -> mail_from ()
-        | v ->
+        | Ok v ->
           incr bad
           ; Log.warn (fun m ->
                 m "%a sended a bad command: %a" Domain.pp domain_from Request.pp
@@ -238,6 +247,16 @@ module Make (Monad : MONAD) = struct
             let mechanism = Mechanism.of_string_exn mechanism in
             if List.exists (Mechanism.equal mechanism) ms then
               return (`Authentication (domain_from, mechanism))
+            else raise Unrecognized_authentication
+          with Invalid_argument _ | Unrecognized_authentication ->
+            incr bad
+            ; send ctx Value.PN_504 ["Unrecognized authentication!"] >>= auth_0)
+        | `Verb ("AUTH", [mechanism; payload]) -> (
+          try
+            let mechanism = Mechanism.of_string_exn mechanism in
+            if List.exists (Mechanism.equal mechanism) ms then
+              return
+                (`Authentication_with_payload (domain_from, mechanism, payload))
             else raise Unrecognized_authentication
           with Invalid_argument _ | Unrecognized_authentication ->
             incr bad

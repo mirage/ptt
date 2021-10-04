@@ -27,11 +27,13 @@ type error =
   [ `Tls of
     [ `Protocol of Value.error
     | `Tls_alert of Tls.Packet.alert_type
-    | `Tls_failure of Tls.Engine.failure ]
+    | `Tls_failure of Tls.Engine.failure
+    | `Tls_closed ]
   | `Protocol of
     [ `Protocol of Value.error
     | `Tls_alert of Tls.Packet.alert_type
-    | `Tls_failure of Tls.Engine.failure ]
+    | `Tls_failure of Tls.Engine.failure
+    | `Tls_closed ]
   | `No_recipients
   | `Invalid_recipients
   | `Too_many_bad_commands
@@ -66,7 +68,9 @@ val m_submission :
      context
   -> domain_from:Domain.t
   -> Mechanism.t list
-  -> ( [> `Quit | `Authentication of Domain.t * Mechanism.t ]
+  -> ( [> `Quit
+       | `Authentication of Domain.t * Mechanism.t
+       | `Authentication_with_payload of Domain.t * Mechanism.t * string ]
      , [> error ] )
      Colombe.State.t
 
@@ -87,6 +91,8 @@ val m_submission_init :
      context
   -> info
   -> Mechanism.t list
-  -> ( [> `Quit | `Authentication of Domain.t * Mechanism.t ]
+  -> ( [> `Quit
+       | `Authentication of Domain.t * Mechanism.t
+       | `Authentication_with_payload of Domain.t * Mechanism.t * string ]
      , [> error ] )
      Colombe.State.t

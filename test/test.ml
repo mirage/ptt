@@ -11,7 +11,7 @@ let () = Sys.set_signal Sys.sigpipe Sys.Signal_ignore
 
 module Scheduler = Colombe.Sigs.Make (struct type +'a t = 'a Lwt.t end)
 
-let unix =
+let lwt =
   let open Lwt.Infix in
   let open Scheduler in
   {
@@ -71,7 +71,7 @@ let authentication_test_0 =
   let auth hash mechanism authenticator fmt =
     Fmt.kstrf
       (fun payload ->
-        Ptt.Authentication.decode_authentication unix hash mechanism
+        Ptt.Authentication.decode_authentication lwt hash mechanism
           authenticator
           (Base64.encode_exn payload)
         |> Scheduler.prj)
@@ -255,14 +255,12 @@ let messaged_test_0 =
         ~domain_from:
           ((Rresult.R.get_ok <.> Colombe_emile.to_domain) domain_from)
         ~from:((Rresult.R.get_ok <.> Colombe_emile.to_reverse_path) from, [])
-        ~recipients:[] 0L in
+        ~recipients:[] ~ipaddr:(Ipaddr.V4 Ipaddr.V4.localhost) 0L in
     Md.push md key >>= fun producer ->
     let v = v () (* XXX(dinosaure): really create the stream. *) in
     let rec consume () =
       v () >>= function
-      | Some ((str, off, len) as chunk) ->
-        Fmt.epr "[-] %S.\n%!" (String.sub str off len)
-        ; producer (Some chunk) >>= consume
+      | Some chunk -> producer (Some chunk) >>= consume
       | None -> producer None in
     consume () in
   let contents = ref "" in
@@ -275,8 +273,7 @@ let messaged_test_0 =
       let rec consume () =
         v () >>= function
         | Some (str, off, len) ->
-          Fmt.epr "[+] %S.\n%!" (String.sub str off len)
-          ; Buffer.add_substring buf str off len
+          Buffer.add_substring buf str off len
           ; consume ()
         | None ->
           contents := Buffer.contents buf
@@ -312,7 +309,7 @@ let messaged_test_1 =
           ~domain_from:
             ((Rresult.R.get_ok <.> Colombe_emile.to_domain) domain_from)
           ~from:((Rresult.R.get_ok <.> Colombe_emile.to_reverse_path) from, [])
-          ~recipients:[] 0L in
+          ~recipients:[] ~ipaddr:(Ipaddr.V4 Ipaddr.V4.localhost) 0L in
       Md.push md key >>= fun producer ->
       let rec consume () =
         v () >>= function
@@ -669,7 +666,8 @@ let smtp_test_6 =
     Alcotest.(check unit) "empty stream" (check ()) ()
     ; Alcotest.(check pass) "quit" () ()
     ; Lwt.return_unit
-  | Ok (`Authentication _) -> Alcotest.failf "Unexpected authentication"
+  | Ok (`Authentication _ | `Authentication_with_payload _) ->
+    Alcotest.failf "Unexpected authentication"
   | Ok (`Submission _) -> Alcotest.failf "Unexpected submission"
   | Error (`Error err) ->
     Alcotest.failf "Unexpected protocol error: %a" Ptt.SSMTP.pp_error err
@@ -696,7 +694,7 @@ let smtp_test_7 =
   let open Lwt.Infix in
   run_state (Ptt.SSMTP.m_submission_init ctx info [Ptt.Mechanism.PLAIN]) rdwr
   >>= function
-  | Ok (`Authentication (v, m)) ->
+  | Ok (`Authentication (v, m) | `Authentication_with_payload (v, m, _)) ->
     let gmail =
       let open Mrmime.Mailbox in
       Domain.(v domain [a "gmail"; a "com"]) in
@@ -805,7 +803,9 @@ let serve_when_ready ?stop ~handler socket =
        ; t in
      let rec loop () =
        Lwt_unix.accept socket >>= fun (flow, _) ->
-       Lwt.async (fun () -> handler flow)
+       let[@warning "-8"] (Unix.ADDR_INET (inet_addr, _)) =
+         Lwt_unix.getpeername flow in
+       Lwt.async (fun () -> handler (Ipaddr_unix.of_inet_addr inet_addr) flow)
        ; Lwt.pause () >>= loop in
      let stop =
        Lwt.pick [switched_off; loop ()] >>= fun `Stopped ->
@@ -827,9 +827,9 @@ let make_submission_smtp_server ?stop ~port info =
     Lwt_unix.bind socket sockaddr >|= fun () ->
     Lwt_unix.listen socket 40
 
-    ; let handler flow =
+    ; let handler ipaddr flow =
         let open Lwt.Infix in
-        SMTP.accept flow () conf_server >>= fun res ->
+        SMTP.accept ~ipaddr flow () conf_server >>= fun res ->
         Lwt_unix.close flow >>= fun () ->
         match res with Ok _ -> Lwt.return () | Error _err -> Lwt.return () in
       serve_when_ready ?stop ~handler socket in
@@ -888,7 +888,7 @@ let sendmail ipv4 port ~domain sender recipients contents =
     (Unix.ADDR_INET (Ipaddr_unix.to_inet_addr (Ipaddr.V4 ipv4), port))
   >>= fun () ->
   let res =
-    Sendmail_with_starttls.sendmail unix rdwr socket ctx tls_config ~domain
+    Sendmail_with_starttls.sendmail lwt rdwr socket ctx tls_config ~domain
       sender recipients stream in
   let open Lwt.Infix in
   Scheduler.prj res >>= function
@@ -938,7 +938,8 @@ let full_test_0 =
     "inbox" contents
     [
       Ptt.Messaged.v ~domain_from:recoil ~from:(anil, [])
-        ~recipients:[romain_calascibetta, []] 0L
+        ~recipients:[romain_calascibetta, []]
+        ~ipaddr:(Ipaddr.V4 Ipaddr.V4.localhost) 0L
     ]
   ; Lwt.return_unit
 
@@ -996,9 +997,11 @@ let full_test_1 =
     "inbox" contents
     [
       Ptt.Messaged.v ~domain_from:gazagnaire ~from:(thomas, [])
-        ~recipients:[romain_calascibetta, []] 1L
+        ~recipients:[romain_calascibetta, []]
+        ~ipaddr:(Ipaddr.V4 Ipaddr.V4.localhost) 1L
     ; Ptt.Messaged.v ~domain_from:recoil ~from:(anil, [])
-        ~recipients:[romain_calascibetta, []] 0L
+        ~recipients:[romain_calascibetta, []]
+        ~ipaddr:(Ipaddr.V4 Ipaddr.V4.localhost) 0L
     ]
   ; Lwt.return_unit
 

@@ -10,13 +10,17 @@ type key = {
   ; from: from
   ; recipients: recipient list
   ; id: int64
+  ; ip: Ipaddr.t
 }
 
 let domain_from {domain_from; _} = domain_from
 let from {from; _} = from
 let recipients {recipients; _} = recipients
 let id {id; _} = id
-let v ~domain_from ~from ~recipients id = {domain_from; from; recipients; id}
+let ipaddr {ip; _} = ip
+
+let v ~domain_from ~from ~recipients ~ipaddr:ip id =
+  {domain_from; from; recipients; id; ip}
 
 let pp ppf key =
   Fmt.pf ppf
@@ -45,6 +49,7 @@ let equal a b =
   && Reverse_path.equal (fst a.from) (fst b.from)
   && equal_recipients (List.map fst a.recipients) (List.map fst b.recipients)
   && a.id = b.id
+  && Ipaddr.compare a.ip b.ip = 0
 
 module type S = sig
   type +'a s
@@ -64,6 +69,10 @@ end
 
 module Make (Scheduler : SCHEDULER) (IO : IO with type 'a t = 'a Scheduler.s) =
 struct
+  let src = Logs.Src.create "messaged"
+
+  module Log = (val Logs.src_log src)
+
   type +'a s = 'a IO.t
 
   open IO
@@ -88,8 +97,7 @@ struct
     if chunk <= 0 then
       Fmt.invalid_arg "stream_of_queue: chunk must be bigger than 0"
 
-    ; let buf = Bytes.create chunk in
-      let close = ref false in
+    ; let close = ref false in
       let mutex = Mutex.create () in
       let condition = Condition.create () in
 
@@ -100,23 +108,27 @@ struct
             Condition.wait condition mutex >>= wait
           else return () in
         wait () >>= fun () ->
-        let len = min (Ke.length queue) (Bytes.length buf) in
+        let len = min (Ke.length queue) chunk in
 
         if len = 0 && !close then (Mutex.unlock mutex ; return None)
-        else (
-          Ke.N.keep_exn queue ~blit:blit_to_bytes ~length:Bytes.length ~off:0
-            ~len buf
+        else
+          let buf = Bytes.create chunk in
+          Log.debug (fun m -> m "Transmit %d byte(s) from the client." len)
+          ; Ke.N.keep_exn queue ~blit:blit_to_bytes ~length:Bytes.length ~off:0
+              ~len buf
           ; Ke.N.shift_exn queue len
           ; Mutex.unlock mutex
-          ; return (Some (Bytes.unsafe_to_string buf, 0, len))) in
+          ; return (Some (Bytes.unsafe_to_string buf, 0, len)) in
 
       let rec producer = function
         | None ->
-          Mutex.lock mutex >>= fun () ->
-          close := true
-          ; Condition.broadcast condition
-          ; Mutex.unlock mutex
-          ; return ()
+          Log.debug (fun m ->
+              m "The client finished the transmission of the message.")
+          ; Mutex.lock mutex >>= fun () ->
+            close := true
+            ; Condition.broadcast condition
+            ; Mutex.unlock mutex
+            ; return ()
         | Some (buf, off, len) as v -> (
           Mutex.lock mutex >>= fun () ->
           if !close then (Mutex.unlock mutex ; return ())
@@ -126,7 +138,10 @@ struct
                 ~len buf
             with
             | None ->
-              Condition.signal condition ; Mutex.unlock mutex ; producer v
+              Condition.signal condition
+              ; Mutex.unlock mutex
+              ; Log.debug (fun m -> m "The internal queue is full.")
+              ; pause () >>= fun () -> producer v
             | Some _ ->
               Condition.signal condition ; Mutex.unlock mutex ; return ()) in
       {q= queue; m= mutex; c= condition; f= close}, producer, consumer

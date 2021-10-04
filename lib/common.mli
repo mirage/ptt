@@ -42,8 +42,7 @@ module Make
     -> 'ctx
     -> ('ctx -> (string, 'err) Colombe.State.t)
     -> (string * int * int) consumer
-    -> (unit, [> `Error of 'err | `Too_big_data ]) result
-       IO.t
+    -> (unit, [> `Error of 'err | `Too_big_data ]) result IO.t
   (** [receive_mail ?limit flow ctx m consumer] runs [m] which gives to us a
       {i payload} from a given [ctx] (with [STARTTLS] or not) and a [flow].
       Then, it transmits these {i payloads} to the [consumer].

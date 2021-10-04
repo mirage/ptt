@@ -8,6 +8,10 @@ module Make (Stack : Mirage_stack.V4V6) : sig
     include Ptt.Sigs.FLOW with type +'a io = 'a Lwt.t
 
     val make : Stack.TCP.flow -> t
+
+    type flow = t
+
+    val input : flow -> bytes -> int -> int -> int Lwt.t
   end
 
   module TLSFlow : sig
@@ -15,17 +19,34 @@ module Make (Stack : Mirage_stack.V4V6) : sig
 
     val server : Stack.TCP.flow -> Tls.Config.server -> t Lwt.t
     val client : Stack.TCP.flow -> Tls.Config.client -> t Lwt.t
+    val close : t -> unit Lwt.t
   end
 
   val sendmail :
        info:Ptt.Logic.info
-    -> ?tls:Tls.Config.client
+    -> tls:Tls.Config.client
+    -> Stack.t
+    -> Ipaddr.t
+    -> Colombe.Reverse_path.t
+    -> (string * int * int, Lwt_scheduler.t) Sendmail.stream
+    -> Colombe.Forward_path.t list
+    -> ( unit
+       , [> `Flow of Stack.TCP.error | `STARTTLS_unavailable | `Msg of string ]
+       )
+       result
+       Lwt.t
+
+  val sendmail_without_tls :
+       info:Ptt.Logic.info
     -> Stack.t
     -> Ipaddr.t
     -> Colombe.Reverse_path.t
     -> (string * int * int, Lwt_scheduler.t) Sendmail.stream
     -> Colombe.Forward_path.t list
     -> (unit, [> `Flow of Stack.TCP.error | `Msg of string ]) result Lwt.t
+
+  val pp_error :
+    [ `Flow of Stack.TCP.error | `Msg of string | `STARTTLS_unavailable ] Fmt.t
 end
 
 module Server (Time : Mirage_time.S) (Stack : Mirage_stack.V4V6) : sig
