@@ -102,7 +102,17 @@ struct
             sendmail ~info ~tls stack mx_ipaddr emitter stream recipients
             >>= function
             | Ok () -> Lwt.return ()
-            | Error _ -> go rest) in
+            | Error `STARTTLS_unavailable
+            (* TODO(dinosaure): when [insecure]. *) -> (
+              sendmail_without_tls ~info stack mx_ipaddr emitter stream
+                recipients
+              >>= function
+              | Ok () -> Lwt.return_unit
+              | Error err ->
+                ; go rest)
+            | Error err ->
+              (* TODO(dinosaure): report the error to the sender. *)
+              go rest) in
         let sort =
           List.sort
             (fun {Ptt.Mxs.preference= a; _} {Ptt.Mxs.preference= b; _} ->
