@@ -11,6 +11,10 @@ struct
   open Ptt_tuyau.Lwt_backend
   include Ptt_tuyau.Make (Stack)
 
+  let src = Logs.Src.create "ptt-tuyau"
+
+  module Log = (val Logs.src_log src)
+
   let local_to_forward_path ~domain:mx_domain local =
     let local =
       `Dot_string (List.map (function `Atom x -> x | `String x -> x) local)
@@ -25,8 +29,9 @@ struct
   let plug_consumer_to_producers consumer producers =
     let rec go () =
       consumer () >>= function
-      | Some v ->
-        List.iter (fun producer -> producer (Some v)) producers
+      | Some ((str, off, len) as v) ->
+        Log.debug (fun m -> m "Send to recipients %S" (String.sub str off len))
+        ; List.iter (fun producer -> producer (Some v)) producers
         ; Lwt.pause () >>= go
       | None ->
         List.iter (fun producer -> producer None) producers
@@ -99,20 +104,36 @@ struct
         let rec go = function
           | [] -> Lwt.return ()
           | {Ptt.Mxs.mx_ipaddr; _} :: rest -> (
-            sendmail ~info ~tls stack mx_ipaddr emitter stream recipients
-            >>= function
-            | Ok () -> Lwt.return ()
-            | Error `STARTTLS_unavailable
-            (* TODO(dinosaure): when [insecure]. *) -> (
-              sendmail_without_tls ~info stack mx_ipaddr emitter stream
-                recipients
+            Log.debug (fun m ->
+                m "Transmit the incoming email to %a (%a)." Ipaddr.pp mx_ipaddr
+                  Domain.pp mx_domain)
+            ; sendmail ~info ~tls stack mx_ipaddr emitter stream recipients
               >>= function
               | Ok () -> Lwt.return_unit
+              | Error `STARTTLS_unavailable
+              (* TODO(dinosaure): when [insecure]. *) -> (
+                Log.warn (fun m ->
+                    m
+                      "The SMTP receiver %a does not implement STARTTLS, \
+                       restart in clear."
+                      Domain.pp mx_domain)
+                ; sendmail_without_tls ~info stack mx_ipaddr emitter stream
+                    recipients
+                  >>= function
+                  | Ok () -> Lwt.return_unit
+                  | Error err ->
+                    Log.err (fun m ->
+                        m
+                          "Impossible to send the given email to %a (without \
+                           STARTTLS): %a."
+                          Domain.pp mx_domain pp_error err)
+                    ; go rest)
               | Error err ->
-                ; go rest)
-            | Error err ->
-              (* TODO(dinosaure): report the error to the sender. *)
-              go rest) in
+                Log.err (fun m ->
+                    m "Impossible to send the given email to %a: %a." Domain.pp
+                      mx_domain pp_error err)
+                ; (* TODO(dinosaure): report the error to the sender. *)
+                  go rest) in
         let sort =
           List.sort
             (fun {Ptt.Mxs.preference= a; _} {Ptt.Mxs.preference= b; _} ->
@@ -120,6 +141,10 @@ struct
         let sorted = Ptt.Mxs.elements mxs |> sort in
         go sorted in
       List.map sendmail targets in
-    Lwt.join (List.map (apply ()) (transmit :: sendmails)) >>= fun () ->
-    Md.close queue
+    Log.debug (fun m ->
+        m "Start to send the incoming email to %d recipient(s)."
+          (List.length targets))
+    ; Lwt.join (List.map (apply ()) (transmit :: sendmails)) >>= fun () ->
+      Log.debug (fun m -> m "Email sended!")
+      ; Md.close queue
 end
