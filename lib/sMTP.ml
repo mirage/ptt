@@ -41,11 +41,13 @@ type error =
   [ `Protocol of
     [ `Protocol of Value.error
     | `Tls_alert of Tls.Packet.alert_type
-    | `Tls_failure of Tls.Engine.failure ]
+    | `Tls_failure of Tls.Engine.failure
+    | `Tls_closed ]
   | `Tls of
     [ `Protocol of Value.error
     | `Tls_alert of Tls.Packet.alert_type
-    | `Tls_failure of Tls.Engine.failure ]
+    | `Tls_failure of Tls.Engine.failure
+    | `Tls_closed ]
   | `No_recipients
   | `Invalid_recipients
   | `Too_many_bad_commands
@@ -59,6 +61,8 @@ let pp_error ppf = function
     Fmt.pf ppf "TLS alert: %s" (Tls.Packet.alert_type_to_string alert)
   | `Protocol (`Tls_failure failure) | `Tls (`Tls_failure failure) ->
     Fmt.pf ppf "TLS failure: %s" (Tls.Engine.string_of_failure failure)
+  | `Tls `Tls_closed | `Protocol `Tls_closed ->
+    Fmt.string ppf "TLS connection closed by peer"
   | `No_recipients -> Fmt.string ppf "No recipients"
   | `Invalid_recipients -> Fmt.string ppf "Invalid recipients"
   | `Too_many_bad_commands -> Fmt.string ppf "Too many bad commands"
