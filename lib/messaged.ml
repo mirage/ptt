@@ -131,7 +131,9 @@ struct
                 ~len buf
             with
             | None ->
-              Condition.signal condition ; Mutex.unlock mutex ; producer v
+              Condition.signal condition
+              ; Mutex.unlock mutex
+              ; pause () >>= fun () -> producer v
             | Some _ ->
               Condition.signal condition ; Mutex.unlock mutex ; return ()) in
       {q= queue; m= mutex; c= condition; f= close}, producer, consumer
