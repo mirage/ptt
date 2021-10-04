@@ -25,7 +25,23 @@ module Make (Stack : Mirage_stack.V4V6) : sig
     -> Colombe.Reverse_path.t
     -> (string * int * int, Lwt_scheduler.t) Sendmail.stream
     -> Colombe.Forward_path.t list
+    -> ( unit
+       , [> `Flow of Stack.TCP.error | `STARTTLS_unavailable | `Msg of string ]
+       )
+       result
+       Lwt.t
+
+  val sendmail_without_tls :
+       info:Ptt.Logic.info
+    -> Stack.t
+    -> Ipaddr.t
+    -> Colombe.Reverse_path.t
+    -> (string * int * int, Lwt_scheduler.t) Sendmail.stream
+    -> Colombe.Forward_path.t list
     -> (unit, [> `Flow of Stack.TCP.error | `Msg of string ]) result Lwt.t
+
+  val pp_error :
+    [ `Flow of Stack.TCP.error | `Msg of string | `STARTTLS_unavailable ] Fmt.t
 end
 
 module Server (Time : Mirage_time.S) (Stack : Mirage_stack.V4V6) : sig
