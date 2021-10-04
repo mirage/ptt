@@ -8,6 +8,10 @@ module Make (Stack : Mirage_stack.V4V6) : sig
     include Ptt.Sigs.FLOW with type +'a io = 'a Lwt.t
 
     val make : Stack.TCP.flow -> t
+
+    type flow = t
+
+    val input : flow -> bytes -> int -> int -> int Lwt.t
   end
 
   module TLSFlow : sig
@@ -15,6 +19,7 @@ module Make (Stack : Mirage_stack.V4V6) : sig
 
     val server : Stack.TCP.flow -> Tls.Config.server -> t Lwt.t
     val client : Stack.TCP.flow -> Tls.Config.client -> t Lwt.t
+    val close : t -> unit Lwt.t
   end
 
   val sendmail :
