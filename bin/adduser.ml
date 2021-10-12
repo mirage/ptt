@@ -27,7 +27,7 @@ let local_to_string local =
   let pp ppf = function
     | `Atom x -> Fmt.string ppf x
     | `String v -> Fmt.pf ppf "%S" v in
-  Fmt.str "%a" Fmt.(list ~sep:(always ".") pp) local
+  Fmt.str "%a" Fmt.(list ~sep:(any ".") pp) local
 
 let add remote local password targets insecure =
   let tmp = R.failwith_error_msg (Bos.OS.Dir.tmp "git-%s") in
@@ -88,7 +88,7 @@ let user =
     let pp ppf = function
       | `Atom x -> Fmt.string ppf x
       | `String v -> Fmt.pf ppf "%S" v in
-    Fmt.(list ~sep:(always ".") pp) ppf local in
+    Fmt.(list ~sep:(any ".") pp) ppf local in
   Arg.conv (parser, pp)
 
 let password =

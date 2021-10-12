@@ -66,7 +66,7 @@ struct
       let by = Domain_name.to_strings info.Ptt.Logic.domain in
       let id =
         let open Mrmime.Mailbox in
-        Local.(v [w (Fmt.strf "%08LX" id)]), `Domain by in
+        Local.(v [w (Fmt.str "%08LX" id)]), `Domain by in
       let received =
         Received.make
           ~from:(Received.Only (Ptt.Messaged.domain_from key))

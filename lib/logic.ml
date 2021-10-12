@@ -151,7 +151,7 @@ module Make (Monad : MONAD) = struct
   module Log = (val Logs.src_log src : Logs.LOG)
 
   let politely ~domain ~ipv4 =
-    Fmt.strf "%a at your service, [%s]" Domain_name.pp domain
+    Fmt.str "%a at your service, [%s]" Domain_name.pp domain
       (Ipaddr.V4.to_string ipv4)
 
   let m_properly_close_and_fail ctx ?(code = 554) ~message err =
@@ -296,7 +296,7 @@ module Make (Monad : MONAD) = struct
       send ctx Value.PP_250
         [
           politely ~domain:info.domain ~ipv4:info.ipv4; "8BITMIME"; "SMTPUTF8"
-        ; Fmt.strf "SIZE %Ld" info.size
+        ; Fmt.str "SIZE %Ld" info.size
         ] in
     m_relay ctx ~domain_from
 
@@ -307,8 +307,8 @@ module Make (Monad : MONAD) = struct
       send ctx Value.PP_250
         [
           politely ~domain:info.domain ~ipv4:info.ipv4; "8BITMIME"; "SMTPUTF8"
-        ; Fmt.strf "SIZE %Ld" info.size
-        ; Fmt.strf "AUTH %a" Fmt.(list ~sep:(const string " ") Mechanism.pp) ms
+        ; Fmt.str "SIZE %Ld" info.size
+        ; Fmt.str "AUTH %a" Fmt.(list ~sep:(const string " ") Mechanism.pp) ms
         ] in
     m_submission ctx ~domain_from ms
 end
