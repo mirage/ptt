@@ -69,7 +69,7 @@ let auth0 =
 let authentication_test_0 =
   Alcotest_lwt.test_case "authentication 0" `Quick @@ fun _sw () ->
   let auth hash mechanism authenticator fmt =
-    Fmt.kstrf
+    Fmt.kstr
       (fun payload ->
         Ptt.Authentication.decode_authentication lwt hash mechanism
           authenticator
@@ -425,7 +425,7 @@ let private_key = Rresult.R.get_ok private_key
 let fake_tls_config =
   Tls.Config.server
     ~certificates:(`Single ([cert], private_key))
-    ~authenticator:(fun ~host:_ _ -> Ok None)
+    ~authenticator:(fun ?ip:_ ~host:_ _ -> Ok None)
     ()
 
 let smtp_test_0 =
@@ -862,7 +862,7 @@ let sendmail ipv4 port ~domain sender recipients contents =
     | None -> Lwt.return None in
   let stream = Scheduler.inj <.> stream in
   let tls_config =
-    Tls.Config.client ~authenticator:(fun ~host:_ _ -> Ok None) () in
+    Tls.Config.client ~authenticator:(fun ?ip:_ ~host:_ _ -> Ok None) () in
   let ctx = Sendmail_with_starttls.Context_with_tls.make () in
   let rdwr =
     {

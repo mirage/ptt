@@ -93,7 +93,7 @@ let m_relay_init ctx info =
     send ctx Value.PP_250
       [
         politely ~domain:info.Logic.domain ~ipv4:info.Logic.ipv4; "8BITMIME"
-      ; "SMTPUTF8"; "STARTTLS"; Fmt.strf "SIZE %Ld" info.Logic.size
+      ; "SMTPUTF8"; "STARTTLS"; Fmt.str "SIZE %Ld" info.Logic.size
       ] in
   let reset = ref 0 and bad = ref 0 in
   let rec go () =
@@ -132,8 +132,8 @@ let m_submission_init ctx info ms =
       [
         politely ~domain:info.Logic.domain ~ipv4:info.Logic.ipv4; "8BITMIME"
       ; "SMTPUTF8"; "STARTTLS"
-      ; Fmt.strf "AUTH %a" Fmt.(list ~sep:(const string " ") Mechanism.pp) ms
-      ; Fmt.strf "SIZE %Ld" info.Logic.size
+      ; Fmt.str "AUTH %a" Fmt.(list ~sep:(const string " ") Mechanism.pp) ms
+      ; Fmt.str "SIZE %Ld" info.Logic.size
       ] in
   let reset = ref 0 and bad = ref 0 in
   let rec go () =

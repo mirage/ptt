@@ -22,7 +22,7 @@ depends: [
   "domain-name"
   "dns"
   "logs"
-  "tls"
+  "tls" {>= "0.15.0"}
   "mirage-stack"
   "tcpip"
   "ke"

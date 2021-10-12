@@ -32,7 +32,7 @@ let key_of_local local =
   let pp ppf = function
     | `Atom x -> Fmt.string ppf x
     | `String str -> Fmt.pf ppf "%S" str in
-  let str = Fmt.str "%a" Fmt.(list ~sep:(always ".") pp) local in
+  let str = Fmt.str "%a" Fmt.(list ~sep:(any ".") pp) local in
   Mirage_kv.Key.v str
 
 let local_of_key key =
