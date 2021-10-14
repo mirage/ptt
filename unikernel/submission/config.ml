@@ -184,10 +184,10 @@ let keys =
       ; abstract account_seed
       ; abstract cert_seed ]
 
-let pin_irmin = "git+https://github.com/mirage/irmin.git#ae15cc291ce4d6e77c130e1db41e3f92dae00e69"
-let pin_git = "git+https://github.com/mirage/ocaml-git.git#42cd15baa8cb6e82f003f62126cf18f42cce8c63"
-let pin_repr = "git+https://github.com/mirage/repr#0c0b7b76bd6531ce3d3adc341bf3df72046f5855"
-let pin_dns = "git+https://github.com/mirage/ocaml-dns.git#d99eff3429f60a5a9eef262f45b4e7d12ab251e5"
+let pin_irmin = "git+https://github.com/mirage/irmin.git#dc452f5bf314c4f1ac8bf1e5b56f386283fa3401"
+let pin_git = "git+https://github.com/mirage/ocaml-git.git#efe1afffd9d391bce802ab52ebf30f80d9aa4716"
+let pin_repr = "git+https://github.com/mirage/repr#17623decc3d499b83da1f5d71b298681100539a3"
+let pin_dns = "git+https://github.com/mirage/ocaml-dns.git#1cc956368241beca6157eb4a3351174837e2bbd5"
 
 let packages =
   [ package "randomconv"
