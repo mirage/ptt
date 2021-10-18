@@ -51,4 +51,14 @@ module Make
     -> 'k Digestif.hash
     -> 'k server
     -> (unit, error) result IO.t
+  (** [accept flow resolver random alg server] is a simple SMTP process which
+      accepts an incoming email iff the client is authentified. The method to
+      safely check the password uses the hash algorithm [alg] and private
+      information from the given [server] (see {!create}). If the user is
+      correctly authentified, the incoming email is added into the internal
+      [server]'s queue.
+
+      The incoming email is accepted only if recipients given by the client are
+      reachable {i via} the given [resolver] - see {!Common.Make.recipients_are_reachable}.
+      Otherwise, the incoming email is discarded! *)
 end

@@ -65,7 +65,7 @@ let cert_key =
   Key.(create "cert-key" Arg.(required string doc))
 
 let pin_irmin = "git+https://github.com/mirage/irmin.git#dc452f5bf314c4f1ac8bf1e5b56f386283fa3401"
-let pin_git = "git+https://github.com/mirage/ocaml-git.git#efe1afffd9d391bce802ab52ebf30f80d9aa4716"
+let pin_git = "git+https://github.com/mirage/ocaml-git.git#a81d72aab704a0d77e63513c9e5487c2340e6dfc"
 let pin_repr = "git+https://github.com/mirage/repr#17623decc3d499b83da1f5d71b298681100539a3"
 let pin_dns = "git+https://github.com/mirage/ocaml-dns.git#1cc956368241beca6157eb4a3351174837e2bbd5"
 
