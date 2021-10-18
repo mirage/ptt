@@ -16,7 +16,7 @@ let failwith_error_pull = function
 let local_to_string local =
   let pp ppf = function `Atom x -> Fmt.string ppf x
     | `String v -> Fmt.pf ppf "%S" v in
-  Fmt.str "%a" Fmt.(list ~sep:(always ".") pp) local
+  Fmt.str "%a" Fmt.(list ~sep:(any ".") pp) local
 
 module Make
   (Random : Mirage_random.S)
@@ -97,8 +97,12 @@ module Make
         LE.provision_certificate
           ~production:(Key_gen.production ())
           { LE.certificate_seed= Key_gen.cert_seed ()
+          ; LE.certificate_key_type= `ED25519
+          ; LE.certificate_key_bits= None
           ; LE.email= Option.bind (Key_gen.email ()) (R.to_option <.> Emile.of_string)
-          ; LE.seed= Key_gen.account_seed ()
+          ; LE.account_seed= Key_gen.account_seed ()
+          ; LE.account_key_type= `ED25519
+          ; LE.account_key_bits= None
           ; LE.hostname= hostname }
           (LE.ctx
             ~gethostbyname:(fun dns domain_name -> DNS.gethostbyname dns domain_name >>? fun ipv4 -> Lwt.return_ok (Ipaddr.V4 ipv4))
@@ -126,8 +130,8 @@ module Make
           Base64.decode ~pad:false fingerprint >>= fun fingerprint ->
           R.ok (host, alg, fingerprint)
         | _ -> R.error_msgf "Invalid key fingerprint." in
-      let (host, hash, fingerprint) = R.failwith_error_msg res in
-      R.ok @@ X509.Authenticator.server_key_fingerprint ~time ~hash ~fingerprints:[ host, Cstruct.of_string fingerprint ]
+      let (_host, hash, fingerprint) = R.failwith_error_msg res in
+      R.ok @@ X509.Authenticator.server_key_fingerprint ~time ~hash ~fingerprint:(Cstruct.of_string fingerprint)
     | None, Some str ->
       let res = match String.split_on_char ':' str with
         | [ host; alg; fingerprint ] ->
@@ -137,8 +141,8 @@ module Make
           Base64.decode ~pad:false fingerprint >>= fun fingerprint ->
           R.ok (host, alg, fingerprint)
         | _ -> R.error_msgf "Invalid key fingerprint." in
-      let (host, hash, fingerprint) = R.failwith_error_msg res in
-      R.ok @@ X509.Authenticator.server_cert_fingerprint ~time ~hash ~fingerprints:[ host, Cstruct.of_string fingerprint ]
+      let (_host, hash, fingerprint) = R.failwith_error_msg res in
+      R.ok @@ X509.Authenticator.server_cert_fingerprint ~time ~hash ~fingerprint:(Cstruct.of_string fingerprint)
 
   let start _random _time _mclock _pclock stack ctx =
     let domain = R.failwith_error_msg (Domain_name.of_string (Key_gen.domain ())) in

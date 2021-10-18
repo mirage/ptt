@@ -8,7 +8,7 @@ ARG TARGET=hvt
 ARG EXTRA_FLAGS=
 RUN opam config exec -- mirage configure -t $TARGET $EXTRA_FLAGS
 COPY --chown=opam:root unikernel/relay/ /home/opam/src
-RUN opam pin add ptt -ny git+https://github.com/dinosaure/ptt.git#468fee262d7511ae46688d30668957c8e5de10a1
+RUN opam pin add ptt -ny git+https://github.com/dinosaure/ptt.git#2eaaded2c9f7855c6849d2d56720fdc15c9733cc
 RUN opam depext -ui ptt
 RUN opam config exec -- make depends
 RUN opam config exec -- mirage build

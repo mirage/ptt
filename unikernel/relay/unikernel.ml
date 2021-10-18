@@ -68,7 +68,7 @@ module Make
     Lwt_list.fold_left_s f relay_map values
 
   let start _random _time _mclock _pclock stack ctx =
-    let nameserver = match Key_gen.resolver () with
+    let nameservers = match Key_gen.resolver () with
       | None -> None
       | Some nameserver ->
         let nameserver = Uri.of_string nameserver in
@@ -78,9 +78,9 @@ module Make
         let ipaddr = Option.bind (Uri.host nameserver) (R.to_option <.> Ipaddr.of_string) in
         let port = Option.value (Uri.port nameserver) ~default:53 in
         match ipaddr with
-        | Some ipaddr -> Some (protocol, (ipaddr, port))
+        | Some ipaddr -> Some (protocol, [ ipaddr, port ])
         | None -> None in
-    let dns = Resolver.create ?nameserver stack in
+    let dns = Resolver.create ?nameservers stack in
     let domain = R.failwith_error_msg (Domain_name.of_string (Key_gen.domain ())) in
     let domain = Domain_name.host_exn domain in
     let postmaster =

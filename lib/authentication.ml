@@ -28,7 +28,7 @@ let decode_plain_authentication ({return; _} as scheduler) hash ?stamp t v =
     char '\000' *> available >>= take >>= fun v2 -> return (v0, v1, v2) in
   match
     ( stamp
-    , Base64.decode v
+    , Base64.decode ~pad:false (* XXX(dinosaure): not really sure. *) v
       >>= (R.reword_error (fun _ -> `Msg "Invalid input")
           <.> Angstrom.parse_string ~consume:All parser) )
   with

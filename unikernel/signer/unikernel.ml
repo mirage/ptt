@@ -36,7 +36,7 @@ module Make
     Mirage_crypto_pk.Rsa.generate ~g ~bits:2048 ()
 
   let ns_check dkim server stack =
-    DKIM.server ~nameserver:(`Tcp, (Key_gen.dns_server (), Key_gen.dns_port ())) stack dkim >>= function
+    DKIM.server ~nameservers:(`Tcp, [ Key_gen.dns_server (), Key_gen.dns_port () ]) stack dkim >>= function
     | Ok server' ->
       Logs.info (fun m -> m "The DNS server already has a DKIM public key: %a (expected: %a)."
         Dkim.pp_server server' Dkim.pp_server server) ;
@@ -115,8 +115,8 @@ module Make
           Base64.decode ~pad:false fingerprint >>= fun fingerprint ->
           R.ok (host, alg, fingerprint)
         | _ -> R.error_msgf "Invalid key fingerprint." in
-      let (host, hash, fingerprint) = R.failwith_error_msg res in
-      R.ok @@ X509.Authenticator.server_key_fingerprint ~time ~hash ~fingerprints:[ host, Cstruct.of_string fingerprint ]
+      let (_host, hash, fingerprint) = R.failwith_error_msg res in
+      R.ok @@ X509.Authenticator.server_key_fingerprint ~time ~hash ~fingerprint:(Cstruct.of_string fingerprint)
     | None, Some str ->
       let res = match String.split_on_char ':' str with
         | [ host; alg; fingerprint ] ->
@@ -126,8 +126,8 @@ module Make
           Base64.decode ~pad:false fingerprint >>= fun fingerprint ->
           R.ok (host, alg, fingerprint)
         | _ -> R.error_msgf "Invalid key fingerprint." in
-      let (host, hash, fingerprint) = R.failwith_error_msg res in
-      R.ok @@ X509.Authenticator.server_cert_fingerprint ~time ~hash ~fingerprints:[ host, Cstruct.of_string fingerprint ]
+      let (_host, hash, fingerprint) = R.failwith_error_msg res in
+      R.ok @@ X509.Authenticator.server_cert_fingerprint ~time ~hash ~fingerprint:(Cstruct.of_string fingerprint)
 
   let start _random _time _mclock _pclock stack =
     let fields = match Key_gen.fields () with
