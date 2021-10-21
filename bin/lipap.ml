@@ -1,3 +1,4 @@
+let () = Memtrace.trace_if_requested ()
 let () = Printexc.record_backtrace true
 let reporter = Logs_fmt.reporter ()
 let () = Fmt.set_utf_8 Fmt.stdout true
@@ -6,7 +7,7 @@ let () = Fmt.set_style_renderer Fmt.stdout `Ansi_tty
 let () = Fmt.set_style_renderer Fmt.stderr `Ansi_tty
 let () = Logs.set_level ~all:true (Some Logs.Debug)
 let () = Logs.set_reporter reporter
-let () = Mirage_crypto_rng_unix.initialize ()
+(* let () = Mirage_crypto_rng_unix.initialize () *)
 let ( <.> ) f g x = f (g x)
 
 module Random = struct
@@ -43,20 +44,6 @@ let load_file filename =
   Bos.OS.File.read filename >>= fun contents ->
   R.ok (Cstruct.of_string contents)
 
-let cert =
-  let open Rresult in
-  load_file (Fpath.v "server.pem") >>= fun raw ->
-  X509.Certificate.decode_pem raw
-
-let cert = Rresult.R.get_ok cert
-
-let private_key =
-  let open Rresult in
-  load_file (Fpath.v "server.key") >>= fun raw ->
-  X509.Private_key.decode_pem raw
-
-let private_key = Rresult.R.get_ok private_key
-
 let authenticator _username _password =
   Ptt_tuyau.Lwt_backend.Lwt_scheduler.inj (Lwt.return true)
 
@@ -66,7 +53,7 @@ let tls =
   let authenticator = R.failwith_error_msg (Ca_certs.authenticator ()) in
   Tls.Config.client ~authenticator ()
 
-let fiber ~domain map =
+let fiber cert private_key ~domain map =
   let open Lwt.Infix in
   let open Tcpip_stack_socket.V4V6 in
   let ipv4_only = false and ipv6_only = false in
@@ -91,16 +78,22 @@ let fiber ~domain map =
   Server.fiber ~port:4242 ~tls stackv4 resolver None Digestif.BLAKE2B map info
     authenticator [Ptt.Mechanism.PLAIN]
 
-let romain_calascibetta =
+let postmaster =
   let open Mrmime.Mailbox in
-  Local.[w "romain"; w "calascibetta"] @ Domain.(domain, [a "gmail"; a "com"])
+  Local.[ w "postmaster" ] @ Domain.(domain, [ a "osau"; a "re" ])
 
-let () =
-  let domain = Domain_name.(host_exn <.> of_string_exn) "x25519.net" in
-  let map = Ptt.Relay_map.empty ~postmaster:romain_calascibetta ~domain in
-  let map =
-    let open Mrmime.Mailbox in
-    Ptt.Relay_map.add
-      ~local:Local.(v [w "romain"; w "calascibetta"])
-      romain_calascibetta map in
-  Lwt_main.run (fiber ~domain map)
+let () = match Sys.argv with
+  | [| _; certificate; private_key; |] ->
+    let certificate, private_key =
+      let open Rresult in begin
+      Fpath.of_string certificate >>= fun certificate ->
+      Fpath.of_string private_key >>= fun private_key ->
+      load_file certificate >>= fun certificate ->
+      X509.Certificate.decode_pem certificate >>= fun certificate ->
+      load_file private_key >>= fun private_key ->
+      X509.Private_key.decode_pem private_key >>= fun private_key ->
+      R.ok (certificate, private_key) end |> R.failwith_error_msg in
+    let domain = Domain_name.(host_exn <.> of_string_exn) "osau.re" in
+    let map = Ptt.Relay_map.empty ~postmaster ~domain in
+    Lwt_main.run (fiber certificate private_key ~domain map)
+  | _ -> Fmt.epr "%s <certificate> <private-key>\n%!" Sys.argv.(0)

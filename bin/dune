@@ -9,7 +9,7 @@
  (name lipap)
  (public_name ptt.lipap)
  (modules lipap)
- (libraries digestif.c ca-certs mirage-time-unix bos mirage-clock-unix
+ (libraries memtrace digestif.c ca-certs mirage-time-unix bos mirage-clock-unix
    dns-client.lwt tcpip.stack-socket ptt.lipap logs.fmt mirage-crypto-rng))
 
 (executable
