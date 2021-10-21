@@ -71,16 +71,21 @@ struct
       | Some (key, queue, consumer) ->
         Log.debug (fun m -> m "Got an email.")
         ; let sign_and_transmit () =
-            Dkim_mirage.sign ~key:private_key ~newline:Dkim.CRLF consumer dkim
-            >>= fun (_dkim', consumer') ->
-            Log.debug (fun m -> m "Incoming email signed.")
-            ; Signer.resolve_recipients ~domain:info.Ptt.SSMTP.domain resolver
-                map
-                (List.map fst (Ptt.Messaged.recipients key))
-              >>= fun recipients ->
-              Log.debug (fun m -> m "Send the signed email to the destination.")
-              ; transmit ~info ~tls stack (key, queue, consumer') recipients
-          in
+            Lwt.catch (fun () ->
+                Dkim_mirage.sign ~key:private_key ~newline:Dkim.CRLF consumer
+                  dkim
+                >>= fun (_dkim', consumer') ->
+                Log.debug (fun m -> m "Incoming email signed.")
+                ; Signer.resolve_recipients ~domain:info.Ptt.SSMTP.domain
+                    resolver map
+                    (List.map fst (Ptt.Messaged.recipients key))
+                  >>= fun recipients ->
+                  Log.debug (fun m ->
+                      m "Send the signed email to the destination.")
+                  ; transmit ~info ~tls stack (key, queue, consumer') recipients)
+            @@ fun _exn ->
+            Log.err (fun m -> m "Impossible to sign the incoming email.")
+            ; Lwt.return_unit in
           Lwt.async sign_and_transmit
           ; Lwt.pause () >>= go in
     go ()
