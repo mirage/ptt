@@ -37,14 +37,14 @@ module Make (Stack : Mirage_stack.V4V6) = struct
     Stack.TCP.create_connection tcp (mx_ipaddr, 25)
     >|= R.reword_error (fun err -> `Flow err)
     >>? fun flow ->
-    let flow = Flow.make flow in
+    let flow' = Flow.make flow in
     let ctx = Sendmail_with_starttls.Context_with_tls.make () in
     let domain =
       let vs = Domain_name.to_strings info.Ptt.Logic.domain in
       Colombe.Domain.Domain vs in
     Lwt.catch
       (fun () ->
-        Sendmail_with_starttls.sendmail lwt rdwr flow ctx tls ~domain emitter
+        Sendmail_with_starttls.sendmail lwt rdwr flow' ctx tls ~domain emitter
           recipients producer
         |> Lwt_scheduler.prj
         >|= R.reword_error (fun err -> `Sendmail err))
@@ -53,7 +53,9 @@ module Make (Stack : Mirage_stack.V4V6) = struct
           Lwt.return (R.error_msg err)
           (* XXX(dinosaure): should come from [rdwr]. *)
         | exn -> Lwt.return (Error (`Exn exn)))
-    >>= function
+    >>= fun res ->
+    Stack.TCP.close flow >>= fun () ->
+    match res with
     | Ok () -> Lwt.return (Ok ())
     | Error (`Sendmail `STARTTLS_unavailable) ->
       Lwt.return_error `STARTTLS_unavailable
@@ -68,20 +70,22 @@ module Make (Stack : Mirage_stack.V4V6) = struct
     Stack.TCP.create_connection tcp (mx_ipaddr, 25)
     >|= R.reword_error (fun err -> `Flow err)
     >>? fun flow ->
-    let flow = Flow.make flow in
+    let flow' = Flow.make flow in
     let ctx = Colombe.State.Context.make () in
     let domain =
       let vs = Domain_name.to_strings info.Ptt.Logic.domain in
       Colombe.Domain.Domain vs in
     Lwt.catch
       (fun () ->
-        Sendmail.sendmail lwt rdwr flow ctx ~domain emitter recipients producer
+        Sendmail.sendmail lwt rdwr flow' ctx ~domain emitter recipients producer
         |> Lwt_scheduler.prj
         >|= R.reword_error (fun err -> `Sendmail err))
       (function
         | Failure err -> Lwt.return (R.error_msg err)
         | exn -> Lwt.return (Error (`Exn exn)))
-    >>= function
+    >>= fun res ->
+    Stack.TCP.close flow >>= fun () ->
+    match res with
     | Ok () -> Lwt.return (Ok ())
     | Error (`Sendmail err) ->
       Lwt.return (R.error_msgf "%a" Sendmail.pp_error err)
