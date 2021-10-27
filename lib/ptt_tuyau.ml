@@ -32,13 +32,25 @@ module Make (Stack : Mirage_stack.V4V6) = struct
     let wr flow buf off len = Lwt_scheduler.inj (Flow.send flow buf off len) in
     {Colombe.Sigs.rd; Colombe.Sigs.wr}
 
-  let sendmail ~info ~tls stack mx_ipaddr emitter producer recipients =
+  let sendmail
+      ?encoder
+      ?decoder
+      ?queue
+      ~info
+      ~tls
+      stack
+      mx_ipaddr
+      emitter
+      producer
+      recipients =
     let tcp = Stack.tcp stack in
     Stack.TCP.create_connection tcp (mx_ipaddr, 25)
     >|= R.reword_error (fun err -> `Flow err)
     >>? fun flow ->
     let flow' = Flow.make flow in
-    let ctx = Sendmail_with_starttls.Context_with_tls.make () in
+    let ctx =
+      Sendmail_with_starttls.Context_with_tls.make ?encoder ?decoder ?queue ()
+    in
     let domain =
       let vs = Domain_name.to_strings info.Ptt.Logic.domain in
       Colombe.Domain.Domain vs in
@@ -65,13 +77,14 @@ module Make (Stack : Mirage_stack.V4V6) = struct
     | Error (`Exn exn) ->
       Lwt.return (R.error_msgf "Unknown error: %s" (Printexc.to_string exn))
 
-  let sendmail_without_tls ~info stack mx_ipaddr emitter producer recipients =
+  let sendmail_without_tls
+      ?encoder ?decoder ~info stack mx_ipaddr emitter producer recipients =
     let tcp = Stack.tcp stack in
     Stack.TCP.create_connection tcp (mx_ipaddr, 25)
     >|= R.reword_error (fun err -> `Flow err)
     >>? fun flow ->
     let flow' = Flow.make flow in
-    let ctx = Colombe.State.Context.make () in
+    let ctx = Colombe.State.Context.make ?encoder ?decoder () in
     let domain =
       let vs = Domain_name.to_strings info.Ptt.Logic.domain in
       Colombe.Domain.Domain vs in
@@ -108,8 +121,8 @@ module Server (Time : Mirage_time.S) (Stack : Mirage_stack.V4V6) = struct
     ; producer: Stack.TCP.flow Lwt_stream.bounded_push
   }
 
-  let init ~port stack =
-    let consumer, producer = Lwt_stream.create_bounded 10 in
+  let init ?(limit = 10) ~port stack =
+    let consumer, producer = Lwt_stream.create_bounded limit in
     let listener flow = producer#push flow in
     Stack.listen_tcp ~port stack listener
     ; Lwt.return {stack; consumer; producer}

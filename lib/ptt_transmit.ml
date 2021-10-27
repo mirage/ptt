@@ -53,7 +53,10 @@ struct
       Lwt_scheduler.inj res in
     next
 
-  let transmit ~info ~tls stack (key, queue, consumer) resolved =
+  type pool =
+    (bytes * bytes * (char, Bigarray.int8_unsigned_elt) Ke.Rke.t) Lwt_pool.t
+
+  let transmit ~pool ~info ~tls stack (key, queue, consumer) resolved =
     let producers, targets =
       List.fold_left
         (fun (producers, targets) target ->
@@ -107,33 +110,35 @@ struct
             Log.debug (fun m ->
                 m "Transmit the incoming email to %a (%a)." Ipaddr.pp mx_ipaddr
                   Domain.pp mx_domain)
-            ; sendmail ~info ~tls stack mx_ipaddr emitter stream recipients
-              >>= function
-              | Ok () -> Lwt.return_unit
-              | Error `STARTTLS_unavailable
-              (* TODO(dinosaure): when [insecure]. *) -> (
-                Log.warn (fun m ->
-                    m
-                      "The SMTP receiver %a does not implement STARTTLS, \
-                       restart in clear."
-                      Domain.pp mx_domain)
-                ; sendmail_without_tls ~info stack mx_ipaddr emitter stream
-                    recipients
+            ; Lwt_pool.use pool (fun (encoder, decoder, queue) ->
+                  sendmail
+                    ~encoder:(fun () -> encoder)
+                    ~decoder:(fun () -> decoder)
+                    ~queue:(fun () -> queue)
+                    ~info ~tls stack mx_ipaddr emitter stream recipients
                   >>= function
-                  | Ok () -> Lwt.return_unit
+                  | Ok () -> Lwt.return_ok ()
+                  | Error `STARTTLS_unavailable
+                  (* TODO(dinosaure): when [insecure]. *) ->
+                    Log.warn (fun m ->
+                        m
+                          "The SMTP receiver %a does not implement STARTTLS, \
+                           restart in clear."
+                          Domain.pp mx_domain)
+                    ; sendmail_without_tls
+                        ~encoder:(fun () -> encoder)
+                        ~decoder:(fun () -> decoder)
+                        ~info stack mx_ipaddr emitter stream recipients
                   | Error err ->
                     Log.err (fun m ->
                         m
                           "Impossible to send the given email to %a (without \
                            STARTTLS): %a."
                           Domain.pp mx_domain pp_error err)
-                    ; go rest)
-              | Error err ->
-                Log.err (fun m ->
-                    m "Impossible to send the given email to %a: %a." Domain.pp
-                      mx_domain pp_error err)
-                ; (* TODO(dinosaure): report the error to the sender. *)
-                  go rest) in
+                    ; Lwt.return_error err)
+              >>= function
+              | Ok () -> Lwt.return_unit
+              | Error _ -> go rest) in
         let sort =
           List.sort
             (fun {Ptt.Mxs.preference= a; _} {Ptt.Mxs.preference= b; _} ->

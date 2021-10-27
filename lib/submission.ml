@@ -137,15 +137,17 @@ struct
     | `Authentication of Colombe.Domain.t * Mechanism.t ]
 
   let accept :
-         ipaddr:Ipaddr.t
+         ?encoder:(unit -> bytes)
+      -> ?decoder:(unit -> bytes)
+      -> ipaddr:Ipaddr.t
       -> Flow.t
       -> Resolver.t
       -> Random.g option
       -> 'k Digestif.hash
       -> 'k server
       -> (unit, error) result IO.t =
-   fun ~ipaddr flow resolver random hash server ->
-    let ctx = Colombe.State.Context.make () in
+   fun ?encoder ?decoder ~ipaddr flow resolver random hash server ->
+    let ctx = Colombe.State.Context.make ?encoder ?decoder () in
     let m = SSMTP.m_submission_init ctx server.info server.mechanisms in
     run flow m >>? function
     | `Quit -> IO.return (Ok ())
