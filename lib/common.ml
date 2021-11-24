@@ -94,7 +94,7 @@ struct
       | x :: r -> f a x >>= fun a -> go a r in
     go a l
 
-  let recipients_are_reachable ~ipv4 w recipients =
+  let recipients_are_reachable ~ipaddr w recipients =
     let open Colombe in
     let fold m {Dns.Mx.mail_exchange; Dns.Mx.preference} =
       Log.debug (fun m ->
@@ -116,7 +116,7 @@ struct
     let rec go acc = function
       | [] -> IO.return acc
       | Forward_path.Postmaster :: r ->
-        go (Mxs.(singleton (v ~preference:0 (Ipaddr.V4 ipv4))) :: acc) r
+        go (Mxs.(singleton (v ~preference:0 ipaddr)) :: acc) r
       | Forward_path.Forward_path {Path.domain= Domain.Domain v; _} :: r
       | Forward_path.Domain (Domain.Domain v) :: r -> (
         try

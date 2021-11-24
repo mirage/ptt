@@ -2,14 +2,14 @@ module Lwt_backend = Lwt_backend
 
 module type FLOW = Ptt.Sigs.FLOW with type +'a io = 'a Lwt.t
 
-module Make (Stack : Mirage_stack.V4V6) = struct
+module Make (Stack : Mirage_protocols.TCP) = struct
   open Rresult
   open Lwt.Infix
   open Lwt_backend
-  module Flow = Unixiz.Make (Stack.TCP)
+  module Flow = Unixiz.Make (Stack)
 
   module TLSFlow = struct
-    module Flow = Tls_mirage.Make (Stack.TCP)
+    module Flow = Tls_mirage.Make (Stack)
     include Unixiz.Make (Flow)
 
     let failwith pp = function
@@ -43,7 +43,7 @@ module Make (Stack : Mirage_stack.V4V6) = struct
       emitter
       producer
       recipients =
-    Stack.TCP.create_connection stack (mx_ipaddr, 25)
+    Stack.create_connection stack (mx_ipaddr, 25)
     >|= R.reword_error (fun err -> `Flow err)
     >>? fun flow ->
     let flow' = Flow.make flow in
@@ -65,7 +65,7 @@ module Make (Stack : Mirage_stack.V4V6) = struct
           (* XXX(dinosaure): should come from [rdwr]. *)
         | exn -> Lwt.return (Error (`Exn exn)))
     >>= fun res ->
-    Stack.TCP.close flow >>= fun () ->
+    Stack.close flow >>= fun () ->
     match res with
     | Ok () -> Lwt.return (Ok ())
     | Error (`Sendmail `STARTTLS_unavailable) ->
@@ -78,7 +78,7 @@ module Make (Stack : Mirage_stack.V4V6) = struct
 
   let sendmail_without_tls
       ?encoder ?decoder ~info stack mx_ipaddr emitter producer recipients =
-    Stack.TCP.create_connection stack (mx_ipaddr, 25)
+    Stack.create_connection stack (mx_ipaddr, 25)
     >|= R.reword_error (fun err -> `Flow err)
     >>? fun flow ->
     let flow' = Flow.make flow in
@@ -95,7 +95,7 @@ module Make (Stack : Mirage_stack.V4V6) = struct
         | Failure err -> Lwt.return (R.error_msg err)
         | exn -> Lwt.return (Error (`Exn exn)))
     >>= fun res ->
-    Stack.TCP.close flow >>= fun () ->
+    Stack.close flow >>= fun () ->
     match res with
     | Ok () -> Lwt.return (Ok ())
     | Error (`Sendmail err) ->
@@ -106,23 +106,23 @@ module Make (Stack : Mirage_stack.V4V6) = struct
 
   let pp_error ppf = function
     | `Msg err -> Fmt.string ppf err
-    | `Flow err -> Stack.TCP.pp_error ppf err
+    | `Flow err -> Stack.pp_error ppf err
     | `STARTTLS_unavailable -> Fmt.string ppf "STARTTLS unavailable"
 end
 
-module Server (Time : Mirage_time.S) (Stack : Mirage_stack.V4V6) = struct
+module Server (Time : Mirage_time.S) (Stack : Mirage_protocols.TCP) = struct
   open Lwt.Infix
 
   type service = {
-      stack: Stack.TCP.t
-    ; consumer: Stack.TCP.flow Lwt_stream.t
-    ; producer: Stack.TCP.flow Lwt_stream.bounded_push
+      stack: Stack.t
+    ; consumer: Stack.flow Lwt_stream.t
+    ; producer: Stack.flow Lwt_stream.bounded_push
   }
 
   let init ?(limit = 10) ~port stack =
     let consumer, producer = Lwt_stream.create_bounded limit in
     let listener flow = producer#push flow in
-    Stack.TCP.listen ~port stack listener
+    Stack.listen ~port stack listener
     ; Lwt.return {stack; consumer; producer}
 
   let rec accept ({consumer; producer; _} as t) =

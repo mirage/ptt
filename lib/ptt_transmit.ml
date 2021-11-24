@@ -3,7 +3,7 @@ let icompare : int -> int -> int = fun a b -> compare a b
 
 module Make
     (Pclock : Mirage_clock.PCLOCK)
-    (Stack : Mirage_stack.V4V6)
+    (Stack : Mirage_protocols.TCP with type ipaddr = Ipaddr.V4.t)
     (Md : Ptt.Messaged.S with type 'a s = 'a Lwt.t) =
 struct
   open Lwt.Infix
@@ -104,7 +104,9 @@ struct
                 ~encoder:(fun () -> encoder)
                 ~decoder:(fun () -> decoder)
                 ~queue:(fun () -> queue)
-                ~info ~tls stack mx_ipaddr emitter stream recipients
+                ~info ~tls stack
+                (Option.get (Ipaddr.to_v4 mx_ipaddr))
+                (* TODO *) emitter stream recipients
               >>= function
               | Ok () -> Lwt.return_ok ()
               | Error `STARTTLS_unavailable
@@ -117,7 +119,9 @@ struct
                 ; sendmail_without_tls
                     ~encoder:(fun () -> encoder)
                     ~decoder:(fun () -> decoder)
-                    ~info stack mx_ipaddr emitter stream recipients
+                    ~info stack
+                    (Option.get (Ipaddr.to_v4 mx_ipaddr))
+                    (* TODO *) emitter stream recipients
               | Error err ->
                 Log.err (fun m ->
                     m

@@ -4,13 +4,13 @@ module Make
     (Mclock : Mirage_clock.MCLOCK)
     (Pclock : Mirage_clock.PCLOCK)
     (Resolver : Ptt.Sigs.RESOLVER with type +'a io = 'a Lwt.t)
-    (Stack : Mirage_stack.V4V6) : sig
+    (Stack : Mirage_protocols.TCP with type ipaddr = Ipaddr.V4.t) : sig
   val fiber :
        ?limit:int
     -> ?stop:Lwt_switch.t
     -> port:int
     -> tls:Tls.Config.client
-    -> Stack.TCP.t
+    -> Stack.t
     -> Resolver.t
     -> Random.g option
     -> 'k Digestif.hash
