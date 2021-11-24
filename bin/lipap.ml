@@ -71,10 +71,7 @@ let fiber ~domain map =
   let open Tcpip_stack_socket.V4V6 in
   let ipv4_only = false and ipv6_only = false in
   TCP.connect ~ipv4_only ~ipv6_only Ipaddr.V4.Prefix.global None
-  >>= fun tcpv4 ->
-  UDP.connect ~ipv4_only ~ipv6_only Ipaddr.V4.Prefix.global None
-  >>= fun udpv4 ->
-  connect udpv4 tcpv4 >>= fun stackv4 ->
+  >>= fun tcpv4v6 ->
   let info =
     {
       Ptt.SMTP.domain
@@ -88,7 +85,7 @@ let fiber ~domain map =
     ; Ptt.SMTP.size= 0x1000000L
     } in
   let resolver = Dns_client_lwt.create () in
-  Server.fiber ~port:4242 ~tls stackv4 resolver None Digestif.BLAKE2B map info
+  Server.fiber ~port:4242 ~tls tcpv4v6 resolver None Digestif.BLAKE2B map info
     authenticator [Ptt.Mechanism.PLAIN]
 
 let romain_calascibetta =

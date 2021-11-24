@@ -33,14 +33,26 @@ struct
   module Server = Ptt_tuyau.Server (Time) (Stack)
   include Ptt_transmit.Make (Pclock) (Stack) (Relay.Md)
 
-  let smtp_relay_service ?stop ~port stack resolver conf_server =
-    Server.init ~port stack >>= fun service ->
-    let handler flow =
+  let smtp_relay_service
+      ~pool
+      ?(limit = Lwt_pool.wait_queue_length pool / 2)
+      ?stop
+      ~port
+      stack
+      resolver
+      conf_server =
+    Server.init ~limit ~port stack >>= fun service ->
+    let handler pool flow =
       let ip, port = Stack.TCP.dst flow in
       let v = Flow.make flow in
       Lwt.catch
         (fun () ->
-          Relay.accept ~ipaddr:ip v resolver conf_server
+          Lwt_pool.use pool @@ fun (encoder, decoder, queue) ->
+          Relay.accept
+            ~encoder:(fun () -> encoder)
+            ~decoder:(fun () -> decoder)
+            ~queue:(fun () -> queue)
+            ~ipaddr:ip v resolver conf_server
           >|= R.reword_error (R.msgf "%a" Relay.pp_error)
           >>= fun res ->
           Stack.TCP.close flow >>= fun () -> Lwt.return res)
@@ -59,10 +71,11 @@ struct
             m "<%a:%d> raised an unknown exception: %s" Ipaddr.pp ip port
               (Printexc.to_string exn))
         ; Lwt.return () in
-    let (`Initialized fiber) = Server.serve_when_ready ?stop ~handler service in
+    let (`Initialized fiber) =
+      Server.serve_when_ready ?stop ~handler:(handler pool) service in
     fiber
 
-  let smtp_logic ~info ~tls stack resolver messaged map =
+  let smtp_logic ~pool ~info ~tls stack resolver messaged map =
     let rec go () =
       Relay.Md.await messaged >>= fun () ->
       Relay.Md.pop messaged >>= function
@@ -71,17 +84,24 @@ struct
         let transmit () =
           Relay.resolve_recipients ~domain:info.Ptt.SSMTP.domain resolver map
             (List.map fst (Ptt.Messaged.recipients key))
-          >>= fun recipients -> transmit ~info ~tls stack v recipients in
+          >>= fun recipients -> transmit ~pool ~info ~tls stack v recipients
+        in
         Lwt.async transmit
         ; Lwt.pause () >>= go in
     go ()
 
-  let fiber ?stop ~port ~tls stack resolver map info =
+  let fiber ?(limit = 20) ?stop ~port ~tls stack resolver map info =
     let conf_server = Relay.create ~info in
     let messaged = Relay.messaged conf_server in
+    let pool =
+      Lwt_pool.create limit @@ fun () ->
+      let encoder = Bytes.create Colombe.Encoder.io_buffer_size in
+      let decoder = Bytes.create Colombe.Decoder.io_buffer_size in
+      let queue = Ke.Rke.create ~capacity:0x1000 Bigarray.char in
+      Lwt.return (encoder, decoder, queue) in
     Lwt.join
       [
-        smtp_relay_service ?stop ~port stack resolver conf_server
-      ; smtp_logic ~info ~tls stack resolver messaged map
+        smtp_relay_service ~pool ?stop ~port stack resolver conf_server
+      ; smtp_logic ~pool ~info ~tls stack resolver messaged map
       ]
 end

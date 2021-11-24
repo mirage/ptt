@@ -39,7 +39,10 @@ module Make
   val messaged : server -> Md.t
 
   val accept :
-       ipaddr:Ipaddr.t
+       ?encoder:(unit -> bytes)
+    -> ?decoder:(unit -> bytes)
+    -> ?queue:(unit -> (char, Bigarray.int8_unsigned_elt) Ke.Rke.t)
+    -> ipaddr:Ipaddr.t
     -> Flow.t
     -> Resolver.t
     -> server

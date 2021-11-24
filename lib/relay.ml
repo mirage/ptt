@@ -49,13 +49,18 @@ struct
     run flow m
 
   let accept :
-         ipaddr:Ipaddr.t
+         ?encoder:(unit -> bytes)
+      -> ?decoder:(unit -> bytes)
+      -> ?queue:(unit -> (char, Bigarray.int8_unsigned_elt) Ke.Rke.t)
+      -> ipaddr:Ipaddr.t
       -> Flow.t
       -> Resolver.t
       -> server
       -> (unit, error) result IO.t =
-   fun ~ipaddr flow resolver server ->
-    let ctx = Sendmail_with_starttls.Context_with_tls.make () in
+   fun ?encoder ?decoder ?queue ~ipaddr flow resolver server ->
+    let ctx =
+      Sendmail_with_starttls.Context_with_tls.make ?encoder ?decoder ?queue ()
+    in
     let m = SMTP.m_relay_init ctx server.info in
     run flow m >>? function
     | `Quit -> properly_close_tls flow ctx >>? fun () -> IO.return (Ok ())

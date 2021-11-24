@@ -44,7 +44,9 @@ module Make
   val messaged : 'k server -> Md.t
 
   val accept :
-       ipaddr:Ipaddr.t
+       ?encoder:(unit -> bytes)
+    -> ?decoder:(unit -> bytes)
+    -> ipaddr:Ipaddr.t
     -> Flow.t
     -> Resolver.t
     -> Random.g option

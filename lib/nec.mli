@@ -6,10 +6,11 @@ module Make
     (Resolver : Ptt.Sigs.RESOLVER with type +'a io = 'a Lwt.t)
     (Stack : Mirage_stack.V4V6) : sig
   val fiber :
-       ?stop:Lwt_switch.t
+       ?limit:int
+    -> ?stop:Lwt_switch.t
     -> port:int
     -> tls:Tls.Config.client
-    -> Stack.t
+    -> Stack.TCP.t
     -> Resolver.t
     -> Mirage_crypto_pk.Rsa.priv * Dkim.unsigned Dkim.dkim
     -> Ptt.Relay_map.t

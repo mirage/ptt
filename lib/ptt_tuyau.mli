@@ -23,9 +23,12 @@ module Make (Stack : Mirage_stack.V4V6) : sig
   end
 
   val sendmail :
-       info:Ptt.Logic.info
+       ?encoder:(unit -> bytes)
+    -> ?decoder:(unit -> bytes)
+    -> ?queue:(unit -> (char, Bigarray.int8_unsigned_elt) Ke.Rke.t)
+    -> info:Ptt.Logic.info
     -> tls:Tls.Config.client
-    -> Stack.t
+    -> Stack.TCP.t
     -> Ipaddr.t
     -> Colombe.Reverse_path.t
     -> (string * int * int, Lwt_scheduler.t) Sendmail.stream
@@ -37,8 +40,10 @@ module Make (Stack : Mirage_stack.V4V6) : sig
        Lwt.t
 
   val sendmail_without_tls :
-       info:Ptt.Logic.info
-    -> Stack.t
+       ?encoder:(unit -> bytes)
+    -> ?decoder:(unit -> bytes)
+    -> info:Ptt.Logic.info
+    -> Stack.TCP.t
     -> Ipaddr.t
     -> Colombe.Reverse_path.t
     -> (string * int * int, Lwt_scheduler.t) Sendmail.stream
@@ -52,7 +57,7 @@ end
 module Server (Time : Mirage_time.S) (Stack : Mirage_stack.V4V6) : sig
   type service
 
-  val init : port:int -> Stack.t -> service Lwt.t
+  val init : ?limit:int -> port:int -> Stack.TCP.t -> service Lwt.t
 
   val serve_when_ready :
        ?timeout:int64
