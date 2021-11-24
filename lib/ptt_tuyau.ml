@@ -43,8 +43,7 @@ module Make (Stack : Mirage_stack.V4V6) = struct
       emitter
       producer
       recipients =
-    let tcp = Stack.tcp stack in
-    Stack.TCP.create_connection tcp (mx_ipaddr, 25)
+    Stack.TCP.create_connection stack (mx_ipaddr, 25)
     >|= R.reword_error (fun err -> `Flow err)
     >>? fun flow ->
     let flow' = Flow.make flow in
@@ -79,8 +78,7 @@ module Make (Stack : Mirage_stack.V4V6) = struct
 
   let sendmail_without_tls
       ?encoder ?decoder ~info stack mx_ipaddr emitter producer recipients =
-    let tcp = Stack.tcp stack in
-    Stack.TCP.create_connection tcp (mx_ipaddr, 25)
+    Stack.TCP.create_connection stack (mx_ipaddr, 25)
     >|= R.reword_error (fun err -> `Flow err)
     >>? fun flow ->
     let flow' = Flow.make flow in
@@ -116,7 +114,7 @@ module Server (Time : Mirage_time.S) (Stack : Mirage_stack.V4V6) = struct
   open Lwt.Infix
 
   type service = {
-      stack: Stack.t
+      stack: Stack.TCP.t
     ; consumer: Stack.TCP.flow Lwt_stream.t
     ; producer: Stack.TCP.flow Lwt_stream.bounded_push
   }
@@ -124,7 +122,7 @@ module Server (Time : Mirage_time.S) (Stack : Mirage_stack.V4V6) = struct
   let init ?(limit = 10) ~port stack =
     let consumer, producer = Lwt_stream.create_bounded limit in
     let listener flow = producer#push flow in
-    Stack.listen_tcp ~port stack listener
+    Stack.TCP.listen ~port stack listener
     ; Lwt.return {stack; consumer; producer}
 
   let rec accept ({consumer; producer; _} as t) =
@@ -133,9 +131,7 @@ module Server (Time : Mirage_time.S) (Stack : Mirage_stack.V4V6) = struct
     | None when producer#closed -> Lwt.return_error `Closed
     | None -> accept t
 
-  let close {stack; producer; _} =
-    Stack.disconnect stack >>= fun () -> producer#close ; Lwt.return_unit
-
+  let close {producer; _} = producer#close ; Lwt.return_unit
   let ( >>? ) = Lwt_result.bind
 
   let serve_when_ready ?timeout ?stop ~handler service =

@@ -10,7 +10,7 @@ module Make
     -> ?stop:Lwt_switch.t
     -> port:int
     -> tls:Tls.Config.client
-    -> Stack.t
+    -> Stack.TCP.t
     -> Resolver.t
     -> Random.g option
     -> 'k Digestif.hash
