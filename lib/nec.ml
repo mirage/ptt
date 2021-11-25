@@ -8,7 +8,7 @@ module Make
     (Mclock : Mirage_clock.MCLOCK)
     (Pclock : Mirage_clock.PCLOCK)
     (Resolver : Ptt.Sigs.RESOLVER with type +'a io = 'a Lwt.t)
-    (Stack : Mirage_protocols.TCP with type ipaddr = Ipaddr.V4.t) =
+    (Stack : Mirage_protocols.TCP with type ipaddr = Ipaddr.t) =
 struct
   include Ptt_tuyau.Make (Stack)
 
@@ -53,7 +53,7 @@ struct
             ~encoder:(fun () -> encoder)
             ~decoder:(fun () -> decoder)
             ~queue:(fun () -> queue)
-            ~ipaddr:(Ipaddr.V4 ipaddr) v resolver conf_server
+            ~ipaddr v resolver conf_server
           >|= R.reword_error (R.msgf "%a" Signer.pp_error)
           >>= fun res ->
           Stack.close flow >>= fun () -> Lwt.return res)
@@ -63,14 +63,14 @@ struct
       >>= function
       | Ok () ->
         Log.info (fun m ->
-            m "<%a:%d> submitted a message" Ipaddr.V4.pp ipaddr port)
+            m "<%a:%d> submitted a message" Ipaddr.pp ipaddr port)
         ; Lwt.return ()
       | Error (`Msg err) ->
-        Log.err (fun m -> m "<%a:%d> %s" Ipaddr.V4.pp ipaddr port err)
+        Log.err (fun m -> m "<%a:%d> %s" Ipaddr.pp ipaddr port err)
         ; Lwt.return ()
       | Error (`Exn exn) ->
         Log.err (fun m ->
-            m "<%a:%d> raised an unknown exception: %s" Ipaddr.V4.pp ipaddr port
+            m "<%a:%d> raised an unknown exception: %s" Ipaddr.pp ipaddr port
               (Printexc.to_string exn))
         ; Lwt.return () in
     let (`Initialized fiber) =

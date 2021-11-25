@@ -1,6 +1,6 @@
 module Make
     (Pclock : Mirage_clock.PCLOCK)
-    (Stack : Mirage_protocols.TCP with type ipaddr = Ipaddr.V4.t)
+    (Stack : Mirage_protocols.TCP with type ipaddr = Ipaddr.t)
     (Md : Ptt.Messaged.S with type 'a s = 'a Lwt.t) : sig
   type pool =
     (bytes * bytes * (char, Bigarray.int8_unsigned_elt) Ke.Rke.t) Lwt_pool.t
