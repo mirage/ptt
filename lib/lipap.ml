@@ -34,17 +34,9 @@ struct
   include Ptt_transmit.Make (Pclock) (Stack) (Submission.Md)
 
   let smtp_submission_service
-      ~pool
-      ?(limit = Lwt_pool.wait_queue_length pool / 2)
-      ?stop
-      ~port
-      stack
-      resolver
-      random
-      hash
-      conf_server =
+      ~pool ?stop ~port stack resolver random hash conf_server =
     let tls = (Submission.info conf_server).Ptt.SSMTP.tls in
-    Server.init ~limit ~port stack >>= fun service ->
+    Server.init ~port stack >>= fun service ->
     let handler pool flow =
       let ip, port = Stack.TCP.dst flow in
       Lwt.catch
@@ -109,7 +101,13 @@ struct
       mechanisms =
     let conf_server = Submission.create ~info ~authenticator mechanisms in
     let messaged = Submission.messaged conf_server in
-    let pool =
+    let pool0 =
+      Lwt_pool.create limit @@ fun () ->
+      let encoder = Bytes.create Colombe.Encoder.io_buffer_size in
+      let decoder = Bytes.create Colombe.Decoder.io_buffer_size in
+      let queue = Ke.Rke.create ~capacity:0x1000 Bigarray.char in
+      Lwt.return (encoder, decoder, queue) in
+    let pool1 =
       Lwt_pool.create limit @@ fun () ->
       let encoder = Bytes.create Colombe.Encoder.io_buffer_size in
       let decoder = Bytes.create Colombe.Decoder.io_buffer_size in
@@ -117,7 +115,8 @@ struct
       Lwt.return (encoder, decoder, queue) in
     Lwt.join
       [
-        smtp_submission_service ~pool ?stop ~port stack resolver random hash
-          conf_server; smtp_logic ~pool ~info ~tls stack resolver messaged map
+        smtp_submission_service ~pool:pool0 ?stop ~port stack resolver random
+          hash conf_server
+      ; smtp_logic ~pool:pool1 ~info ~tls stack resolver messaged map
       ]
 end

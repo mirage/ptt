@@ -33,15 +33,8 @@ struct
   module Server = Ptt_tuyau.Server (Time) (Stack)
   include Ptt_transmit.Make (Pclock) (Stack) (Relay.Md)
 
-  let smtp_relay_service
-      ~pool
-      ?(limit = Lwt_pool.wait_queue_length pool / 2)
-      ?stop
-      ~port
-      stack
-      resolver
-      conf_server =
-    Server.init ~limit ~port stack >>= fun service ->
+  let smtp_relay_service ~pool ?stop ~port stack resolver conf_server =
+    Server.init ~port stack >>= fun service ->
     let handler pool flow =
       let ip, port = Stack.TCP.dst flow in
       let v = Flow.make flow in
@@ -93,7 +86,13 @@ struct
   let fiber ?(limit = 20) ?stop ~port ~tls stack resolver map info =
     let conf_server = Relay.create ~info in
     let messaged = Relay.messaged conf_server in
-    let pool =
+    let pool0 =
+      Lwt_pool.create limit @@ fun () ->
+      let encoder = Bytes.create Colombe.Encoder.io_buffer_size in
+      let decoder = Bytes.create Colombe.Decoder.io_buffer_size in
+      let queue = Ke.Rke.create ~capacity:0x1000 Bigarray.char in
+      Lwt.return (encoder, decoder, queue) in
+    let pool1 =
       Lwt_pool.create limit @@ fun () ->
       let encoder = Bytes.create Colombe.Encoder.io_buffer_size in
       let decoder = Bytes.create Colombe.Decoder.io_buffer_size in
@@ -101,7 +100,7 @@ struct
       Lwt.return (encoder, decoder, queue) in
     Lwt.join
       [
-        smtp_relay_service ~pool ?stop ~port stack resolver conf_server
-      ; smtp_logic ~pool ~info ~tls stack resolver messaged map
+        smtp_relay_service ~pool:pool0 ?stop ~port stack resolver conf_server
+      ; smtp_logic ~pool:pool1 ~info ~tls stack resolver messaged map
       ]
 end
