@@ -57,7 +57,7 @@ end
 module Server (Time : Mirage_time.S) (Stack : Mirage_stack.V4V6) : sig
   type service
 
-  val init : ?limit:int -> port:int -> Stack.TCP.t -> service Lwt.t
+  val init : port:int -> Stack.TCP.t -> service Lwt.t
 
   val serve_when_ready :
        ?timeout:int64

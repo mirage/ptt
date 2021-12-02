@@ -115,23 +115,46 @@ module Server (Time : Mirage_time.S) (Stack : Mirage_stack.V4V6) = struct
 
   type service = {
       stack: Stack.TCP.t
-    ; consumer: Stack.TCP.flow Lwt_stream.t
-    ; producer: Stack.TCP.flow Lwt_stream.bounded_push
+    ; queue: Stack.TCP.flow Queue.t
+    ; condition: unit Lwt_condition.t
+    ; mutex: Lwt_mutex.t
+    ; mutable closed: bool
   }
 
-  let init ?(limit = 10) ~port stack =
-    let consumer, producer = Lwt_stream.create_bounded limit in
-    let listener flow = producer#push flow in
+  let init ~port stack =
+    let queue = Queue.create () in
+    let condition = Lwt_condition.create () in
+    let mutex = Lwt_mutex.create () in
+    let listener flow =
+      Lwt_mutex.lock mutex >>= fun () ->
+      Queue.push flow queue
+      ; Lwt_condition.signal condition ()
+      ; Lwt_mutex.unlock mutex
+      ; Lwt.return () in
     Stack.TCP.listen ~port stack listener
-    ; Lwt.return {stack; consumer; producer}
+    ; Lwt.return {stack; queue; condition; mutex; closed= false}
 
-  let rec accept ({consumer; producer; _} as t) =
-    Lwt_stream.get consumer >>= function
-    | Some flow -> Lwt.return_ok flow
-    | None when producer#closed -> Lwt.return_error `Closed
-    | None -> accept t
+  let rec accept ({queue; condition; mutex; _} as t) =
+    Lwt_mutex.lock mutex >>= fun () ->
+    let rec await () =
+      if Queue.is_empty queue && not t.closed then
+        Lwt_condition.wait condition ~mutex >>= await
+      else Lwt.return_unit in
+    await () >>= fun () ->
+    match Queue.pop queue with
+    | flow -> Lwt_mutex.unlock mutex ; Lwt.return_ok flow
+    | exception Queue.Empty ->
+      if t.closed then (
+        Lwt_mutex.unlock mutex
+        ; Lwt.return_error `Closed)
+      else (Lwt_mutex.unlock mutex ; accept t)
 
-  let close {producer; _} = producer#close ; Lwt.return_unit
+  let close ({stack; condition; _} as t) =
+    t.closed <- true
+    ; Stack.TCP.disconnect stack >>= fun () ->
+      Lwt_condition.signal condition ()
+      ; Lwt.return_unit
+
   let ( >>? ) = Lwt_result.bind
 
   let serve_when_ready ?timeout ?stop ~handler service =

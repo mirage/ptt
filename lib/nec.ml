@@ -34,15 +34,8 @@ struct
   module Server = Ptt_tuyau.Server (Time) (Stack)
   include Ptt_transmit.Make (Pclock) (Stack) (Signer.Md)
 
-  let smtp_signer_service
-      ~pool
-      ?(limit = Lwt_pool.wait_queue_length pool / 2)
-      ?stop
-      ~port
-      stack
-      resolver
-      conf_server =
-    Server.init ~limit ~port stack >>= fun service ->
+  let smtp_signer_service ~pool ?stop ~port stack resolver conf_server =
+    Server.init ~port stack >>= fun service ->
     let handler pool flow =
       let ip, port = Stack.TCP.dst flow in
       let v = Flow.make flow in
