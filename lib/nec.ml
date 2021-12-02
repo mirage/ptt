@@ -103,7 +103,13 @@ struct
       =
     let conf_server = Signer.create ~info in
     let messaged = Signer.messaged conf_server in
-    let pool =
+    let pool0 =
+      Lwt_pool.create limit @@ fun () ->
+      let encoder = Bytes.create Colombe.Encoder.io_buffer_size in
+      let decoder = Bytes.create Colombe.Decoder.io_buffer_size in
+      let queue = Ke.Rke.create ~capacity:0x1000 Bigarray.char in
+      Lwt.return (encoder, decoder, queue) in
+    let pool1 =
       Lwt_pool.create limit @@ fun () ->
       let encoder = Bytes.create Colombe.Encoder.io_buffer_size in
       let decoder = Bytes.create Colombe.Decoder.io_buffer_size in
@@ -111,8 +117,8 @@ struct
       Lwt.return (encoder, decoder, queue) in
     Lwt.join
       [
-        smtp_signer_service ~pool ?stop ~port stack resolver conf_server
-      ; smtp_logic ~pool ~info ~tls stack resolver messaged (private_key, dkim)
-          map
+        smtp_signer_service ~pool:pool0 ?stop ~port stack resolver conf_server
+      ; smtp_logic ~pool:pool1 ~info ~tls stack resolver messaged
+          (private_key, dkim) map
       ]
 end
