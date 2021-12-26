@@ -4,7 +4,7 @@ module Make
     (Mclock : Mirage_clock.MCLOCK)
     (Pclock : Mirage_clock.PCLOCK)
     (Resolver : Ptt.Sigs.RESOLVER with type +'a io = 'a Lwt.t)
-    (Stack : Mirage_stack.V4V6) : sig
+    (Stack : Tcpip.Stack.V4V6) : sig
   val fiber :
        ?limit:int
     -> ?stop:Lwt_switch.t

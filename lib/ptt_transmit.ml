@@ -3,7 +3,7 @@ let icompare : int -> int -> int = fun a b -> compare a b
 
 module Make
     (Pclock : Mirage_clock.PCLOCK)
-    (Stack : Mirage_stack.V4V6)
+    (Stack : Tcpip.Stack.V4V6)
     (Md : Ptt.Messaged.S with type 'a s = 'a Lwt.t) =
 struct
   open Lwt.Infix

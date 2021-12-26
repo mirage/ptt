@@ -8,7 +8,7 @@ module Make
     (Mclock : Mirage_clock.MCLOCK)
     (Pclock : Mirage_clock.PCLOCK)
     (Resolver : Ptt.Sigs.RESOLVER with type +'a io = 'a Lwt.t)
-    (Stack : Mirage_stack.V4V6) =
+    (Stack : Tcpip.Stack.V4V6) =
 struct
   include Ptt_tuyau.Make (Stack)
 

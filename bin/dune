@@ -23,4 +23,4 @@
  (public_name ptt.spf)
  (modules spf)
  (libraries cmdliner dns-tsig ptime.clock.os dns-client.lwt mirage-crypto-rng
-   tcpip.stack-socket spf spf.lwt dns-mirage))
+   tcpip.stack-socket uspf uspf.lwt dns-mirage))

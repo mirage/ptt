@@ -11,8 +11,8 @@
  (name ptt_tuyau)
  (public_name ptt.tuyau)
  (modules unixiz ptt_tuyau lwt_backend)
- (libraries lwt tls-mirage bigstringaf mirage-time mirage-flow mirage-stack
-   tcpip mimic ptt))
+ (libraries lwt tls-mirage bigstringaf mirage-time mirage-flow tcpip mimic
+   ptt))
 
 (library
  (name ptt_transmit)

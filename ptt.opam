@@ -20,11 +20,11 @@ depends: [
   "sendmail"
   "sendmail-lwt"
   "domain-name"
+  "uspf"
   "dns"
   "logs"
   "tls" {>= "0.15.0"}
-  "mirage-stack"
-  "tcpip"
+  "tcpip" {>= "7.0.0"}
   "ke"
   "bigstringaf"
   "ocaml-syntax-shims"
@@ -52,7 +52,7 @@ depends: [
   "tls-mirage" {>= "0.12.8"}
   "dns-mirage"
   "dns-tsig"
-  "spf"
+  "uspf"
   "ipaddr"
   "dmarc"
   "ptime"
@@ -68,9 +68,14 @@ pin-depends: [
   [ "received.dev" "git+https://github.com/mirage/colombe.git#5f0bf4b6ec509f3b4a5b30f79f92bd39bb08b786" ]
   [ "sendmail.dev" "git+https://github.com/mirage/colombe.git#5f0bf4b6ec509f3b4a5b30f79f92bd39bb08b786" ]
   [ "sendmail-lwt.dev" "git+https://github.com/mirage/colombe.git#5f0bf4b6ec509f3b4a5b30f79f92bd39bb08b786" ]
-  [ "dkim.dev" "git+https://github.com/dinosaure/ocaml-dkim.git#a9e6041b64614100052bfb93435696f3bb289cb0" ]
-  [ "dkim-mirage.dev" "git+https://github.com/dinosaure/ocaml-dkim.git#a9e6041b64614100052bfb93435696f3bb289cb0" ]
-  [ "spf.dev" "git+https://github.com/dinosaure/ocaml-spf.git#9a946210a0d0d8f6de8366bcbc119bd85ec45f9d" ]
-  [ "dmarc.dev" "git+https://github.com/dinosaure/ocaml-dmarc.git#0ea88978fb464066f040079480ed9c8688d2fb06" ]
-  [ "public-suffix.dev" "git+https://github.com/dinosaure/ocaml-dmarc.git#0ea88978fb464066f040079480ed9c8688d2fb06" ]
+  [ "dmarc.dev" "git+https://github.com/dinosaure/ocaml-dmarc.git#5c8870cb11b6e28f38cb69934ec71d65d714e5b3" ]
+  [ "public-suffix.dev" "git+https://github.com/dinosaure/ocaml-dmarc.git#5c8870cb11b6e28f38cb69934ec71d65d714e5b3" ]
+  [ "irmin.2.9.0" "git+https://github.com/dinosaure/irmin.git#65d5fc6ef7d6dd76d103559edee0ad6036a896af" ]
+  [ "irmin-git.2.9.0" "git+https://github.com/dinosaure/irmin.git#65d5fc6ef7d6dd76d103559edee0ad6036a896af" ]
+  [ "irmin-mirage-git.2.9.0" "git+https://github.com/dinosaure/irmin.git#65d5fc6ef7d6dd76d103559edee0ad6036a896af" ]
+  [ "irmin-unix.2.9.0" "git+https://github.com/dinosaure/irmin.git#65d5fc6ef7d6dd76d103559edee0ad6036a896af" ]
+  [ "irmin-pack.2.9.0" "git+https://github.com/dinosaure/irmin.git#65d5fc6ef7d6dd76d103559edee0ad6036a896af" ]
+  [ "irmin-graphql.2.9.0" "git+https://github.com/dinosaure/irmin.git#65d5fc6ef7d6dd76d103559edee0ad6036a896af" ]
+  [ "irmin-tezos.2.9.0" "git+https://github.com/dinosaure/irmin.git#65d5fc6ef7d6dd76d103559edee0ad6036a896af" ]
+  [ "ppx_irmin.2.9.0" "git+https://github.com/dinosaure/irmin.git#65d5fc6ef7d6dd76d103559edee0ad6036a896af" ]
 ]
