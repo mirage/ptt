@@ -18,8 +18,8 @@ let ns_check ~domain spf =
       Dns_client_lwt.get_resource_record dns key domain_name
   end in
   let dns = Dns_client_lwt.create () in
-  Spf_lwt.get ~domain dns (module DNS) >>= function
-  | Ok spf' when Spf.Term.equal spf spf' -> Lwt.return `Already_registered
+  Uspf_lwt.get ~domain dns (module DNS) >>= function
+  | Ok spf' when Uspf.Term.equal spf spf' -> Lwt.return `Already_registered
   | Ok _ -> Lwt.return `Must_be_updated
   | _ -> Lwt.return `Not_found
 
@@ -42,7 +42,7 @@ let ns_update (ipaddr, port) ~dns_key stack ~domain spf =
     Tcpip_stack_socket.V4V6.TCP.create_connection stack (ipaddr, port)
     >|= R.reword_error (R.msgf "%a" Tcpip_stack_socket.V4V6.TCP.pp_error)
     >>? fun flow ->
-    let str = Spf.Term.to_string spf in
+    let str = Uspf.Term.to_string spf in
     (* TODO(dinosaure): split to 80 characters? *)
     let v =
       Dns.Packet.Update.Add Dns.Rr_map.(B (Txt, (3600l, Txt_set.singleton str)))
@@ -120,8 +120,8 @@ let domain =
   Arg.conv (parser, pp) ~docv:"<domain>"
 
 let spf =
-  let parser = Spf.Term.parse_record in
-  let pp = Spf.Term.pp in
+  let parser = Uspf.Term.parse_record in
+  let pp = Uspf.Term.pp in
   Arg.conv (parser, pp) ~docv:"<spf-record>"
 
 let address =

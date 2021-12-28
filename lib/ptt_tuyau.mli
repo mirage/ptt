@@ -3,7 +3,7 @@ open Lwt_backend
 
 module type FLOW = Ptt.Sigs.FLOW with type +'a io = 'a Lwt.t
 
-module Make (Stack : Mirage_stack.V4V6) : sig
+module Make (Stack : Tcpip.Stack.V4V6) : sig
   module Flow : sig
     include Ptt.Sigs.FLOW with type +'a io = 'a Lwt.t
 
@@ -54,7 +54,7 @@ module Make (Stack : Mirage_stack.V4V6) : sig
     [ `Flow of Stack.TCP.error | `Msg of string | `STARTTLS_unavailable ] Fmt.t
 end
 
-module Server (Time : Mirage_time.S) (Stack : Mirage_stack.V4V6) : sig
+module Server (Time : Mirage_time.S) (Stack : Tcpip.Stack.V4V6) : sig
   type service
 
   val init : port:int -> Stack.TCP.t -> service Lwt.t

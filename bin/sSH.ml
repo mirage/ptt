@@ -11,10 +11,10 @@ let pp_write_error ppf = function
   | `Closed -> Fmt.string ppf "Connection closed by peer."
   | `Msg err -> Fmt.string ppf err
 
-type endpoint = string * [ `host ] Domain_name.t * string * [ `Rd | `Wr ]
+type endpoint = string * string * string * [ `Rd | `Wr ]
 
 let connect (user, host, repository, action) =
-  let target = Fmt.str "%s@%a" user Domain_name.pp host in
+  let target = Fmt.str "%s@%s" user host in
   let cmd =
     match action with
     | `Rd -> Fmt.str "git-upload-pack '%s'" repository

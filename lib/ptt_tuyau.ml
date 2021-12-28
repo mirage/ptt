@@ -2,7 +2,7 @@ module Lwt_backend = Lwt_backend
 
 module type FLOW = Ptt.Sigs.FLOW with type +'a io = 'a Lwt.t
 
-module Make (Stack : Mirage_stack.V4V6) = struct
+module Make (Stack : Tcpip.Stack.V4V6) = struct
   open Rresult
   open Lwt.Infix
   open Lwt_backend
@@ -110,7 +110,7 @@ module Make (Stack : Mirage_stack.V4V6) = struct
     | `STARTTLS_unavailable -> Fmt.string ppf "STARTTLS unavailable"
 end
 
-module Server (Time : Mirage_time.S) (Stack : Mirage_stack.V4V6) = struct
+module Server (Time : Mirage_time.S) (Stack : Tcpip.Stack.V4V6) = struct
   open Lwt.Infix
 
   type service = {
