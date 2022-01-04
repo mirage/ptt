@@ -75,5 +75,6 @@ pin-depends: [
   [ "irmin-tezos.dev" "git+https://github.com/dinosaure/irmin.git#65d5fc6ef7d6dd76d103559edee0ad6036a896af" ]
   [ "irmin-http.dev" "git+https://github.com/dinosaure/irmin.git#65d5fc6ef7d6dd76d103559edee0ad6036a896af" ]
   [ "irmin-fs.dev" "git+https://github.com/dinosaure/irmin.git#65d5fc6ef7d6dd76d103559edee0ad6036a896af" ]
+  [ "irmin-layers.dev" "git+https://github.com/dinosaure/irmin.git#65d5fc6ef7d6dd76d103559edee0ad6036a896af" ]
   [ "ppx_irmin.dev" "git+https://github.com/dinosaure/irmin.git#65d5fc6ef7d6dd76d103559edee0ad6036a896af" ]
 ]
