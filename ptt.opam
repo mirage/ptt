@@ -15,10 +15,10 @@ depends: [
   "dune"
   "mrmime"
   "digestif"
-  "colombe"
-  "received"
-  "sendmail"
-  "sendmail-lwt"
+  "colombe" {>= "0.6.0"}
+  "received" {>= "0.5.1"}
+  "sendmail" {>= "0.6.0"}
+  "sendmail-lwt" {>= "0.6.0"}
   "domain-name"
   "uspf"
   "dns"
@@ -64,10 +64,6 @@ build: ["dune" "build" "-p" name "-j" jobs]
 run-test: ["dune" "runtest" "-p" name "-j" jobs]
 dev-repo: "git+https://github.com/dinosaure/ptt.git"
 pin-depends: [
-  [ "colombe.dev" "git+https://github.com/mirage/colombe.git#5f0bf4b6ec509f3b4a5b30f79f92bd39bb08b786" ]
-  [ "received.dev" "git+https://github.com/mirage/colombe.git#5f0bf4b6ec509f3b4a5b30f79f92bd39bb08b786" ]
-  [ "sendmail.dev" "git+https://github.com/mirage/colombe.git#5f0bf4b6ec509f3b4a5b30f79f92bd39bb08b786" ]
-  [ "sendmail-lwt.dev" "git+https://github.com/mirage/colombe.git#5f0bf4b6ec509f3b4a5b30f79f92bd39bb08b786" ]
   [ "dmarc.dev" "git+https://github.com/dinosaure/ocaml-dmarc.git#5c8870cb11b6e28f38cb69934ec71d65d714e5b3" ]
   [ "public-suffix.dev" "git+https://github.com/dinosaure/ocaml-dmarc.git#5c8870cb11b6e28f38cb69934ec71d65d714e5b3" ]
   [ "irmin.2.9.0" "git+https://github.com/dinosaure/irmin.git#65d5fc6ef7d6dd76d103559edee0ad6036a896af" ]
