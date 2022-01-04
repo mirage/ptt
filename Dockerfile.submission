@@ -1,5 +1,5 @@
 FROM ocurrent/opam:alpine-3.10-ocaml-4.10
-RUN cd ~/opam-repository && git pull origin master && git reset --hard e3aa7284d7015fb7ac18ed454be4bc58134f739b && opam update
+RUN cd ~/opam-repository && git pull origin master && git reset --hard 09157480bf8eaccf080b55ec096561ee1e2cbba9 && opam update
 RUN opam depext -ui mirage
 RUN mkdir -p /home/opam/src
 WORKDIR /home/opam/src
@@ -8,7 +8,7 @@ ARG TARGET=hvt
 ARG EXTRA_FLAGS=
 RUN opam config exec -- mirage configure -t $TARGET $EXTRA_FLAGS
 COPY --chown=opam:root unikernel/submission/ /home/opam/src
-RUN opam pin add ptt -ny git+https://github.com/dinosaure/ptt.git#2eaaded2c9f7855c6849d2d56720fdc15c9733cc
+RUN opam pin add ptt -ny git+https://github.com/dinosaure/ptt.git#997ab45362e74241727d3822cf7060af7b29fc21
 RUN opam depext -ui ptt
 RUN opam config exec -- make depends
 RUN opam config exec -- mirage build
