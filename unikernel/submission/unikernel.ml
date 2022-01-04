@@ -4,9 +4,8 @@ open Lwt.Infix
 let ( >>? ) = Lwt_result.bind
 let ( <.> ) f g = fun x -> f (g x)
 
-module Maker = Irmin_mirage_git.KV (Irmin_git.Mem)
-module Store = Maker.Make (Ptt_irmin)
-module Sync = Irmin.Sync.Make (Store)
+module Store = Irmin_mirage_git.Mem.KV (Ptt_irmin)
+module Sync = Irmin.Sync (Store)
 
 let failwith_error_pull = function
   | Error (`Conflict err) -> Fmt.failwith "Conflict: %s" err
@@ -23,7 +22,7 @@ module Make
   (Time : Mirage_time.S)
   (Mclock : Mirage_clock.MCLOCK)
   (Pclock : Mirage_clock.PCLOCK)
-  (Stack : Mirage_stack.V4V6)
+  (Stack : Tcpip.Stack.V4V6)
   (_ : sig end)
 = struct
   module Nss = Ca_certs_nss.Make (Pclock)
@@ -52,11 +51,11 @@ module Make
     Sync.pull store upstream `Set
     >|= failwith_error_pull
     >>= fun _ ->
-    Store.(list store (Schema.Path.v [])) >>= fun values ->
+    Store.(list store []) >>= fun values ->
     let f () (name, k) = match Store.Tree.destruct k with
       | `Node _ -> Lwt.return_unit
       | `Contents _ ->
-        Store.(get store (Schema.Path.v [ name ])) >>= fun { Ptt_irmin.password; _ } ->
+        Store.(get store [ name ]) >>= fun { Ptt_irmin.password; _ } ->
         let local = Art.key name in
         Art.insert tree local password ; Lwt.return_unit in
     Lwt_list.fold_left_s f () values >>= fun () ->
@@ -87,9 +86,9 @@ module Make
       let private_key = Mirage_crypto_pk.Rsa.generate ~g ~bits:2048 () in
       Lwt.return_ok (`Single ([ certificate ], `RSA private_key))
     | _, _, Some hostname ->
-      let module DNS = Dns_client_mirage.Make (Random) (Time) (Mclock) (Stack) in
+      let module DNS = Dns_client_mirage.Make (Random) (Time) (Mclock) (Pclock) (Stack) in
       Lwt.return Rresult.(Domain_name.of_string hostname >>= Domain_name.host) >>? fun hostname ->
-      Paf.init ~port:80 stackv4v6 >>= fun t ->
+      Paf.init ~port:80 (Stack.tcp stackv4v6) >>= fun t ->
       let service = Paf.http_service ~error_handler:ignore_error LE.request_handler in
       let stop = Lwt_switch.create () in
       let `Initialized th0 = Paf.serve ~stop service t in
@@ -155,7 +154,7 @@ module Make
     let tls = Tls.Config.client ~authenticator () in
     certificate stack >|= R.failwith_error_msg >>= fun certificates ->
     authentication ctx (Key_gen.remote ()) >>= fun authentication ->
-    Lipap.fiber ~port:465 ~tls stack (Key_gen.destination ()) None Digestif.BLAKE2B
+    Lipap.fiber ~port:465 ~tls (Stack.tcp stack) (Key_gen.destination ()) None Digestif.BLAKE2B
       (Ptt.Relay_map.empty ~postmaster ~domain)
       { Ptt.Logic.domain
       ; ipv4= (Ipaddr.V4.Prefix.address (Key_gen.ipv4 ()))

@@ -4,9 +4,8 @@ open Lwt.Infix
 let ( >>? ) = Lwt_result.bind
 let ( <.> ) f g = fun x -> f (g x)
 
-module Maker = Irmin_mirage_git.KV (Irmin_git.Mem)
-module Store = Maker.Make (Ptt_irmin)
-module Sync = Irmin.Sync.Make (Store)
+module Store = Irmin_mirage_git.Mem.KV (Ptt_irmin)
+module Sync = Irmin.Sync (Store)
 
 let failwith_error_pull = function
   | Error (`Conflict err) -> Fmt.failwith "Conflict: %s" err
@@ -22,11 +21,11 @@ module Make
   (Time : Mirage_time.S)
   (Mclock : Mirage_clock.MCLOCK)
   (Pclock : Mirage_clock.PCLOCK)
-  (Stack : Mirage_stack.V4V6)
+  (Stack : Tcpip.Stack.V4V6)
   (_ : sig end)
 = struct
   module Resolver = struct
-    include Dns_client_mirage.Make (Random) (Time) (Mclock) (Stack)
+    include Dns_client_mirage.Make (Random) (Time) (Mclock) (Pclock) (Stack)
 
     type +'a io = 'a Lwt.t
 
@@ -57,11 +56,11 @@ module Make
     Sync.pull store upstream `Set
     >|= failwith_error_pull
     >>= fun _ ->
-    Store.(list store (Schema.Path.v [])) >>= fun values ->
+    Store.(list store []) >>= fun values ->
     let f acc (name, k) = match Store.Tree.destruct k with
       | `Node _ -> Lwt.return acc
       | `Contents _ ->
-        Store.(get store (Schema.Path.v [ name ])) >>= fun { Ptt_irmin.targets; _ } ->
+        Store.(get store [ name ]) >>= fun { Ptt_irmin.targets; _ } ->
         let local = local_of_string name in
         let acc = List.fold_left (fun acc x -> Ptt.Relay_map.add ~local x acc) acc targets in
         Lwt.return acc in
@@ -78,7 +77,7 @@ module Make
         let ipaddr = Option.bind (Uri.host nameserver) (R.to_option <.> Ipaddr.of_string) in
         let port = Option.value (Uri.port nameserver) ~default:53 in
         match ipaddr with
-        | Some ipaddr -> Some (protocol, [ ipaddr, port ])
+        | Some ipaddr -> Some (protocol, [ `Plaintext (ipaddr, port) ])
         | None -> None in
     let dns = Resolver.create ?nameservers stack in
     let domain = R.failwith_error_msg (Domain_name.of_string (Key_gen.domain ())) in
@@ -91,7 +90,7 @@ module Make
     let tls = Tls.Config.client ~authenticator () in
     certificate () |> Lwt.return >|= R.failwith_error_msg >>= fun certificates ->
     relay_map (Ptt.Relay_map.empty ~postmaster ~domain) ctx (Key_gen.remote ()) >>= fun relay_map ->
-    Mti_gf.fiber ~port:25 ~tls stack dns relay_map
+    Mti_gf.fiber ~port:25 ~tls (Stack.tcp stack) dns relay_map
       { Ptt.Logic.domain
       ; ipv4= (Ipaddr.V4.Prefix.address (Key_gen.ipv4 ()))
       ; tls= Tls.Config.server ~certificates ()
