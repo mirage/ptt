@@ -10,7 +10,7 @@ module Make
   (Time : Mirage_time.S)
   (Mclock : Mirage_clock.MCLOCK)
   (Pclock : Mirage_clock.PCLOCK)
-  (Stack : Mirage_stack.V4V6)
+  (Stack : Tcpip.Stack.V4V6)
 = struct
   (* XXX(dinosaure): this is a fake resolver which enforce the [signer] to
    * transmit **any** emails to only one and unique SMTP server. *)
@@ -36,7 +36,8 @@ module Make
     Mirage_crypto_pk.Rsa.generate ~g ~bits:2048 ()
 
   let ns_check dkim server stack =
-    DKIM.server ~nameservers:(`Tcp, [ Key_gen.dns_server (), Key_gen.dns_port () ]) stack dkim >>= function
+    DKIM.server ~nameservers:(`Tcp, [ `Plaintext (Key_gen.dns_server (), Key_gen.dns_port ()) ])
+      stack dkim >>= function
     | Ok server' ->
       Logs.info (fun m -> m "The DNS server already has a DKIM public key: %a (expected: %a)."
         Dkim.pp_server server' Dkim.pp_server server) ;
@@ -160,7 +161,7 @@ module Make
     ns_update dkim server stack >|= R.failwith_error_msg >>= fun () ->
     certificate () |> Lwt.return >|= R.failwith_error_msg >>= fun certificates ->
     let domain = Domain_name.host_exn domain in
-    Nec.fiber ~port:25 ~tls stack (Key_gen.destination ()) (private_key, dkim)
+    Nec.fiber ~port:25 ~tls (Stack.tcp stack) (Key_gen.destination ()) (private_key, dkim)
       (Ptt.Relay_map.empty ~postmaster ~domain)
       { Ptt.Logic.domain
       ; ipv4= (Ipaddr.V4.Prefix.address (Key_gen.ipv4 ()))
