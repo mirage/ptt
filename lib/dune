@@ -43,3 +43,9 @@
  (public_name ptt.irmin)
  (modules ptt_irmin)
  (libraries mirage-kv ptt irmin))
+
+(library
+ (name spartacus)
+ (public_name ptt.spartacus)
+ (modules spartacus)
+ (libraries spamtacus-mirage mirage-random ptt.transmit))
