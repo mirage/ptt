@@ -40,3 +40,9 @@ jobs:
         with:
           context: .
           file: ./Dockerfile.signer
+      -
+        name: Build spamfilter
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          file: ./Dockerfile.spamfilter

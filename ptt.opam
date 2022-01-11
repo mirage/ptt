@@ -70,3 +70,4 @@ pin-depends: [
   [ "spamtacus-bayesian.dev" "git+https://github.com/lyrm/spamtacus.git#592412e65708b3b70b9f195bb3588803e76d906d" ]
   [ "spamtacus.dev" "git+https://github.com/lyrm/spamtacus.git#592412e65708b3b70b9f195bb3588803e76d906d" ]
   [ "spamtacus-mirage.dev" "git+https://github.com/lyrm/spamtacus.git#592412e65708b3b70b9f195bb3588803e76d906d" ]
+]
