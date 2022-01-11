@@ -1,7 +1,7 @@
 open Mirage
 
 let domain =
-  let doc = Key.Arg.info ~doc:"DKIM domain-name." [ "domain" ] in
+  let doc = Key.Arg.info ~doc:"SMTP domain-name." [ "domain" ] in
   Key.(create "domain" Arg.(required string doc))
 
 let destination =
