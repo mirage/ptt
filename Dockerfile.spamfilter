@@ -8,9 +8,7 @@ ARG TARGET=hvt
 ARG EXTRA_FLAGS=
 RUN opam config exec -- mirage configure -t $TARGET $EXTRA_FLAGS
 COPY --chown=opam:root unikernel/spamfilter/ /home/opam/src
-RUN opam pin -ny git+https://github.com/lyrm/spamtacus.git
-RUN opam pin add ptt -ny git+https://github.com/lyrm/ptt.git#fd0704b9a5f62ab88efa86275719acb47e50bc44
-RUN opam depext -ui spamtacus-mirage
+RUN opam pin add ptt -ny git+https://github.com/lyrm/ptt.git#e0fe9ad6eaea6cdfe8555d32bd5b63c02feaf808
 RUN opam depext -ui ptt
 RUN opam config exec -- make depends
 RUN opam config exec -- mirage build
