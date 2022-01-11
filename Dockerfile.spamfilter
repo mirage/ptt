@@ -1,4 +1,5 @@
 FROM ocaml/opam:alpine-ocaml-4.10
+RUN sudo apk add libseccomp-dev m4 
 RUN cd ~/opam-repository && git pull origin master && git reset --hard 09157480bf8eaccf080b55ec096561ee1e2cbba9 && opam update
 RUN opam depext -ui mirage
 RUN mkdir -p /home/opam/src
