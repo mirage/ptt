@@ -56,6 +56,7 @@ depends: [
   "ipaddr"
   "dmarc"
   "ptime"
+  "spamtacus-mirage"
   "alcotest-lwt" {>= "1.2.3" & with-test}
   "ipaddr" {>= "5.0.1" & with-test}
   "mirage-crypto-rng" {>= "0.8.10" & with-test}
@@ -66,4 +67,7 @@ dev-repo: "git+https://github.com/dinosaure/ptt.git"
 pin-depends: [
   [ "dmarc.dev" "git+https://github.com/dinosaure/ocaml-dmarc.git#5c8870cb11b6e28f38cb69934ec71d65d714e5b3" ]
   [ "public-suffix.dev" "git+https://github.com/dinosaure/ocaml-dmarc.git#5c8870cb11b6e28f38cb69934ec71d65d714e5b3" ]
+  [ "spamtacus-bayesian.dev" "git+https://github.com/lyrm/spamtacus.git#592412e65708b3b70b9f195bb3588803e76d906d" ]
+  [ "spamtacus.dev" "git+https://github.com/lyrm/spamtacus.git#592412e65708b3b70b9f195bb3588803e76d906d" ]
+  [ "spamtacus-mirage.dev" "git+https://github.com/lyrm/spamtacus.git#592412e65708b3b70b9f195bb3588803e76d906d" ]
 ]
