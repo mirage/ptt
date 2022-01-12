@@ -27,14 +27,14 @@ struct
       ; Lwt.return ()
   end
 
-  module Signer =
+  module Filter =
     Ptt.Relay.Make (Lwt_scheduler) (Lwt_io) (Flow) (Resolver) (Random)
-  (* XXX(dinosaure): the [signer] is a simple relay. *)
+  (* XXX(dinosaure): the [filter] is a simple relay. *)
 
   module Server = Ptt_tuyau.Server (Time) (Stack)
-  include Ptt_transmit.Make (Pclock) (Stack) (Signer.Md)
+  include Ptt_transmit.Make (Pclock) (Stack) (Filter.Md)
 
-  let smtp_signer_service ~pool ?stop ~port stack resolver conf_server =
+  let smtp_filter_service ~pool ?stop ~port stack resolver conf_server =
     Server.init ~port stack >>= fun service ->
     let handler pool flow =
       let ip, port = Stack.TCP.dst flow in
@@ -42,12 +42,12 @@ struct
       Lwt.catch
         (fun () ->
           Lwt_pool.use pool @@ fun (encoder, decoder, queue) ->
-          Signer.accept
+          Filter.accept
             ~encoder:(fun () -> encoder)
             ~decoder:(fun () -> decoder)
             ~queue:(fun () -> queue)
             ~ipaddr:ip v resolver conf_server
-          >|= R.reword_error (R.msgf "%a" Signer.pp_error)
+          >|= R.reword_error (R.msgf "%a" Filter.pp_error)
           >>= fun res ->
           Stack.TCP.close flow >>= fun () -> Lwt.return res)
         (function
@@ -71,33 +71,33 @@ struct
 
   let smtp_logic ~pool ~info ~tls stack resolver messaged map =
     let rec go () =
-      Signer.Md.await messaged >>= fun () ->
-      Signer.Md.pop messaged >>= function
+      Filter.Md.await messaged >>= fun () ->
+      Filter.Md.pop messaged >>= function
       | None -> Lwt.pause () >>= go
       | Some (key, queue, consumer) ->
         Log.debug (fun m -> m "Got an email.")
-        ; let sign_and_transmit () =
+        ; let label_and_transmit () =
             Lwt.catch (fun () ->
                 Spamtacus_mirage.rank consumer >>= fun (_label, consumer') ->
-                Log.debug (fun m -> m "Incoming email signed.")
-                ; Signer.resolve_recipients ~domain:info.Ptt.SSMTP.domain
+                Log.debug (fun m -> m "Incoming email labelled.")
+                ; Filter.resolve_recipients ~domain:info.Ptt.SSMTP.domain
                     resolver map
                     (List.map fst (Ptt.Messaged.recipients key))
                   >>= fun recipients ->
                   Log.debug (fun m ->
-                      m "Send the signed email to the destination.")
+                      m "Send the labelled email to the destination.")
                   ; transmit ~pool ~info ~tls stack (key, queue, consumer')
                       recipients)
             @@ fun _exn ->
-            Log.err (fun m -> m "Impossible to sign the incoming email.")
+            Log.err (fun m -> m "Impossible to label the incoming email.")
             ; Lwt.return_unit in
-          Lwt.async sign_and_transmit
+          Lwt.async label_and_transmit
           ; Lwt.pause () >>= go in
     go ()
 
   let fiber ?(limit = 20) ?stop ~port ~tls stack resolver map info =
-    let conf_server = Signer.create ~info in
-    let messaged = Signer.messaged conf_server in
+    let conf_server = Filter.create ~info in
+    let messaged = Filter.messaged conf_server in
     let pool0 =
       Lwt_pool.create limit @@ fun () ->
       let encoder = Bytes.create Colombe.Encoder.io_buffer_size in
@@ -112,7 +112,7 @@ struct
       Lwt.return (encoder, decoder, queue) in
     Lwt.join
       [
-        smtp_signer_service ~pool:pool0 ?stop ~port stack resolver conf_server
+        smtp_filter_service ~pool:pool0 ?stop ~port stack resolver conf_server
       ; smtp_logic ~pool:pool1 ~info ~tls stack resolver messaged map
       ]
 end

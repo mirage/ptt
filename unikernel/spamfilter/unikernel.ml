@@ -12,7 +12,7 @@ module Make
   (Pclock : Mirage_clock.PCLOCK)
   (Stack : Tcpip.Stack.V4V6)
 = struct
-  (* XXX(dinosaure): this is a fake resolver which enforce the [signer] to
+  (* XXX(dinosaure): this is a fake resolver which enforce the [filter] to
    * transmit **any** emails to only one and unique SMTP server. *)
 
   module Resolver = struct
