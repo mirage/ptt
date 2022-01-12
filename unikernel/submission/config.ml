@@ -240,7 +240,7 @@ let packages =
   ; package "ptt"
   ; package "dns-mirage"
   ; package "paf" ~sublibs:[ "mirage" ]
-  ; package "paf-le" ~min:"0.0.6"
+  ; package "paf-le" ~min:"0.0.8"
   ; package "domain-name"
   ; package "art"
   ; package "ca-certs-nss"
