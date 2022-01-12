@@ -89,7 +89,7 @@ module Make
       let module DNS = Dns_client_mirage.Make (Random) (Time) (Mclock) (Pclock) (Stack) in
       Lwt.return Rresult.(Domain_name.of_string hostname >>= Domain_name.host) >>? fun hostname ->
       Paf.init ~port:80 (Stack.tcp stackv4v6) >>= fun t ->
-      let service = Paf.http_service ~error_handler:ignore_error LE.request_handler in
+      let service = Paf.http_service ~error_handler:ignore_error (fun _flow -> LE.request_handler) in
       let stop = Lwt_switch.create () in
       let `Initialized th0 = Paf.serve ~stop service t in
       let th1 =

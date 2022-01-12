@@ -228,21 +228,19 @@ let keys =
       ; abstract account_seed
       ; abstract cert_seed ]
 
-let pin_irmin = "git+https://github.com/dinosaure/irmin.git#65d5fc6ef7d6dd76d103559edee0ad6036a896af"
-
 let packages =
   [ package "randomconv"
   ; package "ptt" ~sublibs:[ "lipap" ]
   ; package "ptt" ~sublibs:[ "irmin" ]
-  ; package ~pin:pin_irmin "irmin-mirage-git"
-  ; package ~pin:pin_irmin "irmin-mirage"
-  ; package ~pin:pin_irmin "irmin-git"
-  ; package ~pin:pin_irmin "irmin"
-  ; package ~pin:pin_irmin "ppx_irmin"
+  ; package "irmin-mirage-git"
+  ; package "irmin-mirage"
+  ; package "irmin-git"
+  ; package "irmin" ~min:"2.10.0"
+  ; package "ppx_irmin"
   ; package "ptt"
   ; package "dns-mirage"
   ; package "paf" ~sublibs:[ "mirage" ]
-  ; package "paf-le" ~min:"0.0.6"
+  ; package "paf-le" ~min:"0.0.8"
   ; package "domain-name"
   ; package "art"
   ; package "ca-certs-nss"
