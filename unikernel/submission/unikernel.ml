@@ -26,8 +26,7 @@ module Make
   (_ : sig end)
 = struct
   module Nss = Ca_certs_nss.Make (Pclock)
-  module Paf = Paf_mirage.Make (Time) (Stack)
-  module LE = LE.Make (Time) (Stack)
+  module DLe = Dns_certify_mirage.Make (Random) (Pclock) (Time) (Stack)
 
   (* XXX(dinosaure): this is a fake resolver which enforce the [submission] to
    * transmit **any** emails to only one and unique SMTP server. *)
@@ -86,29 +85,12 @@ module Make
       let private_key = Mirage_crypto_pk.Rsa.generate ~g ~bits:2048 () in
       Lwt.return_ok (`Single ([ certificate ], `RSA private_key))
     | _, _, Some hostname ->
-      let module DNS = Dns_client_mirage.Make (Random) (Time) (Mclock) (Pclock) (Stack) in
       Lwt.return Rresult.(Domain_name.of_string hostname >>= Domain_name.host) >>? fun hostname ->
-      Paf.init ~port:80 (Stack.tcp stackv4v6) >>= fun t ->
-      let service = Paf.http_service ~error_handler:ignore_error (fun _flow -> LE.request_handler) in
-      let stop = Lwt_switch.create () in
-      let `Initialized th0 = Paf.serve ~stop service t in
-      let th1 =
-        LE.provision_certificate
-          ~production:(Key_gen.production ())
-          { LE.certificate_seed= Key_gen.cert_seed ()
-          ; LE.certificate_key_type= `ED25519
-          ; LE.certificate_key_bits= None
-          ; LE.email= Option.bind (Key_gen.email ()) (R.to_option <.> Emile.of_string)
-          ; LE.account_seed= Key_gen.account_seed ()
-          ; LE.account_key_type= `ED25519
-          ; LE.account_key_bits= None
-          ; LE.hostname= hostname }
-          (LE.ctx
-            ~gethostbyname:(fun dns domain_name -> DNS.gethostbyname dns domain_name >>? fun ipv4 -> Lwt.return_ok (Ipaddr.V4 ipv4))
-            ~authenticator:(R.failwith_error_msg (Nss.authenticator ()))
-            (DNS.create stackv4v6) stackv4v6) >>= fun res ->
-          Lwt_switch.turn_off stop >>= fun () -> Lwt.return res in
-      Lwt.both th0 th1 >>= fun ((), v) -> Lwt.return v
+      DLe.retrieve_certificate stackv4v6 ~dns_key:(Key_gen.dns_key ())
+        ~hostname ?key_seed:(Key_gen.key_seed ())
+        (Key_gen.dns_server ()) (Key_gen.dns_port ()) >>? fun (certificates, key) ->
+      Lwt.return_ok (`Single (certificates, key))
+    | _ -> failwith "The unikernel requires a hostname or a certificate."
 
   let time () = match Ptime.v (Pclock.now_d_ps ()) with
     | v -> Some v | exception _ -> None
