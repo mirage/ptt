@@ -173,10 +173,6 @@ let postmaster =
   let doc = Key.Arg.info ~doc:"The postmaster of the SMTP service." [ "postmaster" ] in
   Key.(create "postmaster" Arg.(required string doc))
 
-let certificate =
-  let doc = Key.Arg.info ~doc:"The location of the TLS certificate." [ "certificate" ] in
-  Key.(create "certificate" Arg.(required ~stage:`Both string doc))
-
 let key_fingerprint =
   let doc = Key.Arg.info ~doc:"Authenticate TLS using public key fingerprint." [ "key-fingerprint" ] in
   Key.(create "key-fingerprint" Arg.(opt (some string) None doc))
@@ -193,25 +189,25 @@ let cert_key =
   let doc = Key.Arg.info ~doc:"The private key of the certificate (seed in Base64)." [ "cert-key" ] in
   Key.(create "cert-key" Arg.(opt (some string) None doc))
 
+let key_seed =
+  let doc = Key.Arg.info ~doc:"Private key seed" [ "key-seed" ] in
+  Key.(create "key-seed" Arg.(opt (some string) None doc))
+
 let hostname =
   let doc = Key.Arg.info ~doc:"domain-name of the SMTP service." [ "hostname" ] in
   Key.(create "hostname" Arg.(opt (some string) None doc))
 
-let production =
-  let doc = Key.Arg.info ~doc:"Generate a production certificate." [ "production" ] in
-  Key.(create "production" Arg.(opt bool false doc))
+let dns_key =
+  let doc = Key.Arg.info ~doc:"nsupdate key (name:type:value,...)" ["dns-key"] in
+  Key.(create "dns-key" Arg.(required string doc))
 
-let email =
-  let doc = Key.Arg.info ~doc:"Email associated to the let's encrypt certificate generation." [ "email" ] in
-  Key.(create "email" Arg.(opt (some string) None doc))
+let dns_server =
+  let doc = Key.Arg.info ~doc:"DNS server IP" ["dns-server"] in
+  Key.(create "dns-server" Arg.(required ip_address doc))
 
-let account_seed =
-  let doc = Key.Arg.info ~doc:"Let's encrypt account seed." [ "account-seed" ] in
-  Key.(create "account_seed" Arg.(opt (some string) None doc))
-
-let cert_seed =
-  let doc = Key.Arg.info ~doc:"Let's encrypt certificate seed." [ "cert-seed" ] in
-  Key.(create "cert_seed" Arg.(opt (some string) None doc))
+let dns_port =
+  let doc = Key.Arg.info ~doc:"DNS server port" ["dns-port"] in
+  Key.(create "dns-port" Arg.(opt int 53 doc))
 
 let keys =
   Key.[ abstract domain
@@ -223,10 +219,10 @@ let keys =
       ; abstract cert_der
       ; abstract cert_key
       ; abstract hostname
-      ; abstract production
-      ; abstract email
-      ; abstract account_seed
-      ; abstract cert_seed ]
+      ; abstract key_seed
+      ; abstract dns_server
+      ; abstract dns_port
+      ; abstract dns_key ]
 
 let packages =
   [ package "randomconv"
@@ -241,6 +237,7 @@ let packages =
   ; package "dns-mirage"
   ; package "paf" ~sublibs:[ "mirage" ]
   ; package "paf-le" ~min:"0.0.8"
+  ; package "dns-certify" ~sublibs:[ "mirage" ]
   ; package "domain-name"
   ; package "art"
   ; package "ca-certs-nss"

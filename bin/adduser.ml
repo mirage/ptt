@@ -8,12 +8,12 @@ module Sync = Irmin.Sync (Store)
 
 let ssh_edn, ssh_protocol = Mimic.register ~name:"ssh" (module SSH)
 
-let ctx =
+let make_context =
   Git_unix.ctx (Happy_eyeballs_lwt.create ()) >|= fun ctx ->
   let open Mimic in
-  let k0 scheme user path host _port (* TODO(dinosaure): port? *) =
+  let k0 scheme user path host _port cap =
     match scheme with
-    | `SSH -> Lwt.return_some (user, host, path, `Wr)
+    | `SSH -> Lwt.return_some (user, host, path, cap)
     | _ -> Lwt.return_none in
   ctx
   |> Mimic.fold Smart_git.git_transmission
@@ -25,6 +25,7 @@ let ctx =
            req Smart_git.git_scheme; req Smart_git.git_ssh_user
          ; req Smart_git.git_path; req Smart_git.git_hostname
          ; dft Smart_git.git_port 22
+         ; req Smart_git.git_capabilities
          ]
        ~k:k0
 
@@ -49,7 +50,7 @@ let add remote local password targets insecure =
       (Bos.OS.Dir.create Fpath.(tmp / ".git" / "objects" / "pack")) in
   let config = Irmin_git.config (Fpath.to_string tmp) in
   Store.Repo.v config >>= Store.master >>= fun store ->
-  ctx >>= fun ctx ->
+  make_context >>= fun ctx ->
   let remote = Store.remote ~ctx remote in
   Sync.pull store remote `Set >|= R.reword_error (fun err -> `Pull err)
   >>? fun _ ->
