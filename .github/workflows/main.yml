@@ -46,3 +46,9 @@ jobs:
         with:
           context: .
           file: ./Dockerfile.spamfilter
+      -
+        name: Build verifier
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          file: ./Dockerfile.verifier
