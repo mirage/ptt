@@ -8,28 +8,11 @@ module Make
     (Mclock : Mirage_clock.MCLOCK)
     (Pclock : Mirage_clock.PCLOCK)
     (Resolver : Ptt.Sigs.RESOLVER with type +'a io = 'a Lwt.t)
-    (Stack : Mirage_stack.V4V6) =
+    (Stack : Tcpip.Stack.V4V6) =
 struct
   include Ptt_tuyau.Make (Stack)
 
-  let src = Logs.Src.create "nec"
-
-  module Log : Logs.LOG = (val Logs.src_log src)
-
-  module Dns = struct
-    include Dns_client_mirage.Make (Random) (Time) (Mclock) (Stack)
-
-    type +'a io = 'a Lwt.t
-
-    type error =
-      [ `Msg of string
-      | `No_data of [ `raw ] Domain_name.t * Dns.Soa.t
-      | `No_domain of [ `raw ] Domain_name.t * Dns.Soa.t ]
-
-    let getrrecord dns key domain_name = get_resource_record dns key domain_name
-  end
-
-  module Random = struct
+  module Random' = struct
     type g = Random.g
     type +'a io = 'a Lwt.t
 
@@ -40,22 +23,49 @@ struct
       ; Lwt.return ()
   end
 
-  module Relay =
-    Ptt.Relay.Make (Lwt_scheduler) (Lwt_io) (Flow) (Resolver) (Random)
+  module Verifier =
+    Ptt.Relay.Make (Lwt_scheduler) (Lwt_io) (Flow) (Resolver) (Random')
 
-  module DMARC = Dmarc_lwt.Make (Dns)
   module Server = Ptt_tuyau.Server (Time) (Stack)
-  include Ptt_transmit.Make (Pclock) (Stack) (Relay.Md)
+  include Ptt_transmit.Make (Pclock) (Stack) (Verifier.Md)
+  module Lwt_scheduler = Uspf.Sigs.Make (Lwt)
 
-  let smtp_verifier_service ?stop ~port stack resolver conf_server =
+  let src = Logs.Src.create "nec"
+
+  module Log : Logs.LOG = (val Logs.src_log src)
+
+  module DNS = struct
+    include Dns_client_mirage.Make (Random) (Time) (Mclock) (Pclock) (Stack)
+
+    type backend = Lwt_scheduler.t
+
+    type error =
+      [ `Msg of string
+      | `No_data of [ `raw ] Domain_name.t * Dns.Soa.t
+      | `No_domain of [ `raw ] Domain_name.t * Dns.Soa.t ]
+
+    let getrrecord dns key domain_name =
+      Lwt_scheduler.inj @@ get_resource_record dns key domain_name
+  end
+
+  type dns = DNS.t
+
+  let create = DNS.create
+
+  let smtp_verifier_service ~pool ?stop ~port stack resolver conf_server =
     Server.init ~port stack >>= fun service ->
-    let handler flow =
+    let handler pool flow =
       let ip, port = Stack.TCP.dst flow in
       let v = Flow.make flow in
       Lwt.catch
         (fun () ->
-          Relay.accept ~ipaddr:ip v resolver conf_server
-          >|= R.reword_error (R.msgf "%a" Relay.pp_error)
+          Lwt_pool.use pool @@ fun (encoder, decoder, queue) ->
+          Verifier.accept
+            ~encoder:(fun () -> encoder)
+            ~decoder:(fun () -> decoder)
+            ~queue:(fun () -> queue)
+            ~ipaddr:ip v resolver conf_server
+          >|= R.reword_error (R.msgf "%a" Verifier.pp_error)
           >>= fun res ->
           Stack.TCP.close flow >>= fun () -> Lwt.return res)
         (function
@@ -73,41 +83,101 @@ struct
             m "<%a:%d> raised an unknown exception: %s" Ipaddr.pp ip port
               (Printexc.to_string exn))
         ; Lwt.return () in
-    let (`Initialized fiber) = Server.serve_when_ready ?stop ~handler service in
+    let (`Initialized fiber) =
+      Server.serve_when_ready ?stop ~handler:(handler pool) service in
     fiber
 
-  let epoch () =
-    Int64.of_float (Ptime.to_float_s (Ptime.v (Pclock.now_d_ps ())))
+  let state =
+    let open Uspf.Sigs in
+    let open Lwt_scheduler in
+    {
+      return= (fun x -> inj (Lwt.return x))
+    ; bind= (fun x f -> inj (prj x >>= fun x -> prj (f x)))
+    }
 
-  let smtp_logic ~info:_ ~tls:_ stack _resolver messaged _map =
-    let dns = Dns.create stack in
+  let stream_of_list lst =
+    let lst = ref lst in
+    fun () ->
+      match !lst with
+      | [] -> Lwt.return_none
+      | str :: rest ->
+        lst := rest
+        ; Lwt.return_some (str, 0, String.length str)
+
+  let stream_of_field (field_name : Mrmime.Field_name.t) unstrctrd =
+    stream_of_list
+      [(field_name :> string); ": "; Unstrctrd.to_utf_8_string unstrctrd]
+
+  let concat_stream a b =
+    let current = ref a in
+    let rec next () =
+      let v = !current () in
+      v >>= function
+      | Some _ -> v
+      | None ->
+        if !current == b then Lwt.return_none
+        else (
+          current := b
+          ; next ()) in
+    next
+
+  let smtp_logic ~pool ~info ~tls stack resolver messaged map dns =
     let rec go () =
-      Relay.Md.await messaged >>= fun () ->
-      Relay.Md.pop messaged >>= function
+      Verifier.Md.await messaged >>= fun () ->
+      Verifier.Md.pop messaged >>= function
       | None -> Lwt.pause () >>= go
-      | Some (key, _queue, consumer) ->
+      | Some (key, queue, consumer) ->
         Log.debug (fun m -> m "Got an email.")
         ; let verify_and_transmit () =
+            Verifier.resolve_recipients ~domain:info.Ptt.SSMTP.domain resolver
+              map
+              (List.map fst (Ptt.Messaged.recipients key))
+            >>= fun recipients ->
             let sender, _ = Ptt.Messaged.from key in
             let ctx =
-              Spf.empty |> Spf.with_ip (Ptt.Messaged.ipaddr key) |> fun ctx ->
+              Uspf.empty |> Uspf.with_ip (Ptt.Messaged.ipaddr key) |> fun ctx ->
               Option.fold ~none:ctx
-                ~some:(fun sender -> Spf.with_sender (`MAILFROM sender) ctx)
+                ~some:(fun sender -> Uspf.with_sender (`MAILFROM sender) ctx)
                 sender in
-            DMARC.verify ~newline:Dmarc.CRLF ~ctx ~epoch dns consumer
+            Uspf.get ~ctx state dns (module DNS) |> Lwt_scheduler.prj
             >>= function
-            | Ok _ -> assert false
-            | Error _ -> assert false in
+            | Error (`Msg err) ->
+              Log.err (fun m -> m "Got an error from the SPF verifier: %s." err)
+              ; (* TODO(dinosaure): save this result into the incoming email. *)
+                transmit ~pool ~info ~tls stack (key, queue, consumer)
+                  recipients
+            | Ok record ->
+              Uspf.check ~ctx state dns (module DNS) record |> Lwt_scheduler.prj
+              >>= fun res ->
+              let receiver =
+                `Domain (Domain_name.to_strings info.Ptt.SSMTP.domain) in
+              let field_name, unstrctrd = Uspf.to_field ~ctx ~receiver res in
+              let stream = stream_of_field field_name unstrctrd in
+              let consumer = concat_stream stream consumer in
+              transmit ~pool ~info ~tls stack (key, queue, consumer) recipients
+          in
           Lwt.async verify_and_transmit
           ; Lwt.pause () >>= go in
     go ()
 
-  let fiber ?stop ~port ~tls stack resolver map info =
-    let conf_server = Relay.create ~info in
-    let messaged = Relay.messaged conf_server in
+  let fiber ?(limit = 20) ?stop ~port ~tls stack resolver info map dns =
+    let conf_server = Verifier.create ~info in
+    let messaged = Verifier.messaged conf_server in
+    let pool0 =
+      Lwt_pool.create limit @@ fun () ->
+      let encoder = Bytes.create Colombe.Encoder.io_buffer_size in
+      let decoder = Bytes.create Colombe.Decoder.io_buffer_size in
+      let queue = Ke.Rke.create ~capacity:0x1000 Bigarray.char in
+      Lwt.return (encoder, decoder, queue) in
+    let pool1 =
+      Lwt_pool.create limit @@ fun () ->
+      let encoder = Bytes.create Colombe.Encoder.io_buffer_size in
+      let decoder = Bytes.create Colombe.Decoder.io_buffer_size in
+      let queue = Ke.Rke.create ~capacity:0x1000 Bigarray.char in
+      Lwt.return (encoder, decoder, queue) in
     Lwt.join
       [
-        smtp_verifier_service ?stop ~port stack resolver conf_server
-      ; smtp_logic ~info ~tls stack resolver messaged map
+        smtp_verifier_service ~pool:pool0 ?stop ~port stack resolver conf_server
+      ; smtp_logic ~pool:pool1 ~info ~tls stack resolver messaged map dns
       ]
 end
