@@ -39,6 +39,12 @@
  (libraries dkim-mirage mirage-random ptt.transmit))
 
 (library
+ (name hm)
+ (public_name ptt.hm)
+ (modules hm)
+ (libraries dns-client.mirage uspf mirage-random ptt.transmit))
+
+(library
  (name ptt_irmin)
  (public_name ptt.irmin)
  (modules ptt_irmin)

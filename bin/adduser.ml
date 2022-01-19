@@ -24,8 +24,7 @@ let make_context =
          [
            req Smart_git.git_scheme; req Smart_git.git_ssh_user
          ; req Smart_git.git_path; req Smart_git.git_hostname
-         ; dft Smart_git.git_port 22
-         ; req Smart_git.git_capabilities
+         ; dft Smart_git.git_port 22; req Smart_git.git_capabilities
          ]
        ~k:k0
 
