@@ -48,6 +48,7 @@ depends: [
   "mirage-random"     {>= "2.0.0"}
   "mirage-time"       {>= "2.0.1"}
   "uspf"
+  "data-encoding"
   "ptime"
   "spamtacus-mirage"
   "ipaddr"            {>= "5.0.1"}
