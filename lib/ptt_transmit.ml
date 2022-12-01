@@ -8,7 +8,7 @@ module Make
 struct
   open Lwt.Infix
   open Ptt_tuyau.Lwt_backend
-  include Ptt_tuyau.Make (Stack)
+  include Ptt_tuyau.Client (Stack)
 
   let src = Logs.Src.create "ptt-tuyau"
 
@@ -71,9 +71,16 @@ struct
     let stream =
       Lwt_stream.from (Lwt.return <.> stream)
       |> Lwt_stream.map (fun s -> s, 0, String.length s) in
-    Lwt_scheduler.inj <.> fun () -> Lwt_stream.get stream
+    Lwt_scheduler.inj <.> Fun.const (Lwt_stream.get stream)
 
-  let sendmail ~pool ~info ~tls ~key stack emitter (stream, (k, vs)) =
+  let pp_key ppf = function
+    | `Ipaddr ipaddr -> Ipaddr.pp ppf ipaddr
+    | `Domain (domain, _) -> Domain_name.pp ppf domain
+
+  (* XXX(dinosaure): this function tries to send an email to a recipient.
+     It tries multiple MX targets given by the recipient's domain. *)
+  let sendmail_to_a_target ~pool ~info ~tls ~key stack emitter (stream, (k, vs))
+      =
     let open Colombe in
     let open Forward_path in
     let mx_domain, mxs =
@@ -94,17 +101,18 @@ struct
       | _ -> received ~info ~key None in
     let stream = received <+> stream in
     let rec go = function
-      | [] -> Lwt.return ()
+      | [] ->
+        Log.err (fun m ->
+            m "Impossible to send an email to %a (no solution found)." pp_key k)
+        ; Lwt.return ()
       | {Ptt.Mxs.mx_ipaddr; _} :: rest -> (
         Log.debug (fun m ->
             m "Transmit the incoming email to %a (%a)." Ipaddr.pp mx_ipaddr
               Domain.pp mx_domain)
         ; Lwt_pool.use pool (fun (encoder, decoder, queue) ->
-              sendmail
-                ~encoder:(fun () -> encoder)
-                ~decoder:(fun () -> decoder)
-                ~queue:(fun () -> queue)
-                ~info ~tls stack mx_ipaddr emitter stream recipients
+              sendmail ~encoder:(Fun.const encoder) ~decoder:(Fun.const decoder)
+                ~queue:(Fun.const queue) ~info ~tls stack mx_ipaddr emitter
+                stream recipients
               >>= function
               | Ok () -> Lwt.return_ok ()
               | Error `STARTTLS_unavailable
@@ -114,20 +122,17 @@ struct
                       "The SMTP receiver %a does not implement STARTTLS, \
                        restart in clear."
                       Domain.pp mx_domain)
-                ; sendmail_without_tls
-                    ~encoder:(fun () -> encoder)
-                    ~decoder:(fun () -> decoder)
-                    ~info stack mx_ipaddr emitter stream recipients
-              | Error err ->
-                Log.err (fun m ->
-                    m
-                      "Impossible to send the given email to %a (without \
-                       STARTTLS): %a."
-                      Domain.pp mx_domain pp_error err)
-                ; Lwt.return_error err)
+                ; sendmail_without_tls ~encoder:(Fun.const encoder)
+                    ~decoder:(Fun.const decoder) ~info stack mx_ipaddr emitter
+                    stream recipients
+              | Error err -> Lwt.return_error err)
           >>= function
           | Ok () -> Lwt.return_unit
-          | Error _ -> go rest) in
+          | Error err ->
+            Log.err (fun m ->
+                m "Impossible to send the given email to %a: %a." Domain.pp
+                  mx_domain pp_error err)
+            ; go rest) in
     let sort =
       List.sort (fun {Ptt.Mxs.preference= a; _} {Ptt.Mxs.preference= b; _} ->
           icompare a b) in
@@ -148,7 +153,9 @@ struct
         m "Start to send the incoming email to %d recipient(s)."
           (List.length targets))
     ; Lwt.both (transmit ())
-        (Lwt_list.iter_s (sendmail ~pool ~info ~tls ~key stack emitter) targets)
+        (Lwt_list.iter_s
+           (sendmail_to_a_target ~pool ~info ~tls ~key stack emitter)
+           targets)
       >>= fun ((), ()) ->
       Log.debug (fun m -> m "Email sended!")
       ; Md.close queue

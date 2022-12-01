@@ -16,7 +16,8 @@
  (name adduser)
  (public_name ptt.adduser)
  (modules adduser sSH)
- (libraries ca-certs irmin-unix ptt.irmin cmdliner))
+ (libraries logs.cli fmt.tty fmt.cli ca-certs mirage-flow git-unix git-kv
+   mirage-clock-unix ptt.value cmdliner))
 
 (executable
  (name spf)

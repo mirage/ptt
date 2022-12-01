@@ -24,7 +24,11 @@ module Resolver = struct
   type +'a io = 'a Lwt.t
   type t = Dns_client_lwt.t
 
-  let gethostbyname t v = Dns_client_lwt.gethostbyname t v
+  let gethostbyname t v =
+    let open Lwt.Infix in
+    Dns_client_lwt.gethostbyname t v >|= function
+    | Ok v -> Ok (Ipaddr.V4 v)
+    | Error _ as err -> err
 
   let getmxbyname t v =
     let open Lwt_result in
@@ -75,7 +79,7 @@ let fiber ~domain map =
   let info =
     {
       Ptt.SMTP.domain
-    ; Ptt.SMTP.ipv4= Ipaddr.V4.any
+    ; Ptt.SMTP.ipaddr= Ipaddr.(V4 V4.any)
     ; Ptt.SMTP.tls=
         Tls.Config.server
           ~certificates:(`Single ([cert], private_key))

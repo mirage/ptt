@@ -435,7 +435,7 @@ let smtp_test_0 =
   let info =
     {
       Ptt.SSMTP.domain= x25519
-    ; ipv4= Ipaddr.V4.localhost
+    ; ipaddr= Ipaddr.(V4 V4.localhost)
     ; tls= fake_tls_config
     ; zone= Mrmime.Date.Zone.gmt
     ; size= 0L
@@ -462,7 +462,7 @@ let smtp_test_1 =
   let info =
     {
       Ptt.SSMTP.domain= x25519
-    ; ipv4= Ipaddr.V4.localhost
+    ; ipaddr= Ipaddr.(V4 V4.localhost)
     ; tls= fake_tls_config
     ; zone= Mrmime.Date.Zone.gmt
     ; size= 16777216L
@@ -492,7 +492,7 @@ let smtp_test_2 =
   let info =
     {
       Ptt.SSMTP.domain= x25519
-    ; ipv4= Ipaddr.V4.localhost
+    ; ipaddr= Ipaddr.(V4 V4.localhost)
     ; tls= fake_tls_config
     ; zone= Mrmime.Date.Zone.gmt
     ; size= 16777216L
@@ -532,7 +532,7 @@ let smtp_test_3 =
   let info =
     {
       Ptt.SSMTP.domain= x25519
-    ; ipv4= Ipaddr.V4.localhost
+    ; ipaddr= Ipaddr.(V4 V4.localhost)
     ; tls= fake_tls_config
     ; zone= Mrmime.Date.Zone.gmt
     ; size= 16777216L
@@ -562,7 +562,7 @@ let smtp_test_4 =
   let info =
     {
       Ptt.SSMTP.domain= x25519
-    ; ipv4= Ipaddr.V4.localhost
+    ; ipaddr= Ipaddr.(V4 V4.localhost)
     ; tls= fake_tls_config
     ; zone= Mrmime.Date.Zone.gmt
     ; size= 16777216L
@@ -603,7 +603,7 @@ let smtp_test_5 =
   let info =
     {
       Ptt.SSMTP.domain= x25519
-    ; ipv4= Ipaddr.V4.localhost
+    ; ipaddr= Ipaddr.(V4 V4.localhost)
     ; tls= fake_tls_config
     ; zone= Mrmime.Date.Zone.gmt
     ; size= 16777216L
@@ -654,7 +654,7 @@ let smtp_test_6 =
   let info =
     {
       Ptt.SSMTP.domain= x25519
-    ; ipv4= Ipaddr.V4.localhost
+    ; ipaddr= Ipaddr.(V4 V4.localhost)
     ; tls= fake_tls_config
     ; zone= Mrmime.Date.Zone.gmt
     ; size= 16777216L
@@ -686,7 +686,7 @@ let smtp_test_7 =
   let info =
     {
       Ptt.SSMTP.domain= x25519
-    ; ipv4= Ipaddr.V4.localhost
+    ; ipaddr= Ipaddr.(V4 V4.localhost)
     ; tls= fake_tls_config
     ; zone= Mrmime.Date.Zone.gmt
     ; size= 16777216L
@@ -723,7 +723,7 @@ let fake_dns_resolvers = Hashtbl.create 16
 let () =
   Hashtbl.add fake_dns_resolvers
     (Domain_name.(host_exn <.> of_string_exn) "gmail.com")
-    (Ipaddr.V4.of_string_exn "10.0.0.8")
+    (Ipaddr.of_string_exn "10.0.0.8")
 
 let fake_smtp_servers = Hashtbl.create 16
 let () = Hashtbl.add fake_smtp_servers (Ipaddr.of_string_exn "10.0.0.8") 8888
@@ -822,8 +822,7 @@ let make_submission_smtp_server ?stop ~port info =
     let open Lwt.Infix in
     let socket = Lwt_unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
     let sockaddr =
-      Unix.ADDR_INET (Ipaddr_unix.to_inet_addr (Ipaddr.V4 info.SMTP.ipv4), port)
-    in
+      Unix.ADDR_INET (Ipaddr_unix.to_inet_addr info.SMTP.ipaddr, port) in
     Lwt_unix.bind socket sockaddr >|= fun () ->
     Lwt_unix.listen socket 40
 
@@ -853,7 +852,7 @@ let make_submission_smtp_server ?stop ~port info =
     (smtp_submission_server conf_server)
     (smtp_logic messaged (Queue.create ()))
 
-let sendmail ipv4 port ~domain sender recipients contents =
+let sendmail ipaddr port ~domain sender recipients contents =
   let stream = stream_of_string_list contents in
   let stream () =
     let open Lwt.Infix in
@@ -885,7 +884,7 @@ let sendmail ipv4 port ~domain sender recipients contents =
   let open Lwt.Infix in
   let socket = Lwt_unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
   Lwt_unix.connect socket
-    (Unix.ADDR_INET (Ipaddr_unix.to_inet_addr (Ipaddr.V4 ipv4), port))
+    (Unix.ADDR_INET (Ipaddr_unix.to_inet_addr ipaddr, port))
   >>= fun () ->
   let res =
     Sendmail_with_starttls.sendmail lwt rdwr socket ctx tls_config ~domain
@@ -910,14 +909,15 @@ let full_test_0 =
       Local.[w "anil"] @ Domain.(domain, [a "recoil"; a "org"])) in
   let recoil = (Colombe.Domain.of_string_exn <.> Domain_name.to_string) recoil in
   let sendmail contents =
-    sendmail Ipaddr.V4.localhost 8888 ~domain:recoil anil [romain_calascibetta]
-      contents in
+    sendmail
+      Ipaddr.(V4 V4.localhost)
+      8888 ~domain:recoil anil [romain_calascibetta] contents in
   let stop = Lwt_switch.create () in
   let open Lwt.Infix in
   make_submission_smtp_server ~stop ~port:8888
     {
       Ptt.SMTP.domain= gmail
-    ; ipv4= Ipaddr.V4.localhost
+    ; ipaddr= Ipaddr.(V4 V4.localhost)
     ; tls= fake_tls_config
     ; zone= Mrmime.Date.Zone.GMT
     ; size= 0x1000000L
@@ -967,15 +967,16 @@ let full_test_1 =
   make_submission_smtp_server ~stop ~port:8888
     {
       Ptt.SMTP.domain= gmail
-    ; ipv4= Ipaddr.V4.localhost
+    ; ipaddr= Ipaddr.(V4 V4.localhost)
     ; tls= fake_tls_config
     ; zone= Mrmime.Date.Zone.GMT
     ; size= 0x1000000L
     }
   >>= fun (`Initialized th0, `Queue th1) ->
   let sendmail ~domain sender contents =
-    sendmail Ipaddr.V4.localhost 8888 ~domain sender [romain_calascibetta]
-      contents in
+    sendmail
+      Ipaddr.(V4 V4.localhost)
+      8888 ~domain sender [romain_calascibetta] contents in
   Lwt.join
     [
       ( sendmail ~domain:recoil anil

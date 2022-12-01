@@ -70,7 +70,7 @@ let pp_error ppf = function
 
 type info = Logic.info = {
     domain: [ `host ] Domain_name.t
-  ; ipv4: Ipaddr.V4.t
+  ; ipaddr: Ipaddr.t
   ; tls: Tls.Config.server
   ; zone: Mrmime.Date.Zone.t
   ; size: int64
@@ -92,7 +92,7 @@ let m_relay_init ctx info =
   let* () =
     send ctx Value.PP_250
       [
-        politely ~domain:info.Logic.domain ~ipv4:info.Logic.ipv4; "8BITMIME"
+        politely ~domain:info.Logic.domain ~ipaddr:info.Logic.ipaddr; "8BITMIME"
       ; "SMTPUTF8"; "STARTTLS"; Fmt.str "SIZE %Ld" info.Logic.size
       ] in
   let reset = ref 0 and bad = ref 0 in
@@ -130,7 +130,7 @@ let m_submission_init ctx info ms =
   let* () =
     send ctx Value.PP_250
       [
-        politely ~domain:info.Logic.domain ~ipv4:info.Logic.ipv4; "8BITMIME"
+        politely ~domain:info.Logic.domain ~ipaddr:info.Logic.ipaddr; "8BITMIME"
       ; "SMTPUTF8"; "STARTTLS"
       ; Fmt.str "AUTH %a" Fmt.(list ~sep:(const string " ") Mechanism.pp) ms
       ; Fmt.str "SIZE %Ld" info.Logic.size

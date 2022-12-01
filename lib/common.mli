@@ -31,9 +31,9 @@ module Make
       and receive. [flow] is a representation of the {i socket}. *)
 
   val recipients_are_reachable :
-    ipv4:Ipaddr.V4.t -> Resolver.t -> Colombe.Forward_path.t list -> bool IO.t
+    ipaddr:Ipaddr.t -> Resolver.t -> Colombe.Forward_path.t list -> bool IO.t
   (** [recipients_are_reachable ~ipv4 resolver recipients] tries to resolve
-      {i MX} record for any domains of recipients. [ipv4] is the {b public} IPv4
+      {i MX} record for any domains of recipients. [ipaddr] is the {b public} IP
       of the current SMTP server to resolve [Postmaster]. *)
 
   val receive_mail :

@@ -8,7 +8,7 @@ module Make
   type dns
 
   val create :
-       ?size:int
+       ?cache_size:int
     -> ?edns:[ `Auto | `Manual of Dns.Edns.t | `None ]
     -> ?nameservers:
          Dns.proto

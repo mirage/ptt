@@ -3,17 +3,23 @@ open Lwt.Infix
 
 let ( >>? ) = Lwt_result.bind
 
-module Store = Irmin_unix.Git.Mem.KV (Ptt_irmin)
-module Sync = Irmin.Sync (Store)
+module Store = Git_kv.Make (Pclock)
+
+let local_to_string local =
+  let pp ppf = function
+    | `Atom x -> Fmt.string ppf x
+    | `String v -> Fmt.pf ppf "%S" v in
+  Fmt.str "%a" Fmt.(list ~sep:(any ".") pp) local |> Mirage_kv.Key.v
 
 let ssh_edn, ssh_protocol = Mimic.register ~name:"ssh" (module SSH)
 
-let make_context =
+let unix_ctx_with_ssh () =
   Git_unix.ctx (Happy_eyeballs_lwt.create ()) >|= fun ctx ->
   let open Mimic in
-  let k0 scheme user path host _port cap =
-    match scheme with
-    | `SSH -> Lwt.return_some (user, host, path, cap)
+  let k0 scheme user path host port =
+    match scheme, Unix.gethostbyname host with
+    | `SSH, {Unix.h_addr_list; _} when Array.length h_addr_list > 0 ->
+      Lwt.return_some {SSH.user; path; host= h_addr_list.(0); port}
     | _ -> Lwt.return_none in
   ctx
   |> Mimic.fold Smart_git.git_transmission
@@ -24,43 +30,20 @@ let make_context =
          [
            req Smart_git.git_scheme; req Smart_git.git_ssh_user
          ; req Smart_git.git_path; req Smart_git.git_hostname
-         ; dft Smart_git.git_port 22; req Smart_git.git_capabilities
+         ; dft Smart_git.git_port 22
          ]
        ~k:k0
 
-let local_to_string local =
-  let pp ppf = function
-    | `Atom x -> Fmt.string ppf x
-    | `String v -> Fmt.pf ppf "%S" v in
-  Fmt.str "%a" Fmt.(list ~sep:(any ".") pp) local
-
 let add remote local password targets insecure =
-  let tmp = R.failwith_error_msg (Bos.OS.Dir.tmp "git-%s") in
-  let _ = R.failwith_error_msg (Bos.OS.Dir.create Fpath.(tmp / ".git")) in
-  let _ =
-    R.failwith_error_msg (Bos.OS.Dir.create Fpath.(tmp / ".git" / "refs")) in
-  let _ =
-    R.failwith_error_msg (Bos.OS.Dir.create Fpath.(tmp / ".git" / "tmp")) in
-  let _ =
-    R.failwith_error_msg (Bos.OS.Dir.create Fpath.(tmp / ".git" / "objects"))
-  in
-  let _ =
-    R.failwith_error_msg
-      (Bos.OS.Dir.create Fpath.(tmp / ".git" / "objects" / "pack")) in
-  let config = Irmin_git.config (Fpath.to_string tmp) in
-  Store.Repo.v config >>= Store.master >>= fun store ->
-  make_context >>= fun ctx ->
-  let remote = Store.remote ~ctx remote in
-  Sync.pull store remote `Set >|= R.reword_error (fun err -> `Pull err)
-  >>? fun _ ->
-  let v = {Ptt_irmin.targets; password; insecure} in
-  let info () =
-    let date = Int64.of_float (Unix.gettimeofday ())
-    and message = Fmt.str "New user %a added" Emile.pp_local local in
-    Irmin.Info.v ~date ~author:"ptt.adduser" message in
-  Store.set ~info store [local_to_string local] v
-  >|= R.reword_error (fun err -> `Set err)
-  >>? fun _ -> Sync.push store remote >|= R.reword_error (fun err -> `Push err)
+  unix_ctx_with_ssh () >>= fun ctx ->
+  Git_kv.connect ctx remote >>= fun store ->
+  let v = {Ptt_value.targets; password; insecure} in
+  let v = Ptt_value.to_string_json v in
+  ( Store.change_and_push store @@ fun store ->
+    Store.set store (local_to_string local) v )
+  >>= function
+  | Ok _ as v -> Lwt.return v
+  | Error err -> Lwt.return_error (R.msgf "%a" Store.pp_write_error err)
 
 let pp_sockaddr ppf = function
   | Unix.ADDR_UNIX socket -> Fmt.pf ppf "%s" socket
@@ -69,12 +52,8 @@ let pp_sockaddr ppf = function
 
 let run _ remote user pass targets insecure =
   match Lwt_main.run (add remote user pass targets insecure) with
-  | Ok _ -> `Ok 0
-  | Error (`Pull _err) -> `Error (false, Fmt.str "Unreachable Git repository.")
-  | Error (`Set _err) ->
-    `Error (false, Fmt.str "Unable to locally set the store.")
-  | Error (`Push _err) ->
-    `Error (false, Fmt.str "Unallowed to push to %s." remote)
+  | Ok () -> `Ok 0
+  | Error (`Msg err) -> `Error (false, err)
 
 open Cmdliner
 
@@ -131,11 +110,11 @@ let insecure =
 let common_options = "COMMON OPTIONS"
 
 let verbosity =
-  let env = Arg.env_var "PTT_LOGS" in
+  let env = Cmd.Env.info "PTT_LOGS" in
   Logs_cli.level ~docs:common_options ~env ()
 
 let renderer =
-  let env = Arg.env_var "PTT_FMT" in
+  let env = Cmd.Env.info "PTT_FMT" in
   Fmt_cli.style_renderer ~docs:common_options ~env ()
 
 let reporter ppf =
@@ -158,12 +137,13 @@ let setup_logs style_renderer level =
 
 let setup_logs = Term.(const setup_logs $ renderer $ verbosity)
 
+let term =
+  Term.(
+    ret (const run $ setup_logs $ remote $ user $ password $ targets $ insecure))
+
 let cmd =
   let doc = "Add an user into the SMTP database." in
   let man = [] in
-  ( Term.(
-      ret
-        (const run $ setup_logs $ remote $ user $ password $ targets $ insecure))
-  , Term.info "useradd" ~doc ~man )
+  Cmd.v (Cmd.info "useradd" ~doc ~man) term
 
-let () = Term.(exit_status @@ eval cmd)
+let () = exit (Cmd.eval' cmd)

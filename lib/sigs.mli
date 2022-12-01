@@ -40,7 +40,7 @@ module type RESOLVER = sig
   type +'a io
 
   val gethostbyname :
-    t -> [ `host ] Domain_name.t -> (Ipaddr.V4.t, [> Rresult.R.msg ]) result io
+    t -> [ `host ] Domain_name.t -> (Ipaddr.t, [> Rresult.R.msg ]) result io
 
   val getmxbyname :
        t
@@ -48,7 +48,7 @@ module type RESOLVER = sig
     -> (Dns.Rr_map.Mx_set.t, [> Rresult.R.msg ]) result io
 
   val extension :
-    t -> string -> string -> (Ipaddr.V4.t, [> Rresult.R.msg ]) result io
+    t -> string -> string -> (Ipaddr.t, [> Rresult.R.msg ]) result io
 end
 
 module type RANDOM = sig

@@ -1,51 +1,50 @@
-open Rresult
-
-type flow = {ic: in_channel; oc: out_channel}
-type error = [ `Msg of string ]
-
-let pp_error ppf (`Msg err) = Fmt.string ppf err
-
-type write_error = [ `Msg of string | `Closed ]
-
-let pp_write_error ppf = function
-  | `Closed -> Fmt.string ppf "Connection closed by peer."
-  | `Msg err -> Fmt.string ppf err
-
-type endpoint = string * string * string * [ `Rd | `Wr ]
-
-let connect (user, host, repository, action) =
-  let target = Fmt.str "%s@%s" user host in
-  let cmd =
-    match action with
-    | `Rd -> Fmt.str "git-upload-pack '%s'" repository
-    | `Wr -> Fmt.str "git-receive-pack '%s'" repository in
-  try
-    let ic, oc = Unix.open_process_args "/usr/bin/ssh" [|"ssh"; target; cmd|] in
-    Lwt.return_ok {ic; oc}
-  with
-  | Unix.Unix_error (err, f, arg) ->
-    R.error_msgf "%s(%s): %s" f arg (Unix.error_message err) |> Lwt.return
-  | exn -> raise exn
-
-let read flow =
-  let res = Bytes.create 0x1000 in
-  match input flow.ic res 0 (Bytes.length res) with
-  | 0 -> Lwt.return_ok `Eof
-  | len -> Lwt.return_ok (`Data (Cstruct.of_bytes res ~off:0 ~len))
-  | exception End_of_file -> Lwt.return_ok `Eof
-
-let write flow cs =
-  output_string flow.oc (Cstruct.to_string cs)
-  ; flush flow.oc
-  ; Lwt.return_ok ()
-
 open Lwt.Infix
 
-let rec writev flow = function
-  | [] -> Lwt.return_ok ()
-  | x :: r -> (
-    write flow x >>= function
-    | Ok () -> writev flow r
-    | Error _ as err -> Lwt.return err)
+type error = Unix.error * string * string
+type write_error = [ `Closed | `Error of Unix.error * string * string ]
 
-let close flow = close_in flow.ic ; close_out flow.oc ; Lwt.return_unit
+let pp_error ppf (err, f, v) =
+  Fmt.pf ppf "%s(%s): %s" f v (Unix.error_message err)
+
+let pp_write_error ppf = function
+  | `Closed -> Fmt.pf ppf "Connection closed by peer"
+  | `Error (err, f, v) -> Fmt.pf ppf "%s(%s): %s" f v (Unix.error_message err)
+
+type flow = {ic: in_channel; oc: out_channel}
+type endpoint = {user: string; path: string; host: Unix.inet_addr; port: int}
+
+let pp_inet_addr ppf inet_addr =
+  Fmt.string ppf (Unix.string_of_inet_addr inet_addr)
+
+let connect {user; path; host; port} =
+  let edn = Fmt.str "%s@%a" user pp_inet_addr host in
+  let cmd = Fmt.str {sh|git-upload-pack '%s'|sh} path in
+  let cmd = Fmt.str "ssh -p %d %s %a" port edn Fmt.(quote string) cmd in
+  try
+    let ic, oc = Unix.open_process cmd in
+    Lwt.return_ok {ic; oc}
+  with Unix.Unix_error (err, f, v) -> Lwt.return_error (`Error (err, f, v))
+
+let read t =
+  let tmp = Bytes.create 0x1000 in
+  try
+    let len = input t.ic tmp 0 0x1000 in
+    if len = 0 then Lwt.return_ok `Eof
+    else Lwt.return_ok (`Data (Cstruct.of_bytes tmp ~off:0 ~len))
+  with Unix.Unix_error (err, f, v) -> Lwt.return_error (err, f, v)
+
+let write t cs =
+  let str = Cstruct.to_string cs in
+  try output_string t.oc str ; flush t.oc ; Lwt.return_ok ()
+  with Unix.Unix_error (err, f, v) -> Lwt.return_error (`Error (err, f, v))
+
+let writev t css =
+  let rec go t = function
+    | [] -> Lwt.return_ok ()
+    | x :: r -> (
+      write t x >>= function
+      | Ok () -> go t r
+      | Error _ as err -> Lwt.return err) in
+  go t css
+
+let close t = close_in t.ic ; close_out t.oc ; Lwt.return_unit

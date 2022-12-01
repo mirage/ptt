@@ -19,7 +19,7 @@ struct
 
   and info = SMTP.info = {
       domain: [ `host ] Domain_name.t
-    ; ipv4: Ipaddr.V4.t
+    ; ipaddr: Ipaddr.t
     ; tls: Tls.Config.server
     ; zone: Mrmime.Date.Zone.t
     ; size: int64
@@ -65,7 +65,7 @@ struct
     run flow m >>? function
     | `Quit -> properly_close_tls flow ctx >>? fun () -> IO.return (Ok ())
     | `Submission {SMTP.domain_from; from; recipients; _} -> (
-      recipients_are_reachable ~ipv4:server.info.ipv4 resolver
+      recipients_are_reachable ~ipaddr:server.info.ipaddr resolver
         (List.map fst recipients)
       >>= function
       | true ->

@@ -10,7 +10,7 @@ module Make
     (Resolver : Ptt.Sigs.RESOLVER with type +'a io = 'a Lwt.t)
     (Stack : Tcpip.Stack.V4V6) =
 struct
-  include Ptt_tuyau.Make (Stack)
+  include Ptt_tuyau.Client (Stack)
 
   module Random' = struct
     type g = Random.g
@@ -22,6 +22,8 @@ struct
       Cstruct.blit_to_bytes raw 0 buf 0 len
       ; Lwt.return ()
   end
+
+  module Flow = Unixiz.Make (Stack.TCP)
 
   module Verifier =
     Ptt.Relay.Make (Lwt_scheduler) (Lwt_io) (Flow) (Resolver) (Random')
@@ -60,11 +62,9 @@ struct
       Lwt.catch
         (fun () ->
           Lwt_pool.use pool @@ fun (encoder, decoder, queue) ->
-          Verifier.accept
-            ~encoder:(fun () -> encoder)
-            ~decoder:(fun () -> decoder)
-            ~queue:(fun () -> queue)
-            ~ipaddr:ip v resolver conf_server
+          Verifier.accept ~encoder:(Fun.const encoder)
+            ~decoder:(Fun.const decoder) ~queue:(Fun.const queue) ~ipaddr:ip v
+            resolver conf_server
           >|= R.reword_error (R.msgf "%a" Verifier.pp_error)
           >>= fun res ->
           Stack.TCP.close flow >>= fun () -> Lwt.return res)
