@@ -2,17 +2,24 @@ open Rresult
 open Ptt_tuyau.Lwt_backend
 open Lwt.Infix
 
+let src = Logs.Src.create "hm"
+
+module Log : Logs.LOG = (val Logs.src_log src)
+
 module Make
     (Random : Mirage_random.S)
     (Time : Mirage_time.S)
     (Mclock : Mirage_clock.MCLOCK)
     (Pclock : Mirage_clock.PCLOCK)
     (Resolver : Ptt.Sigs.RESOLVER with type +'a io = 'a Lwt.t)
-    (Stack : Tcpip.Stack.V4V6) =
+    (Stack : Tcpip.Stack.V4V6)
+    (DNS : Dns_client_mirage.S
+             with type Transport.stack = Stack.t
+              and type 'a Transport.io = 'a Lwt.t) =
 struct
   include Ptt_tuyau.Client (Stack)
 
-  module Random' = struct
+  module Random = struct
     type g = Random.g
     type +'a io = 'a Lwt.t
 
@@ -26,19 +33,14 @@ struct
   module Flow = Unixiz.Make (Stack.TCP)
 
   module Verifier =
-    Ptt.Relay.Make (Lwt_scheduler) (Lwt_io) (Flow) (Resolver) (Random')
+    Ptt.Relay.Make (Lwt_scheduler) (Lwt_io) (Flow) (Resolver) (Random)
 
   module Server = Ptt_tuyau.Server (Time) (Stack)
   include Ptt_transmit.Make (Pclock) (Stack) (Verifier.Md)
   module Lwt_scheduler = Uspf.Sigs.Make (Lwt)
 
-  let src = Logs.Src.create "nec"
-
-  module Log : Logs.LOG = (val Logs.src_log src)
-
-  module DNS = struct
-    include Dns_client_mirage.Make (Random) (Time) (Mclock) (Pclock) (Stack)
-
+  module Uspf_dns = struct
+    type t = DNS.t
     type backend = Lwt_scheduler.t
 
     type error =
@@ -47,12 +49,8 @@ struct
       | `No_domain of [ `raw ] Domain_name.t * Dns.Soa.t ]
 
     let getrrecord dns key domain_name =
-      Lwt_scheduler.inj @@ get_resource_record dns key domain_name
+      Lwt_scheduler.inj @@ DNS.get_resource_record dns key domain_name
   end
-
-  type dns = DNS.t
-
-  let create = DNS.create
 
   let smtp_verifier_service ~pool ?stop ~port stack resolver conf_server =
     Server.init ~port stack >>= fun service ->
@@ -139,7 +137,7 @@ struct
               Option.fold ~none:ctx
                 ~some:(fun sender -> Uspf.with_sender (`MAILFROM sender) ctx)
                 sender in
-            Uspf.get ~ctx state dns (module DNS) |> Lwt_scheduler.prj
+            Uspf.get ~ctx state dns (module Uspf_dns) |> Lwt_scheduler.prj
             >>= function
             | Error (`Msg err) ->
               Log.err (fun m -> m "Got an error from the SPF verifier: %s." err)
@@ -147,7 +145,8 @@ struct
                 transmit ~pool ~info ~tls stack (key, queue, consumer)
                   recipients
             | Ok record ->
-              Uspf.check ~ctx state dns (module DNS) record |> Lwt_scheduler.prj
+              Uspf.check ~ctx state dns (module Uspf_dns) record
+              |> Lwt_scheduler.prj
               >>= fun res ->
               let receiver =
                 `Domain (Domain_name.to_strings info.Ptt.SSMTP.domain) in

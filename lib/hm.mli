@@ -1,24 +1,20 @@
+(** {1:SPF verifier as a server.}
+
+    This module implements a server which verifies SPF values from income
+    emails. As a server/unikernel, it must be in front of internet. Indeed, it
+    uses the IP address of incoming emails and verify if the domain of the
+    sender allows this IP address. *)
+
 module Make
     (Random : Mirage_random.S)
     (Time : Mirage_time.S)
     (Mclock : Mirage_clock.MCLOCK)
     (Pclock : Mirage_clock.PCLOCK)
     (Resolver : Ptt.Sigs.RESOLVER with type +'a io = 'a Lwt.t)
-    (Stack : Tcpip.Stack.V4V6) : sig
-  type dns
-
-  val create :
-       ?cache_size:int
-    -> ?edns:[ `Auto | `Manual of Dns.Edns.t | `None ]
-    -> ?nameservers:
-         Dns.proto
-         * [ `Plaintext of Ipaddr.t * int
-           | `Tls of Tls.Config.client * Ipaddr.t * int ]
-           list
-    -> ?timeout:int64
-    -> Stack.t
-    -> dns
-
+    (Stack : Tcpip.Stack.V4V6)
+    (DNS : Dns_client_mirage.S
+             with type Transport.stack = Stack.t
+              and type 'a Transport.io = 'a Lwt.t) : sig
   val fiber :
        ?limit:int
     -> ?stop:Lwt_switch.t
@@ -28,6 +24,6 @@ module Make
     -> Resolver.t
     -> Ptt.Logic.info
     -> Ptt.Relay_map.t
-    -> dns
+    -> DNS.t
     -> unit Lwt.t
 end

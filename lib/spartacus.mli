@@ -1,3 +1,9 @@
+(** {1:A filter as a SMTP server.}
+
+    This module implements a server which {b annotes} incoming emails with a
+    field to recognizes them as a spam or not. It re-sends emails with this
+    field then. *)
+
 module Make
     (Random : Mirage_random.S)
     (Time : Mirage_time.S)
