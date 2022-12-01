@@ -38,7 +38,12 @@ struct
 
   let smtp_submission_service
       ~pool ?stop ~port stack resolver random hash conf_server =
-    let tls = (Submission.info conf_server).Ptt.SSMTP.tls in
+    let tls =
+      match (Submission.info conf_server).Ptt.SSMTP.tls with
+      | Some tls -> tls
+      | None ->
+        Fmt.invalid_arg "Impossible to launch a submission server without TLS"
+    in
     Server.init ~port stack >>= fun service ->
     let handler pool flow =
       let ip, port = Stack.TCP.dst flow in

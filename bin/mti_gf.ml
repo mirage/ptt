@@ -73,11 +73,7 @@ let fiber ~domain map =
     {
       Ptt.SMTP.domain
     ; Ptt.SMTP.ipaddr= Ipaddr.(V4 V4.any)
-    ; Ptt.SMTP.tls=
-        Tls.Config.server
-          ~certificates:(`Single ([cert], private_key))
-          ~authenticator:(fun ?ip:_ ~host:_ _ -> Ok None)
-          ()
+    ; Ptt.SMTP.tls= None
     ; Ptt.SMTP.zone= Mrmime.Date.Zone.GMT
     ; Ptt.SMTP.size= 0x1000000L
     } in

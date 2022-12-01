@@ -22,7 +22,7 @@ struct
   and info = SSMTP.info = {
       domain: [ `host ] Domain_name.t
     ; ipaddr: Ipaddr.t
-    ; tls: Tls.Config.server
+    ; tls: Tls.Config.server option
     ; zone: Mrmime.Date.Zone.t
     ; size: int64
   }

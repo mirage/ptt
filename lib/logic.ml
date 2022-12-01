@@ -134,7 +134,7 @@ let () = Colombe.Request.Decoder.add_extension "AUTH"
 type info = {
     domain: [ `host ] Domain_name.t
   ; ipaddr: Ipaddr.t
-  ; tls: Tls.Config.server
+  ; tls: Tls.Config.server option
   ; zone: Mrmime.Date.Zone.t
   ; size: int64
 }
@@ -145,11 +145,11 @@ type submission = {
   ; domain_from: Domain.t
 }
 
+let src = Logs.Src.create "logic"
+
+module Log = (val Logs.src_log src : Logs.LOG)
+
 module Make (Monad : MONAD) = struct
-  let src = Logs.Src.create "logic"
-
-  module Log = (val Logs.src_log src : Logs.LOG)
-
   let politely ~domain ~ipaddr =
     Fmt.str "%a at your service, [%s]" Domain_name.pp domain
       (Ipaddr.to_string ipaddr)

@@ -26,7 +26,7 @@ val pp_error : error Fmt.t
 type info = Logic.info = {
     domain: [ `host ] Domain_name.t
   ; ipaddr: Ipaddr.t
-  ; tls: Tls.Config.server
+  ; tls: Tls.Config.server option
   ; zone: Mrmime.Date.Zone.t
   ; size: int64
 }

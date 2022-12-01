@@ -71,7 +71,7 @@ let pp_error ppf = function
 type info = Logic.info = {
     domain: [ `host ] Domain_name.t
   ; ipaddr: Ipaddr.t
-  ; tls: Tls.Config.server
+  ; tls: Tls.Config.server option
   ; zone: Mrmime.Date.Zone.t
   ; size: int64
 }
@@ -85,79 +85,93 @@ type submission = Logic.submission = {
 include Logic.Make (Monad)
 
 let m_relay_init ctx info =
-  let open Monad in
-  let* _from_domain =
+  match info.tls with
+  | None ->
+    let open Monad in
     send ctx Value.PP_220 [Domain_name.to_string info.Logic.domain]
-    >>= fun () -> recv ctx Value.Helo in
-  let* () =
-    send ctx Value.PP_250
+    >>= fun () -> m_relay_init ctx info
+  | Some tls ->
+    let open Monad in
+    let* _from_domain =
+      send ctx Value.PP_220 [Domain_name.to_string info.Logic.domain]
+      >>= fun () -> recv ctx Value.Helo in
+    let capabilities =
       [
         politely ~domain:info.Logic.domain ~ipaddr:info.Logic.ipaddr; "8BITMIME"
       ; "SMTPUTF8"; "STARTTLS"; Fmt.str "SIZE %Ld" info.Logic.size
       ] in
-  let reset = ref 0 and bad = ref 0 in
-  let rec go () =
-    if !reset >= 25 && !bad >= 25 then
-      m_properly_close_and_fail ctx ~message:"You reached the limit buddy!"
-        `Too_many_bad_commands
-    else
-      let* command = recv ctx Value.Any in
-      match command with
-      | `Verb ("STARTTLS", []) (* | `Payload "STARTTLS" *) ->
-        let* () = send ctx Value.PP_220 ["Go ahead buddy!"] in
-        let decoder = Sendmail_with_starttls.Context_with_tls.decoder ctx in
-        let tls_error err = `Tls err in
-        Value_with_tls.starttls_as_server decoder info.Logic.tls
-        |> reword_error tls_error
-        >>= fun () -> m_relay_init ctx info
-      | `Reset ->
-        incr reset
-        ; let* () = send ctx Value.PP_250 ["Yes buddy!"] in
-          go ()
-      | `Quit -> m_politely_close ctx
-      | _ ->
-        incr bad
-        ; let* () =
-            send ctx Value.PN_530 ["Must issue a STARTTLS command first."] in
-          go () in
-  go ()
+    let* () = send ctx Value.PP_250 capabilities in
+    let reset = ref 0 and bad = ref 0 in
+    let rec go () =
+      if !reset >= 25 && !bad >= 25 then
+        m_properly_close_and_fail ctx ~message:"You reached the limit buddy!"
+          `Too_many_bad_commands
+      else
+        let* command = recv ctx Value.Any in
+        match command with
+        | `Verb ("STARTTLS", []) ->
+          let* () = send ctx Value.PP_220 ["Go ahead buddy!"] in
+          let decoder = Sendmail_with_starttls.Context_with_tls.decoder ctx in
+          let tls_error err = `Tls err in
+          Value_with_tls.starttls_as_server decoder tls
+          |> reword_error tls_error
+          >>= fun () -> m_relay_init ctx info
+        | `Reset ->
+          incr reset
+          ; let* () = send ctx Value.PP_250 ["Yes buddy!"] in
+            go ()
+        | `Quit -> m_politely_close ctx
+        | _ ->
+          incr bad
+          ; let* () =
+              send ctx Value.PN_530 ["Must issue a STARTTLS command first."]
+            in
+            go () in
+    go ()
 
 let m_submission_init ctx info ms =
-  let open Monad in
-  let* _from_domain =
+  match info.tls with
+  | None ->
+    let open Monad in
     send ctx Value.PP_220 [Domain_name.to_string info.Logic.domain]
-    >>= fun () -> recv ctx Value.Helo in
-  let* () =
-    send ctx Value.PP_250
+    >>= fun () -> m_submission_init ctx info ms
+  | Some tls ->
+    let open Monad in
+    let* _from_domain =
+      send ctx Value.PP_220 [Domain_name.to_string info.Logic.domain]
+      >>= fun () -> recv ctx Value.Helo in
+    let capabilities =
       [
         politely ~domain:info.Logic.domain ~ipaddr:info.Logic.ipaddr; "8BITMIME"
       ; "SMTPUTF8"; "STARTTLS"
       ; Fmt.str "AUTH %a" Fmt.(list ~sep:(const string " ") Mechanism.pp) ms
       ; Fmt.str "SIZE %Ld" info.Logic.size
       ] in
-  let reset = ref 0 and bad = ref 0 in
-  let rec go () =
-    if !reset >= 25 || !bad >= 25 then
-      m_properly_close_and_fail ctx ~message:"You reached the limit buddy!"
-        `Too_many_bad_commands
-    else
-      let* command = recv ctx Value.Any in
-      match command with
-      | `Verb ("STARTTLS", []) (* | `Payload "STARTTLS" *) ->
-        let* () = send ctx Value.PP_220 ["Go ahead buddy!"] in
-        let decoder = Sendmail_with_starttls.Context_with_tls.decoder ctx in
-        let tls_error err = `Tls err in
-        Value_with_tls.starttls_as_server decoder info.tls
-        |> reword_error tls_error
-        >>= fun () -> m_submission_init ctx info ms
-      | `Reset ->
-        incr reset
-        ; let* () = send ctx Value.PP_250 ["Yes, buddy!"] in
-          go ()
-      | `Quit -> m_politely_close ctx
-      | _ ->
-        incr bad
-        ; let* () =
-            send ctx Value.PN_530 ["Must issue a STARTTLS command first."] in
-          go () in
-  go ()
+    let* () = send ctx Value.PP_250 capabilities in
+    let reset = ref 0 and bad = ref 0 in
+    let rec go () =
+      if !reset >= 25 || !bad >= 25 then
+        m_properly_close_and_fail ctx ~message:"You reached the limit buddy!"
+          `Too_many_bad_commands
+      else
+        let* command = recv ctx Value.Any in
+        match command with
+        | `Verb ("STARTTLS", []) ->
+          let* () = send ctx Value.PP_220 ["Go ahead buddy!"] in
+          let decoder = Sendmail_with_starttls.Context_with_tls.decoder ctx in
+          let tls_error err = `Tls err in
+          Value_with_tls.starttls_as_server decoder tls
+          |> reword_error tls_error
+          >>= fun () -> m_submission_init ctx info ms
+        | `Reset ->
+          incr reset
+          ; let* () = send ctx Value.PP_250 ["Yes, buddy!"] in
+            go ()
+        | `Quit -> m_politely_close ctx
+        | _ ->
+          incr bad
+          ; let* () =
+              send ctx Value.PN_530 ["Must issue a STARTTLS command first."]
+            in
+            go () in
+    go ()
