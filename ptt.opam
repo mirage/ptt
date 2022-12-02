@@ -15,40 +15,31 @@ depends: [
   "dune"
   "mrmime"
   "digestif"
-  "colombe"           {>= "0.6.0"}
+  "colombe"           {>= "0.7.0"}
   "received"          {>= "0.5.1"}
-  "sendmail"          {>= "0.6.0"}
+  "sendmail"          {>= "0.7.0"}
   "sendmail-lwt"      {>= "0.6.0"}
   "domain-name"
   "dns"
   "logs"
-  "tls"               {>= "0.15.0"}
-  "tls-mirage"        {>= "0.15.0"}
-  "tcpip"             {>= "7.0.0"}
-  "ke"
+  "tls"               {>= "0.15.4"}
+  "tls-mirage"        {>= "0.15.4"}
+  "tcpip"             {>= "7.1.0"}
+  "ke"                {>= "0.6"}
   "bigstringaf"
   "ocaml-syntax-shims"
-  "dkim-mirage"
-  "bos"
-  "git-kv"
-  "git-unix"
-  "ca-certs"
-  "cmdliner"
-  "mirage-kv"
+  "dkim-mirage"       {>= "0.4.0"}
+  "mirage-kv"         {>= "4.0.1"}
   "dns-client"        {>= "6.4.0"}
   "dns-mirage"
   "dns-tsig"
-  "mirage-clock-unix" {>= "3.1.0"}
-  "mirage-crypto-rng"
-  "mirage-time-unix"  {>= "2.0.0"}
   "lwt"               {>= "5.4.0"}
-  "mimic"             {>= "0.0.1"}
   "mirage-clock"      {>= "3.1.0"}
   "mirage-flow"       {>= "2.0.1"}
   "mirage-random"     {>= "2.0.0"}
   "mirage-time"       {>= "2.0.1"}
   "uspf"
-  "data-encoding"
+  "data-encoding"     {>= "0.7"}
   "ptime"
   "spamtacus-mirage"
   "ipaddr"            {>= "5.0.1"}
@@ -60,7 +51,7 @@ build: ["dune" "build" "-p" name "-j" jobs]
 run-test: ["dune" "runtest" "-p" name "-j" jobs]
 dev-repo: "git+https://github.com/dinosaure/ptt.git"
 pin-depends: [
-  [ "spamtacus-bayesian.dev" "git+https://github.com/lyrm/spamtacus.git#592412e65708b3b70b9f195bb3588803e76d906d" ]
-  [ "spamtacus.dev"          "git+https://github.com/lyrm/spamtacus.git#592412e65708b3b70b9f195bb3588803e76d906d" ]
-  [ "spamtacus-mirage.dev"   "git+https://github.com/lyrm/spamtacus.git#592412e65708b3b70b9f195bb3588803e76d906d" ]
+  [ "spamtacus-bayesian.dev" "git+https://github.com/lyrm/spamtacus.git#9c27b96ad8f661c161e1e52e39022234eedf0b01" ]
+  [ "spamtacus.dev"          "git+https://github.com/lyrm/spamtacus.git#9c27b96ad8f661c161e1e52e39022234eedf0b01" ]
+  [ "spamtacus-mirage.dev"   "git+https://github.com/lyrm/spamtacus.git#9c27b96ad8f661c161e1e52e39022234eedf0b01" ]
 ]
