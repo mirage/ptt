@@ -12,7 +12,7 @@
  (public_name ptt.tuyau)
  (modules ptt_tuyau lwt_backend)
  (libraries lwt tls-mirage bigstringaf mirage-time mirage-flow tcpip mimic
-   ptt.unixiz ptt))
+   ptt.rdwr ptt))
 
 (library
  (name ptt_transmit)
@@ -57,7 +57,7 @@
  (libraries spamtacus-mirage mirage-random ptt.transmit))
 
 (library
- (name unixiz)
- (public_name ptt.unixiz)
- (modules unixiz)
+ (name rdwr)
+ (public_name ptt.rdwr)
+ (modules rdwr)
  (libraries cstruct bigstringaf lwt rresult ke mirage-flow ptt))

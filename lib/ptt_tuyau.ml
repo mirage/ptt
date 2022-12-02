@@ -6,7 +6,7 @@ module Client (Stack : Tcpip.Stack.V4V6) = struct
   open Rresult
   open Lwt.Infix
   open Lwt_backend
-  module Flow = Unixiz.Make (Stack.TCP)
+  module Flow = Rdwr.Make (Stack.TCP)
 
   let rdwr : (Flow.t, Lwt_scheduler.t) Colombe.Sigs.rdwr =
     let rd flow buf off len =

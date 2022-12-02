@@ -28,7 +28,7 @@ struct
   end
 
   module Tls = Tls_mirage.Make (Stack.TCP)
-  module Flow = Unixiz.Make (Tls)
+  module Flow = Rdwr.Make (Tls)
 
   module Submission =
     Ptt.Submission.Make (Lwt_scheduler) (Lwt_io) (Flow) (Resolver) (Random)

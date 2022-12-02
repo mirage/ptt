@@ -30,7 +30,7 @@ struct
       ; Lwt.return ()
   end
 
-  module Flow = Unixiz.Make (Stack.TCP)
+  module Flow = Rdwr.Make (Stack.TCP)
 
   module Verifier =
     Ptt.Relay.Make (Lwt_scheduler) (Lwt_io) (Flow) (Resolver) (Random)
