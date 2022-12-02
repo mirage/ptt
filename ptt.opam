@@ -54,4 +54,5 @@ pin-depends: [
   [ "spamtacus-bayesian.dev" "git+https://github.com/mirage/spamtacus.git#9c27b96ad8f661c161e1e52e39022234eedf0b01" ]
   [ "spamtacus.dev"          "git+https://github.com/mirage/spamtacus.git#9c27b96ad8f661c161e1e52e39022234eedf0b01" ]
   [ "spamtacus-mirage.dev"   "git+https://github.com/mirage/spamtacus.git#9c27b96ad8f661c161e1e52e39022234eedf0b01" ]
+  [ "mrmime.dev"             "git+https://github.com/mirage/mrmime.git#722eac6d6579c2f537ac7ac4b14684767f648171" ]
 ]
