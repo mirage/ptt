@@ -1,5 +1,5 @@
 FROM ocaml/opam:ubuntu-20.04-ocaml-4.14
-RUN /bin/sh -c ln -f /usr/bin/opam /usr/bin/opam-2.1
+RUN sudo ln -f /usr/bin/opam-2.1 /usr/bin/opam
 RUN cd ~/opam-repository && git pull origin master && git reset --hard 34576e67c88137d40ce6ff9e252d549e9e87205f && opam update
 RUN opam depext -ui mirage
 RUN mkdir -p /home/opam/src
@@ -9,8 +9,7 @@ ARG TARGET=hvt
 ARG EXTRA_FLAGS=
 RUN opam config exec -- mirage configure -t $TARGET $EXTRA_FLAGS
 COPY --chown=opam:root unikernel/signer/ /home/opam/src
-RUN opam pin add ptt -ny git+https://github.com/dinosaure/ptt.git#a41deec756265cb302d9b11b736c6d7964cac503
+RUN opam pin add ptt -ny git+https://github.com/dinosaure/ptt.git#8a4c5336646a61038a70a4f760e9773033306661
 RUN opam depext -ui ptt
 RUN opam config exec -- make depends
 RUN opam config exec -- mirage build
-RUN if [ $TARGET = hvt ]; then sudo cp signer.$TARGET /unikernel.$TARGET; fi
