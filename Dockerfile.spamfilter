@@ -1,15 +1,16 @@
 FROM ocaml/opam:ubuntu-20.04-ocaml-4.14
-RUN cd ~/opam-repository && git pull origin master && git reset --hard 34576e67c88137d40ce6ff9e252d549e9e87205f && opam-2.1 update
-RUN opam-2.1 depext -ui mirage
+RUN /bin/sh -c ln -f /usr/bin/opam-2.1 /usr/bin/opam
+RUN cd ~/opam-repository && git pull origin master && git reset --hard 34576e67c88137d40ce6ff9e252d549e9e87205f && opam update
+RUN opam depext -ui mirage
 RUN mkdir -p /home/opam/src
 WORKDIR /home/opam/src
 COPY --chown=opam:root unikernel/spamfilter/config.ml /home/opam/src
 ARG TARGET=hvt
 ARG EXTRA_FLAGS=
-RUN opam-2.1 config exec -- mirage configure -t $TARGET $EXTRA_FLAGS
+RUN opam config exec -- mirage configure -t $TARGET $EXTRA_FLAGS
 COPY --chown=opam:root unikernel/spamfilter/ /home/opam/src
-RUN opam-2.1 pin add ptt -ny git+https://github.com/lyrm/ptt.git#d77a1f59c8cbe30a2e561ed105519e824035fa97
-RUN opam-2.1 depext -ui ptt
-RUN opam-2.1 config exec -- make depends
-RUN opam-2.1 config exec -- mirage build
+RUN opam pin add ptt -ny git+https://github.com/lyrm/ptt.git#d77a1f59c8cbe30a2e561ed105519e824035fa97
+RUN opam depext -ui ptt
+RUN opam config exec -- make depends
+RUN opam config exec -- mirage build
 RUN if [ $TARGET = hvt ]; then sudo cp spamfilter.$TARGET /unikernel.$TARGET; fi
