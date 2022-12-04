@@ -6,10 +6,11 @@ RUN mkdir -p /home/opam/src
 WORKDIR /home/opam/src
 COPY --chown=opam:root unikernel/verifier/config.ml /home/opam/src
 ARG TARGET=hvt
+ARG BRANCH=master
 ARG EXTRA_FLAGS=
 RUN opam config exec -- mirage configure -t $TARGET $EXTRA_FLAGS
 COPY --chown=opam:root unikernel/verifier/ /home/opam/src
-RUN opam pin add ptt -ny git+https://github.com/dinosaure/ptt.git#8a4c5336646a61038a70a4f760e9773033306661
+RUN opam pin add ptt -ny git+https://github.com/dinosaure/ptt.git#$BRANCH
 RUN opam depext -ui ptt
 RUN opam config exec -- make depends
 RUN opam config exec -- mirage build
