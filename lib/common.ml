@@ -20,15 +20,14 @@ struct
         'a.
            'w
         -> [ `host ] Domain_name.t
-        -> (Ipaddr.V4.t, ([> R.msg ] as 'a)) result IO.t
+        -> (Ipaddr.t, ([> R.msg ] as 'a)) result IO.t
     ; getmxbyname:
         'a.
            'w
         -> [ `host ] Domain_name.t
         -> (Dns.Rr_map.Mx_set.t, ([> R.msg ] as 'a)) result IO.t
     ; extension:
-        'a.
-        'w -> string -> string -> (Ipaddr.V4.t, ([> R.msg ] as 'a)) result IO.t
+        'a. 'w -> string -> string -> (Ipaddr.t, ([> R.msg ] as 'a)) result IO.t
   }
 
   type 'g random = ?g:'g -> bytes -> unit IO.t
@@ -94,7 +93,7 @@ struct
       | x :: r -> f a x >>= fun a -> go a r in
     go a l
 
-  let recipients_are_reachable ~ipv4 w recipients =
+  let recipients_are_reachable ~ipaddr w recipients =
     let open Colombe in
     let fold m {Dns.Mx.mail_exchange; Dns.Mx.preference} =
       Log.debug (fun m ->
@@ -102,8 +101,6 @@ struct
             mail_exchange)
       ; resolver.gethostbyname w mail_exchange >>= function
         | Ok mx_ipaddr ->
-          let mx_ipaddr = Ipaddr.V4 mx_ipaddr in
-          (* TODO: [gethostbyname] should return a [Ipaddr.t]. *)
           IO.return
             (Mxs.add
                {
@@ -116,7 +113,7 @@ struct
     let rec go acc = function
       | [] -> IO.return acc
       | Forward_path.Postmaster :: r ->
-        go (Mxs.(singleton (v ~preference:0 (Ipaddr.V4 ipv4))) :: acc) r
+        go (Mxs.(singleton (v ~preference:0 ipaddr)) :: acc) r
       | Forward_path.Forward_path {Path.domain= Domain.Domain v; _} :: r
       | Forward_path.Domain (Domain.Domain v) :: r -> (
         try
@@ -145,7 +142,7 @@ struct
       | Forward_path.Domain (Domain.Extension (ldh, v)) :: r -> (
         resolver.extension w ldh v >>= function
         | Ok mx_ipaddr ->
-          go (Mxs.(singleton (v ~preference:0 (Ipaddr.V4 mx_ipaddr))) :: acc) r
+          go (Mxs.(singleton (v ~preference:0 mx_ipaddr)) :: acc) r
         | Error (`Msg _err) -> go acc r) in
     go [] recipients
     >>= (IO.return <.> List.for_all (fun m -> not (Mxs.is_empty m)))
@@ -208,10 +205,8 @@ struct
           resolver.gethostbyname w mail_exchange >>= function
           | Ok mx_ipaddr ->
             let mxs =
-              Mxs.(
-                add
-                  (v ~preference ~domain:mail_exchange (Ipaddr.V4 mx_ipaddr))
-                  mxs) in
+              Mxs.(add (v ~preference ~domain:mail_exchange mx_ipaddr) mxs)
+            in
             IO.return mxs
           | Error (`Msg _err) ->
             Log.err (fun m ->
@@ -264,8 +259,7 @@ struct
               IO.return
                 (Resolved.add
                    (`Domain (domain, mxs))
-                   (`Local [postmaster])
-                   resolved))) in
+                   (`Local [postmaster]) resolved))) in
     let open Aggregate in
     let resolved =
       By_ipaddr.fold

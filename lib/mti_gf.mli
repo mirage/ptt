@@ -1,3 +1,10 @@
+(** {1:A simple SMTP relay.}
+
+    This module implements a server which re-send incoming emails to their
+    real destinations (including the {i map} which can alter destinations). For
+    instance, the relay-map can define that for an email to [foo@bar.com], the
+    real destination is [foo@gmail.com]. *)
+
 module Make
     (Random : Mirage_random.S)
     (Time : Mirage_time.S)

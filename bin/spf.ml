@@ -140,10 +140,11 @@ let spf =
   let doc = "The SPF description." in
   Arg.(required & pos 3 (some spf) None & info [] ~doc ~docv:"<spf-record>")
 
+let term = Term.(ret (const run $ address $ dns_key $ domain $ spf))
+
 let cmd =
   let doc = "A tool to update the zone of a given domain with SPF metadata." in
   let man = [] in
-  ( Term.(ret (const run $ address $ dns_key $ domain $ spf))
-  , Term.info "spf" ~doc ~man )
+  Cmd.v (Cmd.info "spf" ~doc ~man) term
 
-let () = Term.(exit_status @@ eval cmd)
+let () = exit @@ Cmd.eval' cmd

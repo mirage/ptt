@@ -1,6 +1,5 @@
 name: Unikernels
 on:
-  pull_request:
   push:
 
 jobs:
@@ -23,32 +22,46 @@ jobs:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
       -
+        name: Extract the branch name
+        run: echo "BRANCH=${GITHUB_REF##*/}" >> $GITHUB_ENV
+      -
         name: Build relay
         uses: docker/build-push-action@v2
         with:
           context: .
+          build-args: |
+            BRANCH=${{ env.BRANCH }}
+          tags: mirage/ptt:${{ env.BRANCH }}
           file: ./Dockerfile.relay
       -
         name: Build submission
         uses: docker/build-push-action@v2
         with:
           context: .
+          build-args: |
+            BRANCH=${{ env.BRANCH }}
           file: ./Dockerfile.submission
       -
         name: Build signer
         uses: docker/build-push-action@v2
         with:
           context: .
+          build-args: |
+            BRANCH=${{ env.BRANCH }}
           file: ./Dockerfile.signer
       -
         name: Build spamfilter
         uses: docker/build-push-action@v2
         with:
           context: .
+          build-args: |
+            BRANCH=${{ env.BRANCH }}
           file: ./Dockerfile.spamfilter
       -
         name: Build verifier
         uses: docker/build-push-action@v2
         with:
           context: .
+          build-args: |
+            BRANCH=${{ env.BRANCH }}
           file: ./Dockerfile.verifier

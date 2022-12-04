@@ -1,21 +1,9 @@
 open Rresult
 open Lwt.Infix
 
-let ( >>? ) = Lwt_result.bind
-let ( <.> ) f g = fun x -> f (g x)
-
-module Store = Irmin_mirage_git.Mem.KV (Ptt_irmin)
-module Sync = Irmin.Sync (Store)
-
-let failwith_error_pull = function
-  | Error (`Conflict err) -> Fmt.failwith "Conflict: %s" err
-  | Error (`Msg err) -> failwith err
-  | Ok v -> v
-
-let local_to_string local =
-  let pp ppf = function `Atom x -> Fmt.string ppf x
-    | `String v -> Fmt.pf ppf "%S" v in
-  Fmt.str "%a" Fmt.(list ~sep:(any ".") pp) local
+let local_of_string str =
+  match Angstrom.parse_string ~consume:All Emile.Parser.local_part str with
+  | Ok v -> Ok v | Error _ -> Error (R.msgf "Invalid local-part: %S" str)
 
 module Make
   (Random : Mirage_random.S)
@@ -26,13 +14,14 @@ module Make
   (_ : sig end)
 = struct
   module Nss = Ca_certs_nss.Make (Pclock)
-  module DLe = Dns_certify_mirage.Make (Random) (Pclock) (Time) (Stack)
+  module Certify = Dns_certify_mirage.Make (Random) (Pclock) (Time) (Stack)
+  module Store = Git_kv.Make (Pclock)
 
   (* XXX(dinosaure): this is a fake resolver which enforce the [submission] to
    * transmit **any** emails to only one and unique SMTP server. *)
 
   module Resolver = struct
-    type t = Ipaddr.V4.t
+    type t = Ipaddr.t
     type +'a io = 'a Lwt.t
 
     let gethostbyname ipaddr _domain_name = Lwt.return_ok ipaddr
@@ -43,87 +32,69 @@ module Make
   module Lipap = Lipap.Make (Random) (Time) (Mclock) (Pclock) (Resolver) (Stack)
 
   let authentication ctx remote =
-    let tree = Art.make () in
-    let config = Irmin_mem.config () in
-    Store.Repo.v config >>= Store.master >>= fun store ->
-    let upstream = Store.remote ~ctx remote in
-    Sync.pull store upstream `Set
-    >|= failwith_error_pull
-    >>= fun _ ->
-    Store.(list store []) >>= fun values ->
-    let f () (name, k) = match Store.Tree.destruct k with
-      | `Node _ -> Lwt.return_unit
-      | `Contents _ ->
-        Store.(get store [ name ]) >>= fun { Ptt_irmin.password; _ } ->
-        let local = Art.key name in
-        Art.insert tree local password ; Lwt.return_unit in
-    Lwt_list.fold_left_s f () values >>= fun () ->
-    let authentication local v' =
-      match Art.find tree (Art.key (local_to_string local)) with
-      | v -> Lwt.return (Digestif.equal Digestif.BLAKE2B (Digestif.of_blake2b v) v')
-      | exception _ -> Lwt.return false in
-    let authentication =
-      let open Ptt_tuyau.Lwt_backend.Lwt_scheduler in
-      Ptt.Authentication.v
-        (fun local v -> inj (authentication local v)) in
-    Lwt.return authentication
+    Git_kv.connect ctx remote >>= fun t ->
+    Store.list t Mirage_kv.Key.empty >>= function
+    | Error err ->
+      Logs.warn (fun m -> m "Got an error when we tried to list values from \
+                             Git: %a."
+        Store.pp_error err);
+      let authentication =
+        let open Ptt_tuyau.Lwt_backend.Lwt_scheduler in
+        Ptt.Authentication.v
+          (fun _local _v -> inj (Lwt.return false)) in
+      Lwt.return authentication
+    | Ok values ->
+      let tbl = Hashtbl.create 0x10 in
 
-  let ignore_error _ ?request:_ _ _ = ()
+      let fill = function
+        | (_, `Dictionary) -> Lwt.return_unit
+        | (name, `Value) ->
+          Store.get t Mirage_kv.Key.(empty / name) >>= function
+          | Error err ->
+            Logs.warn (fun m -> m "Got an error when we tried to get data \
+                                   from %s: %a"
+              name Store.pp_error err);
+            Lwt.return_unit
+          | Ok str ->
+            match Ptt_value.of_string_json str, local_of_string name with
+            | Ok { Ptt_value.password; _ }, Ok local ->
+              Hashtbl.add tbl local password;
+              Lwt.return_unit
+            | _, Error (`Msg _) ->
+              Logs.warn (fun m -> m "Invalid local-part: %S" name);
+              Lwt.return_unit
+            | Error (`Msg err), _ ->
+              Logs.warn (fun m -> m "Invalid value for %s: %s" name err);
+              Lwt.return_unit in
+      Lwt_list.iter_s fill values >>= fun () ->
+      let authentication local v' = match Hashtbl.find tbl local with
+        | v -> Lwt.return (Digestif.equal Digestif.BLAKE2B (Digestif.of_blake2b v) v')
+        | exception _ -> Lwt.return false in
+      let authentication =
+        let open Ptt_tuyau.Lwt_backend.Lwt_scheduler in
+        Ptt.Authentication.v
+          (fun local v -> inj (authentication local v)) in
+      Lwt.return authentication
 
-  let certificate stackv4v6 =
-    match Key_gen.cert_der (), Key_gen.cert_key (),
-          Key_gen.hostname () with
-    | Some cert_der, Some cert_key, _ ->
-      let open Rresult in
-      let res =
-        Base64.decode cert_der |> R.reword_error (fun _ -> R.msgf "Invalid DER certificate")
-        >>| Cstruct.of_string >>= X509.Certificate.decode_der >>= fun certificate ->
-        Base64.decode cert_key |> R.reword_error (fun _ -> R.msgf "Invalid private key")
-        >>| Cstruct.of_string >>= fun seed -> R.ok (certificate, seed) in
-      Lwt.return res >>? fun (certificate, seed) ->
-      let g = Mirage_crypto_rng.(create ~seed (module Fortuna)) in
-      let private_key = Mirage_crypto_pk.Rsa.generate ~g ~bits:2048 () in
-      Lwt.return_ok (`Single ([ certificate ], `RSA private_key))
-    | _, _, Some hostname ->
-      Lwt.return Rresult.(Domain_name.of_string hostname >>= Domain_name.host) >>? fun hostname ->
-      DLe.retrieve_certificate stackv4v6 ~dns_key:(Key_gen.dns_key ())
-        ~hostname ?key_seed:(Key_gen.key_seed ())
-        (Key_gen.dns_server ()) (Key_gen.dns_port ()) >>? fun (certificates, key) ->
-      Lwt.return_ok (`Single (certificates, key))
-    | _ -> failwith "The unikernel requires a hostname or a certificate."
-
-  let time () = match Ptime.v (Pclock.now_d_ps ()) with
-    | v -> Some v | exception _ -> None
-
-  let parse_alg str = match String.lowercase_ascii str with
-    | "sha1" -> Ok `SHA1
-    | "sha256" -> Ok `SHA256
-    | _ -> R.error_msgf "Invalid hash algorithm: %S" str
-
-  let authenticator () = match Key_gen.key_fingerprint (), Key_gen.cert_fingerprint () with
-    | None, None -> Nss.authenticator ()
-    | Some str, _ ->
-      let res = match String.split_on_char ':' str with
-        | [ host; alg; fingerprint ] ->
-          let open Rresult in
-          Domain_name.of_string host >>= Domain_name.host >>= fun host ->
-          parse_alg alg >>= fun alg ->
-          Base64.decode ~pad:false fingerprint >>= fun fingerprint ->
-          R.ok (host, alg, fingerprint)
-        | _ -> R.error_msgf "Invalid key fingerprint." in
-      let (_host, hash, fingerprint) = R.failwith_error_msg res in
-      R.ok @@ X509.Authenticator.server_key_fingerprint ~time ~hash ~fingerprint:(Cstruct.of_string fingerprint)
-    | None, Some str ->
-      let res = match String.split_on_char ':' str with
-        | [ host; alg; fingerprint ] ->
-          let open Rresult in
-          Domain_name.of_string host >>= Domain_name.host >>= fun host ->
-          parse_alg alg >>= fun alg ->
-          Base64.decode ~pad:false fingerprint >>= fun fingerprint ->
-          R.ok (host, alg, fingerprint)
-        | _ -> R.error_msgf "Invalid key fingerprint." in
-      let (_host, hash, fingerprint) = R.failwith_error_msg res in
-      R.ok @@ X509.Authenticator.server_cert_fingerprint ~time ~hash ~fingerprint:(Cstruct.of_string fingerprint)
+  let retrieve_certs stack =
+    let domain = Key_gen.submission_domain () in
+    let key_seed = domain ^ ":" ^ (Key_gen.key_seed ()) in
+    Certify.retrieve_certificate stack ~dns_key:(Key_gen.dns_key ())
+      ~hostname:Domain_name.(host_exn (of_string_exn domain))
+      ~key_seed (Key_gen.dns_server ()) 53 >>= function
+    | Error (`Msg err) -> failwith err
+    | Ok certificates ->
+      let now = Ptime.v (Pclock.now_d_ps ()) in
+      let diffs =
+        List.map (function (s :: _, _) -> s | _ -> assert false) [ certificates ]
+        |> List.map X509.Certificate.validity
+        |> List.map snd
+        |> List.map (fun exp -> Ptime.diff exp now) in
+      let next_expire = Ptime.Span.to_d_ps (List.hd (List.sort Ptime.Span.compare diffs)) in
+      let next_expire = fst next_expire in
+      let seven_days_before_expire = max (Duration.of_hour 1)
+        (Duration.of_day (max 0 (next_expire - 7))) in
+      Lwt.return (`Single certificates, seven_days_before_expire)
 
   let start _random _time _mclock _pclock stack ctx =
     let domain = R.failwith_error_msg (Domain_name.of_string (Key_gen.domain ())) in
@@ -132,16 +103,26 @@ module Make
       let postmaster = Key_gen.postmaster () in
       R.failwith_error_msg (R.reword_error (fun _ -> R.msgf "Invalid postmaster email: %S" postmaster)
         (Emile.of_string postmaster)) in
-    let authenticator = R.failwith_error_msg (authenticator ()) in
+    let authenticator = R.failwith_error_msg (Nss.authenticator ()) in
     let tls = Tls.Config.client ~authenticator () in
-    certificate stack >|= R.failwith_error_msg >>= fun certificates ->
     authentication ctx (Key_gen.remote ()) >>= fun authentication ->
-    Lipap.fiber ~port:465 ~tls (Stack.tcp stack) (Key_gen.destination ()) None Digestif.BLAKE2B
-      (Ptt.Relay_map.empty ~postmaster ~domain)
-      { Ptt.Logic.domain
-      ; ipv4= (Ipaddr.V4.Prefix.address (Key_gen.ipv4 ()))
-      ; tls= Tls.Config.server ~certificates ()
-      ; zone= Mrmime.Date.Zone.GMT (* XXX(dinosaure): any MirageOS use GMT. *)
-      ; size= 10_000_000L (* 10M *) }
-      authentication [ Ptt.Mechanism.PLAIN ]
+    let rec loop (certificates, expiration) =
+      let stop = Lwt_switch.create () in
+      let wait_and_stop () =
+        Time.sleep_ns expiration >>= fun () ->
+        retrieve_certs stack >>= fun result ->
+        Lwt_switch.turn_off stop >>= fun () ->
+        Lwt.return result in
+      let server () =
+        Lipap.fiber ~port:465 ~tls (Stack.tcp stack) (Key_gen.destination ()) None Digestif.BLAKE2B
+          (Ptt.Relay_map.empty ~postmaster ~domain)
+          { Ptt.Logic.domain
+          ; ipaddr= Ipaddr.(V4 (V4.Prefix.address (Key_gen.ipv4 ()))) (* XXX(dinosaure): or public IP address? *)
+          ; tls= Some (Tls.Config.server ~certificates ())
+          ; zone= Mrmime.Date.Zone.GMT
+          ; size= 10_000_000L (* 10M *) }
+          authentication [ Ptt.Mechanism.PLAIN ] in
+      Lwt.both (server ()) (wait_and_stop ()) >>= fun ((), result) ->
+      loop result in
+    retrieve_certs stack >>= loop
 end

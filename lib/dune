@@ -10,9 +10,9 @@
 (library
  (name ptt_tuyau)
  (public_name ptt.tuyau)
- (modules unixiz ptt_tuyau lwt_backend)
+ (modules ptt_tuyau lwt_backend)
  (libraries lwt tls-mirage bigstringaf mirage-time mirage-flow tcpip mimic
-   ptt))
+   ptt.rdwr ptt))
 
 (library
  (name ptt_transmit)
@@ -45,13 +45,19 @@
  (libraries dns-client.mirage uspf mirage-random ptt.transmit))
 
 (library
- (name ptt_irmin)
- (public_name ptt.irmin)
- (modules ptt_irmin)
- (libraries mirage-kv ptt irmin))
+ (name ptt_value)
+ (public_name ptt.value)
+ (modules ptt_value)
+ (libraries mirage-kv ptt data-encoding))
 
 (library
  (name spartacus)
  (public_name ptt.spartacus)
  (modules spartacus)
  (libraries spamtacus-mirage mirage-random ptt.transmit))
+
+(library
+ (name rdwr)
+ (public_name ptt.rdwr)
+ (modules rdwr)
+ (libraries cstruct bigstringaf lwt rresult ke mirage-flow ptt))

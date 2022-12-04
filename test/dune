@@ -7,8 +7,7 @@
 (rule
  (alias runtest)
  (deps
-  (:test test.exe)
-  server.key
-  server.pem)
+  (:test test.exe))
+ (package ptt-bin)
  (action
   (run %{test} --color=always)))

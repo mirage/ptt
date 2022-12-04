@@ -3,25 +3,7 @@ open Lwt_backend
 
 module type FLOW = Ptt.Sigs.FLOW with type +'a io = 'a Lwt.t
 
-module Make (Stack : Tcpip.Stack.V4V6) : sig
-  module Flow : sig
-    include Ptt.Sigs.FLOW with type +'a io = 'a Lwt.t
-
-    val make : Stack.TCP.flow -> t
-
-    type flow = t
-
-    val input : flow -> bytes -> int -> int -> int Lwt.t
-  end
-
-  module TLSFlow : sig
-    include Ptt.Sigs.FLOW with type +'a io = 'a Lwt.t
-
-    val server : Stack.TCP.flow -> Tls.Config.server -> t Lwt.t
-    val client : Stack.TCP.flow -> Tls.Config.client -> t Lwt.t
-    val close : t -> unit Lwt.t
-  end
-
+module Client (Stack : Tcpip.Stack.V4V6) : sig
   val sendmail :
        ?encoder:(unit -> bytes)
     -> ?decoder:(unit -> bytes)
@@ -60,8 +42,7 @@ module Server (Time : Mirage_time.S) (Stack : Tcpip.Stack.V4V6) : sig
   val init : port:int -> Stack.TCP.t -> service Lwt.t
 
   val serve_when_ready :
-       ?timeout:int64
-    -> ?stop:Lwt_switch.t
+       ?stop:Lwt_switch.t
     -> handler:(Stack.TCP.flow -> unit Lwt.t)
     -> service
     -> [ `Initialized of unit Lwt.t ]

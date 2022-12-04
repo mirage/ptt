@@ -89,8 +89,8 @@ let pp_error ppf = function
 
 type info = Logic.info = {
     domain: [ `host ] Domain_name.t
-  ; ipv4: Ipaddr.V4.t
-  ; tls: Tls.Config.server
+  ; ipaddr: Ipaddr.t
+  ; tls: Tls.Config.server option
   ; zone: Mrmime.Date.Zone.t
   ; size: int64
 }

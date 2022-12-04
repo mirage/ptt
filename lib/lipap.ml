@@ -10,7 +10,7 @@ module Make
     (Resolver : Ptt.Sigs.RESOLVER with type +'a io = 'a Lwt.t)
     (Stack : Tcpip.Stack.V4V6) =
 struct
-  include Ptt_tuyau.Make (Stack)
+  include Ptt_tuyau.Client (Stack)
 
   let src = Logs.Src.create "lipap"
 
@@ -27,30 +27,40 @@ struct
       ; Lwt.return ()
   end
 
+  module Tls = Tls_mirage.Make (Stack.TCP)
+  module Flow = Rdwr.Make (Tls)
+
   module Submission =
-    Ptt.Submission.Make (Lwt_scheduler) (Lwt_io) (TLSFlow) (Resolver) (Random)
+    Ptt.Submission.Make (Lwt_scheduler) (Lwt_io) (Flow) (Resolver) (Random)
 
   module Server = Ptt_tuyau.Server (Time) (Stack)
   include Ptt_transmit.Make (Pclock) (Stack) (Submission.Md)
 
   let smtp_submission_service
       ~pool ?stop ~port stack resolver random hash conf_server =
-    let tls = (Submission.info conf_server).Ptt.SSMTP.tls in
+    let tls =
+      match (Submission.info conf_server).Ptt.SSMTP.tls with
+      | Some tls -> tls
+      | None ->
+        Fmt.invalid_arg "Impossible to launch a submission server without TLS"
+    in
     Server.init ~port stack >>= fun service ->
     let handler pool flow =
       let ip, port = Stack.TCP.dst flow in
       Lwt.catch
         (fun () ->
           Lwt_pool.use pool @@ fun (encoder, decoder, _) ->
-          TLSFlow.server flow tls >>= fun v ->
-          Submission.accept
-            ~encoder:(fun () -> encoder)
-            ~decoder:(fun () -> decoder)
-            ~ipaddr:ip v resolver random hash conf_server
-          >|= R.reword_error (R.msgf "%a" Submission.pp_error)
-          >>= fun res ->
-          TLSFlow.close v >>= fun () ->
-          Stack.TCP.close flow >>= fun () -> Lwt.return res)
+          Tls.server_of_flow tls flow >>= function
+          | Error err ->
+            Stack.TCP.close flow >>= fun () ->
+            Lwt.return_error (R.msgf "%a" Tls.pp_write_error err)
+          | Ok flow ->
+            Submission.accept ~encoder:(Fun.const encoder)
+              ~decoder:(Fun.const decoder) ~ipaddr:ip (Flow.make flow) resolver
+              random hash conf_server
+            >|= R.reword_error (R.msgf "%a" Submission.pp_error)
+            >>= fun res ->
+            Tls.close flow >>= fun () -> Lwt.return res)
         (function
           | Failure err -> Lwt.return (R.error_msg err)
           | exn -> Lwt.return (Error (`Exn exn)))

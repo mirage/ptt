@@ -1,3 +1,9 @@
+(** {1:A DKIM signer as a SMTP server.}
+
+    This module implements a server which signs incoming emails with a private
+    RSA key. It re-sends emails with the computed DKIM field.
+*)
+
 module Make
     (Random : Mirage_random.S)
     (Time : Mirage_time.S)

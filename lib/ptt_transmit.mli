@@ -15,4 +15,6 @@ module Make
        * Ptt.Aggregate.resolved_elt)
        list
     -> unit Lwt.t
+  (** [transmit ~pool ~info ~tls tcpv4v6 (key, queue, consumer) recipients] tries
+      to send an email to [recipients]. *)
 end

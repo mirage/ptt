@@ -133,8 +133,8 @@ let () = Colombe.Request.Decoder.add_extension "AUTH"
 
 type info = {
     domain: [ `host ] Domain_name.t
-  ; ipv4: Ipaddr.V4.t
-  ; tls: Tls.Config.server
+  ; ipaddr: Ipaddr.t
+  ; tls: Tls.Config.server option
   ; zone: Mrmime.Date.Zone.t
   ; size: int64
 }
@@ -145,14 +145,14 @@ type submission = {
   ; domain_from: Domain.t
 }
 
+let src = Logs.Src.create "logic"
+
+module Log = (val Logs.src_log src : Logs.LOG)
+
 module Make (Monad : MONAD) = struct
-  let src = Logs.Src.create "logic"
-
-  module Log = (val Logs.src_log src : Logs.LOG)
-
-  let politely ~domain ~ipv4 =
+  let politely ~domain ~ipaddr =
     Fmt.str "%a at your service, [%s]" Domain_name.pp domain
-      (Ipaddr.V4.to_string ipv4)
+      (Ipaddr.to_string ipaddr)
 
   let m_properly_close_and_fail ctx ?(code = 554) ~message err =
     let open Monad in
@@ -295,8 +295,8 @@ module Make (Monad : MONAD) = struct
     let* () =
       send ctx Value.PP_250
         [
-          politely ~domain:info.domain ~ipv4:info.ipv4; "8BITMIME"; "SMTPUTF8"
-        ; Fmt.str "SIZE %Ld" info.size
+          politely ~domain:info.domain ~ipaddr:info.ipaddr; "8BITMIME"
+        ; "SMTPUTF8"; Fmt.str "SIZE %Ld" info.size
         ] in
     m_relay ctx ~domain_from
 
@@ -306,8 +306,8 @@ module Make (Monad : MONAD) = struct
     let* () =
       send ctx Value.PP_250
         [
-          politely ~domain:info.domain ~ipv4:info.ipv4; "8BITMIME"; "SMTPUTF8"
-        ; Fmt.str "SIZE %Ld" info.size
+          politely ~domain:info.domain ~ipaddr:info.ipaddr; "8BITMIME"
+        ; "SMTPUTF8"; Fmt.str "SIZE %Ld" info.size
         ; Fmt.str "AUTH %a" Fmt.(list ~sep:(const string " ") Mechanism.pp) ms
         ] in
     m_submission ctx ~domain_from ms

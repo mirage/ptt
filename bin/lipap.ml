@@ -24,7 +24,11 @@ module Resolver = struct
   type +'a io = 'a Lwt.t
   type t = Dns_client_lwt.t
 
-  let gethostbyname t v = Dns_client_lwt.gethostbyname t v
+  let gethostbyname t v =
+    let open Lwt.Infix in
+    Dns_client_lwt.gethostbyname t v >|= function
+    | Ok v -> Ok (Ipaddr.V4 v)
+    | Error _ as err -> err
 
   let getmxbyname t v =
     let open Lwt_result in
@@ -62,29 +66,31 @@ let authenticator _username _password =
 
 let authenticator = Ptt.Authentication.v authenticator
 
-let tls =
-  let authenticator = R.failwith_error_msg (Ca_certs.authenticator ()) in
-  Tls.Config.client ~authenticator ()
-
 let fiber ~domain map =
   let open Lwt.Infix in
   let open Tcpip_stack_socket.V4V6 in
   let ipv4_only = false and ipv6_only = false in
+  let tls =
+    Tls.Config.server
+      ~certificates:(`Single ([cert], private_key))
+      ~authenticator:(fun ?ip:_ ~host:_ _ -> Ok None)
+      () in
+
   TCP.connect ~ipv4_only ~ipv6_only Ipaddr.V4.Prefix.global None
   >>= fun tcpv4v6 ->
   let info =
     {
       Ptt.SMTP.domain
-    ; Ptt.SMTP.ipv4= Ipaddr.V4.any
-    ; Ptt.SMTP.tls=
-        Tls.Config.server
-          ~certificates:(`Single ([cert], private_key))
-          ~authenticator:(fun ?ip:_ ~host:_ _ -> Ok None)
-          ()
+    ; Ptt.SMTP.ipaddr= Ipaddr.(V4 V4.any)
+    ; Ptt.SMTP.tls= Some tls
     ; Ptt.SMTP.zone= Mrmime.Date.Zone.GMT
     ; Ptt.SMTP.size= 0x1000000L
     } in
   let resolver = Dns_client_lwt.create () in
+  let tls =
+    let authenticator = R.failwith_error_msg (Ca_certs.authenticator ()) in
+    Tls.Config.client ~authenticator () in
+
   Server.fiber ~port:4242 ~tls tcpv4v6 resolver None Digestif.BLAKE2B map info
     authenticator [Ptt.Mechanism.PLAIN]
 

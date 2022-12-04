@@ -1,20 +1,9 @@
 open Rresult
 open Lwt.Infix
 
-let ( >>? ) = Lwt_result.bind
-let ( <.> ) f g = fun x -> f (g x)
-
-module Store = Irmin_mirage_git.Mem.KV (Ptt_irmin)
-module Sync = Irmin.Sync (Store)
-
-let failwith_error_pull = function
-  | Error (`Conflict err) -> Fmt.failwith "Conflict: %s" err
-  | Error (`Msg err) -> failwith err
-  | Ok v -> v
-
 let local_of_string str =
   match Angstrom.parse_string ~consume:All Emile.Parser.local_part str with
-  | Ok v -> v | Error _ -> Fmt.failwith "Invalid local-part: %S" str
+  | Ok v -> Ok v | Error _ -> Error (R.msgf "Invalid local-part: %S" str)
 
 module Make
   (Random : Mirage_random.S)
@@ -22,78 +11,86 @@ module Make
   (Mclock : Mirage_clock.MCLOCK)
   (Pclock : Mirage_clock.PCLOCK)
   (Stack : Tcpip.Stack.V4V6)
+  (DNS : Dns_client_mirage.S with type Transport.stack = Stack.t
+                              and type 'a Transport.io = 'a Lwt.t)
   (_ : sig end)
 = struct
-  module Resolver = struct
-    include Dns_client_mirage.Make (Random) (Time) (Mclock) (Pclock) (Stack)
+  module Store = Git_kv.Make (Pclock)
 
+  module Resolver = struct
+    type t = DNS.t
     type +'a io = 'a Lwt.t
 
-    let gethostbyname dns domain_name = gethostbyname dns domain_name
-    let getmxbyname dns domain_name = getaddrinfo dns Dns.Rr_map.Mx domain_name >>= function
+    let gethostbyname dns domain_name =
+      DNS.gethostbyname6 dns domain_name >>= function
+      | Ok ipv6 -> Lwt.return_ok (Ipaddr.V6 ipv6)
+      | Error _ -> DNS.gethostbyname dns domain_name >|= function
+        | Ok ipv4 -> Ok (Ipaddr.V4 ipv4)
+        | Error _ as err -> err
+
+    let getmxbyname dns domain_name =
+      DNS.getaddrinfo dns Dns.Rr_map.Mx domain_name >>= function
       | Ok (_ttl, mxs) -> Lwt.return_ok mxs
       | Error _ as err -> Lwt.return err
-    let extension _dns ldh value = Lwt.return_error (R.msgf "[%s:%s] is not supported" ldh value)
+
+    let extension _dns ldh value =
+      Lwt.return_error (R.msgf "[%s:%s] is not supported" ldh value)
   end
 
-  module Mti_gf = Mti_gf.Make (Random) (Time) (Mclock) (Pclock) (Resolver) (Stack)
+  module Mti_gf =
+    Mti_gf.Make (Random) (Time) (Mclock) (Pclock) (Resolver) (Stack)
   module Nss = Ca_certs_nss.Make (Pclock)
 
-  let certificate () =
-    let open Rresult in
-    Base64.decode (Key_gen.cert_der ()) |> R.reword_error (fun _ -> R.msgf "Invalid DER certificate")
-    >>| Cstruct.of_string >>= X509.Certificate.decode_der >>= fun certificate ->
-    Base64.decode (Key_gen.cert_key ()) |> R.reword_error (fun _ -> R.msgf "Invalid private key")
-    >>| Cstruct.of_string >>= fun seed ->
-    let g = Mirage_crypto_rng.(create ~seed (module Fortuna)) in
-    let private_key = Mirage_crypto_pk.Rsa.generate ~g ~bits:2048 () in
-    R.ok (`Single ([ certificate ], `RSA private_key))
-
   let relay_map relay_map ctx remote =
-    let config = Irmin_mem.config () in
-    Store.Repo.v config >>= Store.master >>= fun store ->
-    let upstream = Store.remote ~ctx remote in
-    Sync.pull store upstream `Set
-    >|= failwith_error_pull
-    >>= fun _ ->
-    Store.(list store []) >>= fun values ->
-    let f acc (name, k) = match Store.Tree.destruct k with
-      | `Node _ -> Lwt.return acc
-      | `Contents _ ->
-        Store.(get store [ name ]) >>= fun { Ptt_irmin.targets; _ } ->
-        let local = local_of_string name in
-        let acc = List.fold_left (fun acc x -> Ptt.Relay_map.add ~local x acc) acc targets in
-        Lwt.return acc in
-    Lwt_list.fold_left_s f relay_map values
+    Git_kv.connect ctx remote >>= fun t ->
+    Store.list t Mirage_kv.Key.empty >>= function
+    | Error err ->
+      Logs.warn (fun m -> m "Got an error when we tried to list values from \
+                             Git: %a."
+        Store.pp_error err);
+      Lwt.return relay_map
+    | Ok values ->
+      let f acc = function
+        | (_, `Dictionary) -> Lwt.return acc
+        | (name, `Value) ->
+          Store.get t Mirage_kv.Key.(empty / name) >>= function
+          | Error err ->
+            Logs.warn (fun m -> m "Got an error when we tried to get data \
+                                   from %s: %a"
+              name Store.pp_error err);
+            Lwt.return acc
+          | Ok str ->
+            match Ptt_value.of_string_json str, local_of_string name with
+            | Ok { Ptt_value.targets; _ }, Ok local ->
+              let acc = List.fold_left (fun acc x ->
+                Ptt.Relay_map.add ~local x acc) acc targets in
+              Lwt.return acc
+            | _, Error (`Msg _) ->
+              Logs.warn (fun m -> m "Invalid local-part: %S" name);
+              Lwt.return acc
+            | Error (`Msg err), _ ->
+              Logs.warn (fun m -> m "Invalid value for %s: %s" name err);
+              Lwt.return acc in
+      Lwt_list.fold_left_s f relay_map values
 
-  let start _random _time _mclock _pclock stack ctx =
-    let nameservers = match Key_gen.resolver () with
-      | None -> None
-      | Some nameserver ->
-        let nameserver = Uri.of_string nameserver in
-        let protocol = match Uri.scheme nameserver with
-          | Some "tcp" -> `Tcp
-          | Some "udp" | _ -> `Udp in
-        let ipaddr = Option.bind (Uri.host nameserver) (R.to_option <.> Ipaddr.of_string) in
-        let port = Option.value (Uri.port nameserver) ~default:53 in
-        match ipaddr with
-        | Some ipaddr -> Some (protocol, [ `Plaintext (ipaddr, port) ])
-        | None -> None in
-    let dns = Resolver.create ?nameservers stack in
-    let domain = R.failwith_error_msg (Domain_name.of_string (Key_gen.domain ())) in
+  let start _random _time _mclock _pclock stack dns ctx =
+    let domain = R.failwith_error_msg
+      (Domain_name.of_string (Key_gen.domain ())) in
     let domain = Domain_name.host_exn domain in
     let postmaster =
       let postmaster = Key_gen.postmaster () in
-      R.failwith_error_msg (R.reword_error (fun _ -> R.msgf "Invalid postmaster email: %S" postmaster)
-        (Emile.of_string postmaster)) in
+      R.failwith_error_msg
+        (R.reword_error (fun _ -> R.msgf "Invalid postmaster email: %S"
+            postmaster)
+          (Emile.of_string postmaster)) in
     let authenticator = R.failwith_error_msg (Nss.authenticator ()) in
     let tls = Tls.Config.client ~authenticator () in
-    certificate () |> Lwt.return >|= R.failwith_error_msg >>= fun certificates ->
-    relay_map (Ptt.Relay_map.empty ~postmaster ~domain) ctx (Key_gen.remote ()) >>= fun relay_map ->
+    relay_map (Ptt.Relay_map.empty ~postmaster ~domain) ctx (Key_gen.remote ())
+    >>= fun relay_map ->
     Mti_gf.fiber ~port:25 ~tls (Stack.tcp stack) dns relay_map
       { Ptt.Logic.domain
-      ; ipv4= (Ipaddr.V4.Prefix.address (Key_gen.ipv4 ()))
-      ; tls= Tls.Config.server ~certificates ()
-      ; zone= Mrmime.Date.Zone.GMT (* XXX(dinosaure): any MirageOS use GMT. *)
+      ; ipaddr= Ipaddr.(V4 (V4.Prefix.address (Key_gen.ipv4 ())))
+      ; tls= None
+      ; zone= Mrmime.Date.Zone.GMT
       ; size= 10_000_000L (* 10M *) }
 end

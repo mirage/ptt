@@ -17,7 +17,8 @@ open Rresult
 let ( <.> ) f g x = f (g x)
 
 let mailbox =
-  Irmin.Type.(map string) (R.get_ok <.> Emile.of_string) Emile.to_string
+  let open Data_encoding in
+  conv Emile.to_string (R.get_ok <.> Emile.of_string) string
 
 type t = {
     targets: Emile.mailbox list
@@ -26,7 +27,8 @@ type t = {
 }
 
 let blake2b =
-  Irmin.Type.(map string) Digestif.BLAKE2B.of_hex Digestif.BLAKE2B.to_hex
+  let open Data_encoding in
+  conv Digestif.BLAKE2B.to_hex Digestif.BLAKE2B.of_hex string
 
 let key_of_local local =
   let pp ppf = function
@@ -46,12 +48,24 @@ let local_of_key key =
   | Error _ -> Fmt.failwith "Invalid local-part: %S" str
 
 let t =
-  let open Irmin.Type in
-  record "relay" (fun targets password insecure ->
-      {targets; password; insecure})
-  |+ field "targets" (list mailbox) (fun t -> t.targets)
-  |+ field "password" blake2b (fun t -> t.password)
-  |+ field "insecure" bool (fun t -> t.insecure)
-  |> sealr
+  let open Data_encoding in
+  obj3
+    (req "targets" (list mailbox))
+    (req "password" blake2b)
+    (dft "insecure" bool false)
+  |> conv
+       (fun {targets; password; insecure} -> targets, password, insecure)
+       (fun (targets, password, insecure) -> {targets; password; insecure})
 
-let merge = Irmin.Merge.(option (idempotent t))
+let to_string_json v =
+  let open Data_encoding in
+  Json.construct t v |> Json.to_string
+
+let of_string_json str =
+  let open Data_encoding in
+  try
+    match Json.from_string str with
+    | Ok v -> Ok (Json.destruct t v)
+    | Error _ -> Error (`Msg "Invalid JSON value")
+  with exn ->
+    Error (`Msg (Fmt.str "Invalid ptt value: %S" (Printexc.to_string exn)))

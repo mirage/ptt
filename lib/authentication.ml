@@ -4,9 +4,7 @@ open Rresult
 let ( <.> ) f g x = f (g x)
 
 type ('s, 'k) t = username -> 'k password -> (bool, 's) io
-
 and username = Emile.local
-
 and 'k password = 'k Digestif.t
 
 external v : (username -> 'k password -> (bool, 's) io) -> ('s, 'k) t
