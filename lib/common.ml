@@ -128,7 +128,11 @@ struct
               ; list_fold_left_s ~f:fold Mxs.empty
                   (Dns.Rr_map.Mx_set.elements m)
                 >>= fun s -> go (s :: acc) r
-            | Error (`Msg _err) -> go acc r
+            | Error (`Msg err) ->
+              Log.warn (fun m ->
+                  m "Impossible to resolve MX of %a: %s" Domain_name.pp domain
+                    err)
+              ; go acc r
         with _exn -> go (Mxs.empty :: acc) r)
       | Forward_path.Forward_path {Path.domain= Domain.IPv4 mx_ipaddr; _} :: r
       | Forward_path.Domain (Domain.IPv4 mx_ipaddr) :: r ->
