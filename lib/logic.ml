@@ -145,7 +145,7 @@ type submission = {
   ; domain_from: Domain.t
 }
 
-let src = Logs.Src.create "logic"
+let src = Logs.Src.create "ptt.logic"
 
 module Log = (val Logs.src_log src : Logs.LOG)
 

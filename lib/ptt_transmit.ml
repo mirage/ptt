@@ -1,5 +1,8 @@
 let ( <.> ) f g x = f (g x)
 let icompare : int -> int -> int = fun a b -> compare a b
+let src = Logs.Src.create "ptt.tuyau"
+
+module Log = (val Logs.src_log src)
 
 module Make
     (Pclock : Mirage_clock.PCLOCK)
@@ -9,10 +12,6 @@ struct
   open Lwt.Infix
   open Ptt_tuyau.Lwt_backend
   include Ptt_tuyau.Client (Stack)
-
-  let src = Logs.Src.create "ptt-tuyau"
-
-  module Log = (val Logs.src_log src)
 
   let local_to_forward_path ~domain:mx_domain local =
     let local =

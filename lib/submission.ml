@@ -1,6 +1,10 @@
 open Sigs
 open Rresult
 
+let src = Logs.Src.create "ptt.submission"
+
+module Log = (val Logs.src_log src : Logs.LOG)
+
 module Make
     (Scheduler : SCHEDULER)
     (IO : IO with type 'a t = 'a Scheduler.s)
@@ -38,10 +42,6 @@ struct
     let v = server.count in
     server.count <- Int64.succ server.count
     ; v
-
-  let src = Logs.Src.create "ptt-submission"
-
-  module Log = (val Logs.src_log src : Logs.LOG)
 
   type error =
     [ `Error of [ SSMTP.error | `Invalid_recipients | `Too_many_tries ]

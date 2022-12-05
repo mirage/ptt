@@ -1,6 +1,10 @@
 open Sigs
 open Rresult
 
+let src = Logs.Src.create "ptt.relay"
+
+module Log = (val Logs.src_log src : Logs.LOG)
+
 module Make
     (Scheduler : SCHEDULER)
     (IO : IO with type 'a t = 'a Scheduler.s)
@@ -10,10 +14,6 @@ module Make
 struct
   include Common.Make (Scheduler) (IO) (Flow) (Resolver) (Random)
   module Md = Messaged.Make (Scheduler) (IO)
-
-  let src = Logs.Src.create "ptt-relay"
-
-  module Log = (val Logs.src_log src : Logs.LOG)
 
   type server = {info: info; messaged: Md.t; mutable count: int64}
 

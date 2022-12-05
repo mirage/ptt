@@ -2,6 +2,10 @@ open Rresult
 open Ptt_tuyau.Lwt_backend
 open Lwt.Infix
 
+let src = Logs.Src.create "ptt.lipap"
+
+module Log : Logs.LOG = (val Logs.src_log src)
+
 module Make
     (Random : Mirage_random.S)
     (Time : Mirage_time.S)
@@ -11,10 +15,6 @@ module Make
     (Stack : Tcpip.Stack.V4V6) =
 struct
   include Ptt_tuyau.Client (Stack)
-
-  let src = Logs.Src.create "lipap"
-
-  module Log : Logs.LOG = (val Logs.src_log src)
 
   module Random = struct
     type g = Random.g

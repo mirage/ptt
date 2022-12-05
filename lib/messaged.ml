@@ -67,12 +67,12 @@ module type S = sig
   val broadcast : t -> unit
 end
 
+let src = Logs.Src.create "ptt.messaged"
+
+module Log = (val Logs.src_log src)
+
 module Make (Scheduler : SCHEDULER) (IO : IO with type 'a t = 'a Scheduler.s) =
 struct
-  let src = Logs.Src.create "messaged"
-
-  module Log = (val Logs.src_log src)
-
   type +'a s = 'a IO.t
 
   open IO

@@ -3,6 +3,9 @@ open Sigs
 open Rresult
 
 let ( <.> ) f g x = f (g x)
+let src = Logs.Src.create "ptt.common"
+
+module Log = (val Logs.src_log src)
 
 module Make
     (Scheduler : SCHEDULER)
@@ -11,10 +14,6 @@ module Make
     (Resolver : RESOLVER with type 'a io = 'a IO.t)
     (Random : RANDOM with type 'a io = 'a IO.t) =
 struct
-  let src = Logs.Src.create "ptt-common"
-
-  module Log = (val Logs.src_log src)
-
   type 'w resolver = {
       gethostbyname:
         'a.

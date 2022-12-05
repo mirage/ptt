@@ -2,7 +2,7 @@ open Rresult
 open Ptt_tuyau.Lwt_backend
 open Lwt.Infix
 
-let src = Logs.Src.create "hm"
+let src = Logs.Src.create "ptt.hm"
 
 module Log : Logs.LOG = (val Logs.src_log src)
 
