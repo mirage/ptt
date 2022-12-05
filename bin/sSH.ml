@@ -11,14 +11,24 @@ let pp_write_error ppf = function
   | `Error (err, f, v) -> Fmt.pf ppf "%s(%s): %s" f v (Unix.error_message err)
 
 type flow = {ic: in_channel; oc: out_channel}
-type endpoint = {user: string; path: string; host: Unix.inet_addr; port: int}
+
+type endpoint = {
+    user: string
+  ; path: string
+  ; host: Unix.inet_addr
+  ; port: int
+  ; capabilities: [ `Wr | `Rd ]
+}
 
 let pp_inet_addr ppf inet_addr =
   Fmt.string ppf (Unix.string_of_inet_addr inet_addr)
 
-let connect {user; path; host; port} =
+let connect {user; path; host; port; capabilities} =
   let edn = Fmt.str "%s@%a" user pp_inet_addr host in
-  let cmd = Fmt.str {sh|git-upload-pack '%s'|sh} path in
+  let cmd =
+    match capabilities with
+    | `Rd -> Fmt.str {sh|git-upload-pack '%s'|sh} path
+    | `Wr -> Fmt.str {sh|git-receive-pack '%s'|sh} path in
   let cmd = Fmt.str "ssh -p %d %s %a" port edn Fmt.(quote string) cmd in
   try
     let ic, oc = Unix.open_process cmd in

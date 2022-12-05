@@ -16,10 +16,11 @@ let ssh_edn, ssh_protocol = Mimic.register ~name:"ssh" (module SSH)
 let unix_ctx_with_ssh () =
   Git_unix.ctx (Happy_eyeballs_lwt.create ()) >|= fun ctx ->
   let open Mimic in
-  let k0 scheme user path host port =
+  let k0 scheme user path host port capabilities =
     match scheme, Unix.gethostbyname host with
     | `SSH, {Unix.h_addr_list; _} when Array.length h_addr_list > 0 ->
-      Lwt.return_some {SSH.user; path; host= h_addr_list.(0); port}
+      Lwt.return_some
+        {SSH.user; path; host= h_addr_list.(0); port; capabilities}
     | _ -> Lwt.return_none in
   ctx
   |> Mimic.fold Smart_git.git_transmission
@@ -30,11 +31,11 @@ let unix_ctx_with_ssh () =
          [
            req Smart_git.git_scheme; req Smart_git.git_ssh_user
          ; req Smart_git.git_path; req Smart_git.git_hostname
-         ; dft Smart_git.git_port 22
+         ; dft Smart_git.git_port 22; req Smart_git.git_capabilities
          ]
        ~k:k0
 
-let add remote local password targets insecure =
+let add remote local password targets insecure : (unit, _) result Lwt.t =
   unix_ctx_with_ssh () >>= fun ctx ->
   Git_kv.connect ctx remote >>= fun store ->
   let v = {Ptt_value.targets; password; insecure} in
