@@ -24,6 +24,10 @@ let dns_resolver =
   let doc = Key.Arg.info ~doc:"The DNS resolver." [ "resolver" ] in
   Key.(create "resolver" Arg.(opt (some string) None doc))
 
+let nameservers =
+  let doc = Key.Arg.info ~doc:"DNS nameserver used by the SPF verificator." [ "nameserver" ] in
+  Key.(create "nameservers" Arg.(opt_all string doc))
+
 let keys =
   Key.[ v domain
       ; v postmaster
@@ -46,7 +50,7 @@ let time = default_time
 let mclock = default_monotonic_clock
 let pclock = default_posix_clock
 let stack = generic_stackv4v6 default_network
-let dns = generic_dns_client stack
+let dns = generic_dns_client ~nameservers stack
 let tcp = tcpv4v6_of_stackv4v6 stack
 let git_client =
   let happy_eyeballs = git_happy_eyeballs stack dns (generic_happy_eyeballs stack dns) in
