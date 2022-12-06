@@ -21,12 +21,13 @@ module Make
     type t = DNS.t
     type +'a io = 'a Lwt.t
 
+    (* XXX(dinosaure): it seems that Gmail does not like IPv6... A solution
+       will be to aggregate IPv4 and IPv6 from the given domain and return
+       both to test both... *)
     let gethostbyname dns domain_name =
-      DNS.gethostbyname6 dns domain_name >>= function
-      | Ok ipv6 -> Lwt.return_ok (Ipaddr.V6 ipv6)
-      | Error _ -> DNS.gethostbyname dns domain_name >|= function
-        | Ok ipv4 -> Ok (Ipaddr.V4 ipv4)
-        | Error _ as err -> err
+      DNS.gethostbyname dns domain_name >|= function
+      | Ok ipv4 -> Ok (Ipaddr.V4 ipv4)
+      | Error _ as err -> err
 
     let getmxbyname dns domain_name =
       DNS.getaddrinfo dns Dns.Rr_map.Mx domain_name >>= function
@@ -48,7 +49,7 @@ module Make
       Logs.warn (fun m -> m "Got an error when we tried to list values from \
                              Git: %a."
         Store.pp_error err);
-      Lwt.return relay_map
+      Lwt.return relay_map (* FIXME(dinosaure): it seems that we got an error in any situation. *)
     | Ok values ->
       let f acc = function
         | (_, `Dictionary) -> Lwt.return acc

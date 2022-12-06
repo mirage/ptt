@@ -1,6 +1,6 @@
 let ( <.> ) f g x = f (g x)
 let icompare : int -> int -> int = fun a b -> compare a b
-let src = Logs.Src.create "ptt.tuyau"
+let src = Logs.Src.create "ptt.transmit"
 
 module Log = (val Logs.src_log src)
 
@@ -28,11 +28,17 @@ struct
     let rec go () =
       consumer () >>= function
       | Some ((str, off, len) as v) ->
-        Log.debug (fun m -> m "Send to recipients %S" (String.sub str off len))
+        Log.debug (fun m -> m "Send to %d recipient(s)" (List.length producers))
+        ; Log.debug (fun m ->
+              m "@[<hov>%a@]"
+                (Hxd_string.pp Hxd.default)
+                (String.sub str off len))
         ; List.iter (fun producer -> producer (Some v)) producers
         ; Lwt.pause () >>= go
       | None ->
-        List.iter (fun producer -> producer None) producers
+        Log.debug (fun m ->
+            m "Send <End-of-flow> to %d recipient(s)." (List.length producers))
+        ; List.iter (fun producer -> producer None) producers
         ; Lwt.return () in
     go
 
@@ -70,7 +76,9 @@ struct
     let stream =
       Lwt_stream.from (Lwt.return <.> stream)
       |> Lwt_stream.map (fun s -> s, 0, String.length s) in
-    Lwt_scheduler.inj <.> Fun.const (Lwt_stream.get stream)
+    (* XXX(dinosaure): don't use [Fun.const] here, we need to keep
+       the side-effect of the consommation. *)
+    Lwt_scheduler.inj <.> fun () -> Lwt_stream.get stream
 
   let pp_key ppf = function
     | `Ipaddr ipaddr -> Ipaddr.pp ppf ipaddr
@@ -99,6 +107,10 @@ struct
       | [Forward_path path] -> received ~info ~key (Some path)
       | _ -> received ~info ~key None in
     let stream = received <+> stream in
+    (* TODO(dinosaure): [sendmail] and [sendmail_without_tls] can consume
+       the stream and fail. In that case, all sub-sequent call to these
+       functions will try to send an empty email. We must copy the stream
+       for each call of [sendmail] and [sendmail_without_tls]. *)
     let rec go = function
       | [] ->
         Log.err (fun m ->

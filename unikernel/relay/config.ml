@@ -25,7 +25,7 @@ let dns_resolver =
   Key.(create "resolver" Arg.(opt (some string) None doc))
 
 let nameservers =
-  let doc = Key.Arg.info ~doc:"DNS nameserver used by the SPF verificator." [ "nameserver" ] in
+  let doc = Key.Arg.info ~doc:"DNS nameserver used to resolve SMTP servers." [ "nameserver" ] in
   Key.(create "nameservers" Arg.(opt_all string doc))
 
 let keys =

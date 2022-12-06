@@ -27,6 +27,7 @@ depends: [
   "tls-mirage"        {>= "0.15.4"}
   "tcpip"             {>= "7.1.0"}
   "ke"                {>= "0.6"}
+  "hxd"
   "bigstringaf"
   "ocaml-syntax-shims"
   "dkim-mirage"       {>= "0.4.0"}

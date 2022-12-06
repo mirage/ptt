@@ -18,7 +18,7 @@
  (name ptt_transmit)
  (public_name ptt.transmit)
  (modules ptt_transmit)
- (libraries ptt.tuyau mirage-clock received))
+ (libraries hxd.core hxd.string ptt.tuyau mirage-clock received))
 
 (library
  (name lipap)

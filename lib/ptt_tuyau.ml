@@ -1,5 +1,9 @@
 module Lwt_backend = Lwt_backend
 
+let src = Logs.Src.create "ptt.tuyau"
+
+module Log = (val Logs.src_log src)
+
 module type FLOW = Ptt.Sigs.FLOW with type +'a io = 'a Lwt.t
 
 module Client (Stack : Tcpip.Stack.V4V6) = struct
