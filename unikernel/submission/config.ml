@@ -57,7 +57,7 @@ let keys =
 
 let packages =
   [ package "randomconv"
-  ; package "ptt" ~sublibs:[ "value"; "lipap" ]
+  ; package "ptt" ~sublibs:[ "value"; "lipap" ] ~pin:"git+https://github.com/mirage/ptt.git"
   ; package "git-kv"
   ; package "dns-mirage"
   ; package "dns-certify" ~sublibs:[ "mirage" ]
