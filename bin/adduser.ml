@@ -42,6 +42,7 @@ let add remote local password targets insecure : (unit, _) result Lwt.t =
   let v = Ptt_value.to_string_json v in
   ( Store.change_and_push store @@ fun store ->
     Store.set store (local_to_string local) v )
+  >|= Result.join
   >>= function
   | Ok _ as v -> Lwt.return v
   | Error err -> Lwt.return_error (R.msgf "%a" Store.pp_write_error err)
