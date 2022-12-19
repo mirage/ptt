@@ -49,22 +49,22 @@ module Make
       let fill = function
         | (_, `Dictionary) -> Lwt.return_unit
         | (name, `Value) ->
-          Store.get t Mirage_kv.Key.(empty / name) >>= function
+          Store.get t name >>= function
           | Error err ->
             Logs.warn (fun m -> m "Got an error when we tried to get data \
-                                   from %s: %a"
-              name Store.pp_error err);
+                                   from %a: %a"
+              Mirage_kv.Key.pp name Store.pp_error err);
             Lwt.return_unit
           | Ok str ->
-            match Ptt_value.of_string_json str, local_of_string name with
+            match Ptt_value.of_string_json str, local_of_string (Mirage_kv.Key.to_string name) with
             | Ok { Ptt_value.password; _ }, Ok local ->
               Hashtbl.add tbl local password;
               Lwt.return_unit
             | _, Error (`Msg _) ->
-              Logs.warn (fun m -> m "Invalid local-part: %S" name);
+              Logs.warn (fun m -> m "Invalid local-part: %a" Mirage_kv.Key.pp name);
               Lwt.return_unit
             | Error (`Msg err), _ ->
-              Logs.warn (fun m -> m "Invalid value for %s: %s" name err);
+              Logs.warn (fun m -> m "Invalid value for %a: %s" Mirage_kv.Key.pp name err);
               Lwt.return_unit in
       Lwt_list.iter_s fill values >>= fun () ->
       let authentication local v' = match Hashtbl.find tbl local with
