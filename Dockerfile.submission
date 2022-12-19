@@ -1,6 +1,6 @@
 FROM ocaml/opam:ubuntu-20.04-ocaml-4.14
 RUN sudo ln -f /usr/bin/opam-2.1 /usr/bin/opam
-RUN cd ~/opam-repository && git pull origin master && git reset --hard 34576e67c88137d40ce6ff9e252d549e9e87205f && opam update
+RUN cd ~/opam-repository && git pull origin master && git reset --hard 789990a742984743e12a872912ab71b023b031e7 && opam update
 RUN opam depext -ui mirage
 RUN mkdir -p /home/opam/src
 WORKDIR /home/opam/src
