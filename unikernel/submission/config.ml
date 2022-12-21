@@ -24,10 +24,6 @@ let postmaster =
   let doc = Key.Arg.info ~doc:"The postmaster of the SMTP service." [ "postmaster" ] in
   Key.(create "postmaster" Arg.(required string doc))
 
-let key_seed =
-  let doc = Key.Arg.info ~doc:"Certificate key seed." [ "key-seed" ] in
-  Key.(create "key-seed" Arg.(required string doc))
-
 let submission_domain =
   let doc = Key.Arg.info ~doc:"domain-name of the submission SMTP service." [ "submission-domain" ] in
   Key.(create "submission-domain" Arg.(required string doc))
@@ -50,7 +46,6 @@ let keys =
       ; v remote
       ; v destination
       ; v submission_domain
-      ; v key_seed
       ; v dns_server
       ; v dns_port
       ; v dns_key ]
