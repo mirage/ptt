@@ -20,10 +20,6 @@ let postmaster =
   let doc = Key.Arg.info ~doc:"The postmaster of the SMTP service." [ "postmaster" ] in
   Key.(create "postmaster" Arg.(required string doc))
 
-let dns_resolver =
-  let doc = Key.Arg.info ~doc:"The DNS resolver." [ "resolver" ] in
-  Key.(create "resolver" Arg.(opt (some string) None doc))
-
 let nameservers =
   let doc = Key.Arg.info ~doc:"DNS nameserver used to resolve SMTP servers." [ "nameserver" ] in
   Key.(create "nameservers" Arg.(opt_all string doc))
@@ -31,8 +27,7 @@ let nameservers =
 let keys =
   Key.[ v domain
       ; v postmaster
-      ; v remote
-      ; v dns_resolver ]
+      ; v remote ]
 
 let packages =
   [ package "randomconv"
