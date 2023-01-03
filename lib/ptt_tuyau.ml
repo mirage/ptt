@@ -56,12 +56,26 @@ module Client (Stack : Tcpip.Stack.V4V6) = struct
     >>= fun res ->
     Stack.TCP.close flow >>= fun () ->
     match res with
-    | Ok () -> Lwt.return (Ok ())
+    | Ok () ->
+      Log.debug (fun m ->
+          m "Email to %a was sent!"
+            Fmt.(Dump.list Colombe.Forward_path.pp)
+            recipients)
+      ; Lwt.return (Ok ())
     | Error (`Sendmail `STARTTLS_unavailable) ->
       Lwt.return_error `STARTTLS_unavailable
     | Error (`Sendmail err) ->
-      Lwt.return (R.error_msgf "%a" Sendmail_with_starttls.pp_error err)
-    | Error (`Msg _) as err -> Lwt.return err
+      Log.err (fun m ->
+          m "Got a sendmail error when we tried to sent to %a: %a"
+            Fmt.(Dump.list Colombe.Forward_path.pp)
+            recipients Sendmail_with_starttls.pp_error err)
+      ; Lwt.return (R.error_msgf "%a" Sendmail_with_starttls.pp_error err)
+    | Error (`Msg msg) as err ->
+      Log.err (fun m ->
+          m "Got an error when we tried to sent to %a: %s"
+            Fmt.(Dump.list Colombe.Forward_path.pp)
+            recipients msg)
+      ; Lwt.return err
     | Error (`Exn exn) ->
       Lwt.return (R.error_msgf "Unknown error: %s" (Printexc.to_string exn))
 
