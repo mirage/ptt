@@ -40,6 +40,10 @@ let dns_port =
   let doc = Key.Arg.info ~doc:"Port of the primary DNS server." ["dns-port"] in
   Key.(create "dns-port" Arg.(opt int 53 doc))
 
+let key_seed =
+  let doc = Key.Arg.info ~doc:"Key seed used to generate TLS certificate." ["key-seed"] in
+  Key.(create "key-seed" Arg.(required string doc))
+
 let keys =
   Key.[ v domain
       ; v postmaster
@@ -48,7 +52,8 @@ let keys =
       ; v submission_domain
       ; v dns_server
       ; v dns_port
-      ; v dns_key ]
+      ; v dns_key 
+      ; v key_seed ]
 
 let packages =
   [ package "randomconv"

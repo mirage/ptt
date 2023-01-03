@@ -79,6 +79,7 @@ module Make
   let retrieve_certs stack =
     let domain = Key_gen.submission_domain () in
     Certify.retrieve_certificate stack ~dns_key:(Key_gen.dns_key ())
+      ~key_seed:(Key_gen.key_seed ())
       ~hostname:Domain_name.(host_exn (of_string_exn domain)) (Key_gen.dns_server ()) 53 >>= function
     | Error (`Msg err) -> failwith err
     | Ok certificates ->
