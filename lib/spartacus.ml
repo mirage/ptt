@@ -88,8 +88,10 @@ struct
                       m "Send the labelled email to the destination.")
                   ; transmit ~pool ~info ~tls stack (key, queue, consumer')
                       recipients)
-            @@ fun _exn ->
-            Log.err (fun m -> m "Impossible to label the incoming email.")
+            @@ fun exn ->
+            Log.err (fun m ->
+                m "Impossible to label the incoming email: %s"
+                  (Printexc.to_string exn))
             ; Lwt.return_unit in
           Lwt.async label_and_transmit
           ; Lwt.pause () >>= go in
