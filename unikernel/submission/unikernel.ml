@@ -56,7 +56,7 @@ module Make
               Mirage_kv.Key.pp name Store.pp_error err);
             Lwt.return_unit
           | Ok str ->
-            match Ptt_value.of_string_json str, local_of_string (Mirage_kv.Key.to_string name) with
+            match Ptt_value.of_string_json str, local_of_string (Mirage_kv.Key.basename name) with
             | Ok { Ptt_value.password; _ }, Ok local ->
               Hashtbl.add tbl local password;
               Lwt.return_unit
