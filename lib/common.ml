@@ -108,7 +108,10 @@ struct
                ; Mxs.mx_domain= Some mail_exchange
                }
                m)
-        | Error (`Msg _err) -> IO.return m in
+        | Error (`Msg err) ->
+          Log.err (fun m ->
+              m "Impossible to resolve %a: %s" Domain_name.pp mail_exchange err)
+          ; IO.return m in
     let rec go acc = function
       | [] -> IO.return acc
       | Forward_path.Postmaster :: r ->
