@@ -33,10 +33,9 @@ module Make
 
   let retrieve_certs stack =
     let domain = Key_gen.domain () in
-    let key_seed = domain ^ ":" ^ (Key_gen.key_seed ()) in
     Certify.retrieve_certificate stack ~dns_key:(Key_gen.dns_key ())
-      ~hostname:Domain_name.(host_exn (of_string_exn domain))
-      ~key_seed (Key_gen.dns_server ()) 53 >>= function
+      ~key_seed:(Key_gen.key_seed ()) ~hostname:Domain_name.(host_exn (of_string_exn domain))
+      (Key_gen.dns_server ()) 53 >>= function
     | Error (`Msg err) -> failwith err
     | Ok certificates ->
       let now = Ptime.v (Pclock.now_d_ps ()) in
