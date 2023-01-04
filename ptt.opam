@@ -50,8 +50,8 @@ build: ["dune" "build" "-p" name "-j" jobs]
 run-test: ["dune" "runtest" "-p" name "-j" jobs]
 dev-repo: "git+https://github.com/mirage/ptt.git"
 pin-depends: [
-  [ "spamtacus-bayesian.dev" "git+https://github.com/mirage/spamtacus.git#9c27b96ad8f661c161e1e52e39022234eedf0b01" ]
-  [ "spamtacus.dev"          "git+https://github.com/mirage/spamtacus.git#9c27b96ad8f661c161e1e52e39022234eedf0b01" ]
-  [ "spamtacus-mirage.dev"   "git+https://github.com/mirage/spamtacus.git#9c27b96ad8f661c161e1e52e39022234eedf0b01" ]
+  [ "spamtacus-bayesian.dev" "git+https://github.com/mirage/spamtacus.git#25dbb19afc8344f6933652ab8f6c590d887583bc" ]
+  [ "spamtacus.dev"          "git+https://github.com/mirage/spamtacus.git#25dbb19afc8344f6933652ab8f6c590d887583bc" ]
+  [ "spamtacus-mirage.dev"   "git+https://github.com/mirage/spamtacus.git#25dbb19afc8344f6933652ab8f6c590d887583bc" ]
   [ "mrmime.dev"             "git+https://github.com/mirage/mrmime.git#a9bbd8e3773e404c1b70687d566c4194af3f0529" ]
 ]

@@ -75,26 +75,29 @@ struct
       Filter.Md.pop messaged >>= function
       | None -> Lwt.pause () >>= go
       | Some (key, queue, consumer) ->
-        Log.debug (fun m -> m "Got an email.")
-        ; let label_and_transmit () =
-            Lwt.catch (fun () ->
-                Spamtacus_mirage.rank consumer >>= fun (_label, consumer') ->
-                Log.debug (fun m -> m "Incoming email labelled.")
-                ; Filter.resolve_recipients ~domain:info.Ptt.SSMTP.domain
-                    resolver map
-                    (List.map fst (Ptt.Messaged.recipients key))
-                  >>= fun recipients ->
-                  Log.debug (fun m ->
-                      m "Send the labelled email to the destination.")
-                  ; transmit ~pool ~info ~tls stack (key, queue, consumer')
-                      recipients)
-            @@ fun exn ->
-            Log.err (fun m ->
-                m "Impossible to label the incoming email: %s"
-                  (Printexc.to_string exn))
-            ; Lwt.return_unit in
-          Lwt.async label_and_transmit
-          ; Lwt.pause () >>= go in
+        let label_and_transmit () =
+          let consumer =
+            Lwt_stream.from @@ fun () ->
+            consumer () >|= function
+            | Some (str, off, len) -> Some (String.sub str off len)
+            | None -> None in
+          Spamtacus_mirage.rank consumer >>= function
+          | Error (`Msg err) ->
+            Log.err (fun m -> m "Got an error from the incoming email: %s." err)
+            ; Lwt.return_unit
+          | Ok (_label, consumer') ->
+            Filter.resolve_recipients ~domain:info.Ptt.SSMTP.domain resolver map
+              (List.map fst (Ptt.Messaged.recipients key))
+            >>= fun recipients ->
+            let consumer' () =
+              Lwt_stream.get consumer' >|= function
+              | Some str -> Some (str, 0, String.length str)
+              | None -> None in
+            Log.debug (fun m -> m "Send the labelled email to the destination.")
+            ; transmit ~pool ~info ~tls stack (key, queue, consumer') recipients
+        in
+        Lwt.async label_and_transmit
+        ; Lwt.pause () >>= go in
     go ()
 
   let fiber ?(limit = 20) ?stop ~port ~tls stack resolver map info =

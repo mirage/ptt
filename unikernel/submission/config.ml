@@ -59,9 +59,9 @@ let packages =
   [ package "randomconv"
   ; package "ptt" ~sublibs:[ "value"; "lipap" ] ~pin:"git+https://github.com/mirage/ptt.git"
   ; package "mrmime" ~pin:"git+https://github.com/mirage/mrmime.git"
-  ; package "spamtacus-bayesian" ~pin:"git+https://github.com/mirage/spamtacus.git"
-  ; package "spamtacus" ~pin:"git+https://github.com/mirage/spamtacus.git"
-  ; package "spamtacus-mirage" ~pin:"git+https://github.com/mirage/spamtacus.git"
+  ; package "spamtacus-bayesian" ~pin:"git+https://github.com/mirage/spamtacus.git#improve"
+  ; package "spamtacus" ~pin:"git+https://github.com/mirage/spamtacus.git#improve"
+  ; package "spamtacus-mirage" ~pin:"git+https://github.com/mirage/spamtacus.git#improve"
   ; package "git-kv"
   ; package "dns-mirage"
   ; package "dns-certify" ~sublibs:[ "mirage" ]
