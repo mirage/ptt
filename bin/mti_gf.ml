@@ -63,7 +63,7 @@ let tls =
   let authenticator = R.failwith_error_msg (Ca_certs.authenticator ()) in
   Tls.Config.client ~authenticator ()
 
-let fiber ~domain map =
+let fiber ~domain locals =
   let open Lwt.Infix in
   let open Tcpip_stack_socket.V4V6 in
   let ipv4_only = false and ipv6_only = false in
@@ -78,7 +78,7 @@ let fiber ~domain map =
     ; Ptt.SMTP.size= 0x1000000L
     } in
   let resolver = Dns_client_lwt.create () in
-  Server.fiber ~port:4242 ~tls tcpv4v6 resolver map info
+  Server.fiber ~port:4242 ~locals ~tls tcpv4v6 resolver info
 
 let romain_calascibetta =
   let open Mrmime.Mailbox in
@@ -86,10 +86,10 @@ let romain_calascibetta =
 
 let () =
   let domain = Domain_name.(host_exn <.> of_string_exn) "x25519.net" in
-  let map = Ptt.Relay_map.empty ~postmaster:romain_calascibetta ~domain in
-  let map =
+  let locals = Ptt.Relay_map.empty ~postmaster:romain_calascibetta ~domain in
+  let locals =
     let open Mrmime.Mailbox in
     Ptt.Relay_map.add
       ~local:Local.(v [w "romain"; w "calascibetta"])
-      romain_calascibetta map in
-  Lwt_main.run (fiber ~domain map)
+      romain_calascibetta locals in
+  Lwt_main.run (fiber ~domain locals)

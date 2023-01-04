@@ -99,8 +99,15 @@ struct
     go ()
 
   let fiber
-      ?(limit = 20) ?stop ~port ~tls stack resolver (private_key, dkim) map info
-      =
+      ?(limit = 20)
+      ?stop
+      ?locals
+      ~port
+      ~tls
+      stack
+      resolver
+      (private_key, dkim)
+      info =
     let conf_server = Signer.create ~info in
     let messaged = Signer.messaged conf_server in
     let pool0 =
@@ -119,6 +126,6 @@ struct
       [
         smtp_signer_service ~pool:pool0 ?stop ~port stack resolver conf_server
       ; smtp_logic ~pool:pool1 ~info ~tls stack resolver messaged
-          (private_key, dkim) map
+          (private_key, dkim) locals
       ]
 end

@@ -82,7 +82,7 @@ struct
         ; Lwt.pause () >>= go in
     go ()
 
-  let fiber ?(limit = 20) ?stop ~port ~tls stack resolver map info =
+  let fiber ?(limit = 20) ?stop ?locals ~port ~tls stack resolver info =
     let conf_server = Relay.create ~info in
     let messaged = Relay.messaged conf_server in
     let pool0 =
@@ -100,6 +100,6 @@ struct
     Lwt.join
       [
         smtp_relay_service ~pool:pool0 ?stop ~port stack resolver conf_server
-      ; smtp_logic ~pool:pool1 ~info ~tls stack resolver messaged map
+      ; smtp_logic ~pool:pool1 ~info ~tls stack resolver messaged locals
       ]
 end

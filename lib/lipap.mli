@@ -16,13 +16,13 @@ module Make
   val fiber :
        ?limit:int
     -> ?stop:Lwt_switch.t
+    -> ?locals:Ptt.Relay_map.t
     -> port:int
     -> tls:Tls.Config.client
     -> Stack.TCP.t
     -> Resolver.t
     -> Random.g option
     -> 'k Digestif.hash
-    -> Ptt.Relay_map.t
     -> Ptt.Logic.info
     -> (Ptt_tuyau.Lwt_backend.Lwt_scheduler.t, 'k) Ptt.Authentication.t
     -> Ptt.Mechanism.t list

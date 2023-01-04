@@ -18,12 +18,12 @@ module Make
   val fiber :
        ?limit:int
     -> ?stop:Lwt_switch.t
+    -> ?locals:Ptt.Relay_map.t
     -> port:int
     -> tls:Tls.Config.client
     -> Stack.TCP.t
     -> Resolver.t
     -> Ptt.Logic.info
-    -> Ptt.Relay_map.t
     -> DNS.t
     -> unit Lwt.t
 end

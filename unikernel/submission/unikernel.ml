@@ -114,7 +114,6 @@ module Make
         Lwt.return result in
       let server () =
         Lipap.fiber ~port:465 ~tls (Stack.tcp stack) (Key_gen.destination ()) None Digestif.BLAKE2B
-          (Ptt.Relay_map.empty ~postmaster ~domain)
           { Ptt.Logic.domain
           ; ipaddr= Ipaddr.(V4 (V4.Prefix.address (Key_gen.ipv4 ()))) (* XXX(dinosaure): or public IP address? *)
           ; tls= Some (Tls.Config.server ~certificates ())

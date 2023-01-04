@@ -33,7 +33,6 @@ module Make
     let tls = Tls.Config.client ~authenticator () in
     let domain = Domain_name.host_exn domain in
     SpamFilter.fiber ~port:25 ~tls (Stack.tcp stack) (Key_gen.destination ())
-      (Ptt.Relay_map.empty ~postmaster ~domain)
       { Ptt.Logic.domain
       ; ipaddr= Ipaddr.(V4 (V4.Prefix.address (Key_gen.ipv4 ())))
       ; tls= None

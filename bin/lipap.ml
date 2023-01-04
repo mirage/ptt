@@ -66,7 +66,7 @@ let authenticator _username _password =
 
 let authenticator = Ptt.Authentication.v authenticator
 
-let fiber ~domain map =
+let fiber ~domain locals =
   let open Lwt.Infix in
   let open Tcpip_stack_socket.V4V6 in
   let ipv4_only = false and ipv6_only = false in
@@ -91,8 +91,8 @@ let fiber ~domain map =
     let authenticator = R.failwith_error_msg (Ca_certs.authenticator ()) in
     Tls.Config.client ~authenticator () in
 
-  Server.fiber ~port:4242 ~tls tcpv4v6 resolver None Digestif.BLAKE2B map info
-    authenticator [Ptt.Mechanism.PLAIN]
+  Server.fiber ~port:4242 ~locals ~tls tcpv4v6 resolver None Digestif.BLAKE2B
+    info authenticator [Ptt.Mechanism.PLAIN]
 
 let romain_calascibetta =
   let open Mrmime.Mailbox in
@@ -100,10 +100,10 @@ let romain_calascibetta =
 
 let () =
   let domain = Domain_name.(host_exn <.> of_string_exn) "x25519.net" in
-  let map = Ptt.Relay_map.empty ~postmaster:romain_calascibetta ~domain in
-  let map =
+  let locals = Ptt.Relay_map.empty ~postmaster:romain_calascibetta ~domain in
+  let locals =
     let open Mrmime.Mailbox in
     Ptt.Relay_map.add
       ~local:Local.(v [w "romain"; w "calascibetta"])
-      romain_calascibetta map in
-  Lwt_main.run (fiber ~domain map)
+      romain_calascibetta locals in
+  Lwt_main.run (fiber ~domain locals)

@@ -73,7 +73,7 @@ module Make
           ; tls= Some (Tls.Config.server ~certificates ())
           ; zone= Mrmime.Date.Zone.GMT
           ; size= 10_000_000L (* 10M *) }
-          (Ptt.Relay_map.empty ~postmaster ~domain) dns in
+          dns in
       Lwt.both (server ()) (wait_and_stop ()) >>= fun ((), result) ->
       loop result in
     retrieve_certs stack >>= loop

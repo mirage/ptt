@@ -118,7 +118,6 @@ module Make
     ns_update dkim server stack >|= R.failwith_error_msg >>= fun () ->
     let domain = Domain_name.host_exn domain in
     Nec.fiber ~port:25 ~tls (Stack.tcp stack) (Key_gen.destination ()) (private_key, dkim)
-      (Ptt.Relay_map.empty ~postmaster ~domain)
       { Ptt.Logic.domain
       ; ipaddr= Ipaddr.(V4 (V4.Prefix.address (Key_gen.ipv4 ())))
       ; tls= None

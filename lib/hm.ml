@@ -159,7 +159,7 @@ struct
           ; Lwt.pause () >>= go in
     go ()
 
-  let fiber ?(limit = 20) ?stop ~port ~tls stack resolver info map dns =
+  let fiber ?(limit = 20) ?stop ?locals ~port ~tls stack resolver info dns =
     let conf_server = Verifier.create ~info in
     let messaged = Verifier.messaged conf_server in
     let pool0 =
@@ -177,6 +177,6 @@ struct
     Lwt.join
       [
         smtp_verifier_service ~pool:pool0 ?stop ~port stack resolver conf_server
-      ; smtp_logic ~pool:pool1 ~info ~tls stack resolver messaged map dns
+      ; smtp_logic ~pool:pool1 ~info ~tls stack resolver messaged locals dns
       ]
 end

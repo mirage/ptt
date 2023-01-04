@@ -198,7 +198,10 @@ struct
     let postmaster = [`Atom "Postmaster"] in
     let unresolved, resolved =
       Aggregate.aggregate_by_domains ~domain recipients in
-    let unresolved, resolved = Relay_map.expand relay_map unresolved resolved in
+    let unresolved, resolved =
+      match relay_map with
+      | Some relay_map -> Relay_map.expand relay_map unresolved resolved
+      | None -> unresolved, resolved in
     let fold resolved (domain, recipients) =
       resolver.getmxbyname w domain >>= function
       | Error (`Msg _err) ->

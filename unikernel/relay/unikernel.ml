@@ -87,8 +87,8 @@ module Make
     let authenticator = R.failwith_error_msg (Nss.authenticator ()) in
     let tls = Tls.Config.client ~authenticator () in
     relay_map (Ptt.Relay_map.empty ~postmaster ~domain) ctx (Key_gen.remote ())
-    >>= fun relay_map ->
-    Mti_gf.fiber ~port:25 ~tls (Stack.tcp stack) dns relay_map
+    >>= fun locals ->
+    Mti_gf.fiber ~port:25 ~locals ~tls (Stack.tcp stack) dns
       { Ptt.Logic.domain
       ; ipaddr= Ipaddr.(V4 (V4.Prefix.address (Key_gen.ipv4 ())))
       ; tls= None

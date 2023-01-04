@@ -99,13 +99,13 @@ struct
   let fiber
       ?(limit = 20)
       ?stop
+      ?locals
       ~port
       ~tls
       stack
       resolver
       random
       hash
-      map
       info
       authenticator
       mechanisms =
@@ -127,6 +127,6 @@ struct
       [
         smtp_submission_service ~pool:pool0 ?stop ~port stack resolver random
           hash conf_server
-      ; smtp_logic ~pool:pool1 ~info ~tls stack resolver messaged map
+      ; smtp_logic ~pool:pool1 ~info ~tls stack resolver messaged locals
       ]
 end

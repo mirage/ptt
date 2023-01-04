@@ -1,3 +1,7 @@
+let src = Logs.Src.create "ptt.relay-map"
+
+module Log = (val Logs.src_log src)
+
 type t = {
     postmaster: Emile.mailbox
   ; domain: [ `host ] Domain_name.t
@@ -24,7 +28,9 @@ let add ~local mailbox t =
 let recipients ~local {map; _} =
   match Hashtbl.find map local with
   | recipients -> recipients
-  | exception Not_found -> []
+  | exception Not_found ->
+    Log.err (fun m -> m "%a not found into our local map." Emile.pp_local local)
+    ; []
 
 let all t = Hashtbl.fold (fun _ vs a -> vs @ a) t.map []
 let ( <.> ) f g x = f (g x)

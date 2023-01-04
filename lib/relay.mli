@@ -28,7 +28,7 @@ module Make
   val resolve_recipients :
        domain:[ `host ] Domain_name.t
     -> Resolver.t
-    -> Relay_map.t
+    -> Relay_map.t option
     -> Colombe.Forward_path.t list
     -> ([ `Domain of [ `host ] Domain_name.t * Mxs.t | `Ipaddr of Ipaddr.t ]
        * Aggregate.resolved_elt)
