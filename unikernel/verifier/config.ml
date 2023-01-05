@@ -47,6 +47,7 @@ let packages =
   ; package "spamtacus-bayesian" ~pin:"git+https://github.com/mirage/spamtacus.git#improve"
   ; package "spamtacus" ~pin:"git+https://github.com/mirage/spamtacus.git#improve"
   ; package "spamtacus-mirage" ~pin:"git+https://github.com/mirage/spamtacus.git#improve"
+  ; package "uspf" ~pin:"git+https://github.com/dinosaure/uspf.git#d923cfae1e28a9d92e67b2bceeb24f2adf9086b8"
   ; package "dns"
   ; package "domain-name"
   ; package "ca-certs-nss"
