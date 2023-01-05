@@ -104,7 +104,7 @@ struct
 
   let stream_of_field (field_name : Mrmime.Field_name.t) unstrctrd =
     stream_of_list
-      [(field_name :> string); ": "; Unstrctrd.to_utf_8_string unstrctrd]
+      [(field_name :> string); ": "; Unstrctrd.to_utf_8_string unstrctrd; "\r\n"]
 
   let concat_stream a b =
     let current = ref a in
