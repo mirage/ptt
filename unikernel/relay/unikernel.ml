@@ -61,7 +61,7 @@ module Make
               Mirage_kv.Key.pp name Store.pp_error err);
             Lwt.return acc
           | Ok str ->
-            match Ptt_value.of_string_json str, local_of_string (Mirage_kv.Key.to_string name) with
+            match Ptt_value.of_string_json str, local_of_string (Mirage_kv.Key.basename name) with
             | Ok { Ptt_value.targets; _ }, Ok local ->
               let acc = List.fold_left (fun acc x ->
                 Ptt.Relay_map.add ~local x acc) acc targets in
