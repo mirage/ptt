@@ -16,14 +16,16 @@ let add ~local mailbox t =
   match Colombe_emile.to_forward_path mailbox with
   | Error (`Msg err) -> invalid_arg err
   | Ok mailbox -> (
-    try
-      let rest = Hashtbl.find t.map local in
-      if not (List.exists (Colombe.Forward_path.equal mailbox) rest) then
-        Hashtbl.add t.map local (mailbox :: rest)
-      ; t
-    with Not_found ->
-      Hashtbl.add t.map local [mailbox]
-      ; t)
+    Log.debug (fun m ->
+        m "Add %a with %a." Emile.pp_local local Colombe.Forward_path.pp mailbox)
+    ; try
+        let rest = Hashtbl.find t.map local in
+        if not (List.exists (Colombe.Forward_path.equal mailbox) rest) then
+          Hashtbl.add t.map local (mailbox :: rest)
+        ; t
+      with Not_found ->
+        Hashtbl.add t.map local [mailbox]
+        ; t)
 
 let recipients ~local {map; _} =
   match Hashtbl.find map local with
