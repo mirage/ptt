@@ -80,6 +80,11 @@ let expand t unresolved resolved =
       | `Postmaster -> List.fold_left fold (unresolved, resolved) [Postmaster]
       | `All -> List.fold_left fold (unresolved, resolved) (all t)
       | `Local vs ->
-        let vs = List.fold_left (fun a local -> recipients ~local t @ a) [] vs in
-        List.fold_left fold (unresolved, resolved) vs in
+        Log.debug (fun m ->
+            m "Replace locals %a by their destinations."
+              Fmt.(Dump.list Emile.pp_local)
+              vs)
+        ; let vs =
+            List.fold_left (fun a local -> recipients ~local t @ a) [] vs in
+          List.fold_left fold (unresolved, resolved) vs in
   By_domain.fold fold unresolved (By_domain.empty, resolved)
