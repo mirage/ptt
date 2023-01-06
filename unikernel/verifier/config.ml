@@ -50,7 +50,6 @@ let packages =
   ; package "uspf" ~pin:"git+https://github.com/dinosaure/uspf.git#d923cfae1e28a9d92e67b2bceeb24f2adf9086b8"
   ; package "colombe" ~pin:"git+https://github.com/mirage/colombe.git#96c2e9ba6cd04b87879e048110df2fa3f7f0644f"
   ; package "sendmail" ~pin:"git+https://github.com/mirage/colombe.git#96c2e9ba6cd04b87879e048110df2fa3f7f0644f"
-  ; package "sendmail-lwt" ~pin:"git+https://github.com/mirage/colombe.git#96c2e9ba6cd04b87879e048110df2fa3f7f0644f"
   ; package "dns"
   ; package "domain-name"
   ; package "ca-certs-nss"
