@@ -23,8 +23,6 @@ let packages =
   ; package "spamtacus-bayesian" ~pin:"git+https://github.com/mirage/spamtacus.git#improve"
   ; package "spamtacus" ~pin:"git+https://github.com/mirage/spamtacus.git#improve"
   ; package "spamtacus-mirage" ~pin:"git+https://github.com/mirage/spamtacus.git#improve"
-  ; package "colombe" ~pin_version:"0.7.0" ~pin:"git+https://github.com/mirage/colombe.git#96c2e9ba6cd04b87879e048110df2fa3f7f0644f"
-  ; package "sendmail" ~pin_version:"0.7.0" ~pin:"git+https://github.com/mirage/colombe.git#96c2e9ba6cd04b87879e048110df2fa3f7f0644f"
   ; package "domain-name"
   ; package "ca-certs-nss" ]
 
