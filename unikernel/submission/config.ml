@@ -62,6 +62,9 @@ let packages =
   ; package "spamtacus-bayesian" ~pin:"git+https://github.com/mirage/spamtacus.git#improve"
   ; package "spamtacus" ~pin:"git+https://github.com/mirage/spamtacus.git#improve"
   ; package "spamtacus-mirage" ~pin:"git+https://github.com/mirage/spamtacus.git#improve"
+  ; package "colombe" ~pin:"git+https://github.com/mirage/colombe.git#96c2e9ba6cd04b87879e048110df2fa3f7f0644f"
+  ; package "sendmail" ~pin:"git+https://github.com/mirage/colombe.git#96c2e9ba6cd04b87879e048110df2fa3f7f0644f"
+  ; package "sendmail-lwt" ~pin:"git+https://github.com/mirage/colombe.git#96c2e9ba6cd04b87879e048110df2fa3f7f0644f"
   ; package "git-kv"
   ; package "dns-mirage"
   ; package "dns-certify" ~sublibs:[ "mirage" ]

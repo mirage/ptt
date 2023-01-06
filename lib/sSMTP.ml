@@ -59,12 +59,14 @@ module Value = struct
       | _, v ->
         let v = Fmt.to_to_string Request.pp v in
         Error (`Invalid_command v) in
-    let rec go = function
+    let rec go k = function
       | Decoder.Done v -> k v
       | Decoder.Read {buffer; off; len; continue} ->
-        Read {k= go <.> continue; buffer; off; len}
+        Read {k= go k <.> continue; buffer; off; len}
       | Decoder.Error {error; _} -> Error error in
-    go (Request.Decoder.request ~relax:true decoder)
+    match w with
+    | Payload -> go (fun str -> Return str) (Request.Decoder.line decoder)
+    | _ -> go k (Request.Decoder.request ~relax:true decoder)
 end
 
 module Monad = struct
