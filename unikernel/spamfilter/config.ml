@@ -18,11 +18,8 @@ let keys =
       ; v postmaster ]
 
 let packages =
-  [ package "ptt" ~sublibs:[ "spartacus" ] ~pin:"git+https://github.com/mirage/ptt.git"
-  ; package "mrmime" ~pin:"git+https://github.com/mirage/mrmime.git"
-  ; package "spamtacus-bayesian" ~pin:"git+https://github.com/mirage/spamtacus.git#improve"
-  ; package "spamtacus" ~pin:"git+https://github.com/mirage/spamtacus.git#improve"
-  ; package "spamtacus-mirage" ~pin:"git+https://github.com/mirage/spamtacus.git#improve"
+  [ package "ptt" ~sublibs:[ "spartacus" ]
+  ; package "spamtacus-mirage"
   ; package "domain-name"
   ; package "ca-certs-nss" ]
 

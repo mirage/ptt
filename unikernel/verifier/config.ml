@@ -42,12 +42,8 @@ let keys =
       ; v dns_key ]
 
 let packages =
-  [ package "ptt" ~sublibs:[ "hm" ] ~pin:"git+https://github.com/mirage/ptt.git"
-  ; package "mrmime" ~pin:"git+https://github.com/mirage/mrmime.git"
-  ; package "spamtacus-bayesian" ~pin:"git+https://github.com/mirage/spamtacus.git#improve"
-  ; package "spamtacus" ~pin:"git+https://github.com/mirage/spamtacus.git#improve"
-  ; package "spamtacus-mirage" ~pin:"git+https://github.com/mirage/spamtacus.git#improve"
-  ; package "uspf" ~pin:"git+https://github.com/dinosaure/uspf.git#d923cfae1e28a9d92e67b2bceeb24f2adf9086b8"
+  [ package "ptt" ~sublibs:[ "hm" ]
+  ; package "uspf"
   ; package "dns"
   ; package "domain-name"
   ; package "ca-certs-nss"
