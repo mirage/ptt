@@ -150,7 +150,7 @@ struct
     let mx_ipaddrs = Ptt.Mxs.elements mxs |> sort in
     go mx_ipaddrs
 
-  let transmit ~pool ~info ~tls stack (key, queue, consumer) resolved =
+  let transmit ~pool ~info ~tls stack ?emitter (key, queue, consumer) resolved =
     let producers, targets =
       List.fold_left
         (fun (producers, targets) target ->
@@ -158,7 +158,7 @@ struct
           let stream () = Lwt_scheduler.inj (Lwt_stream.get stream) in
           producer :: producers, (stream, target) :: targets)
         ([], []) resolved in
-    let emitter, _ = Ptt.Messaged.from key in
+    let emitter = Option.value ~default:(fst (Ptt.Messaged.from key)) emitter in
     let transmit = plug_consumer_to_producers consumer producers in
     Log.debug (fun m ->
         m "Start to send the incoming email to %d recipient(s)."
