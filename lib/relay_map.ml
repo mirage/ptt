@@ -27,6 +27,15 @@ let add ~local mailbox t =
         Hashtbl.add t.map local [mailbox]
         ; t)
 
+let exists reverse_path t =
+  match reverse_path with
+  | None -> false
+  | Some {Colombe.Path.local; domain= Domain vs; _} ->
+    let domain' = Domain_name.(host_exn (of_strings_exn vs)) in
+    Domain_name.equal t.domain domain'
+    && Hashtbl.mem t.map (Colombe_emile.of_local local)
+  | _ -> false
+
 let recipients ~local {map; _} =
   match Hashtbl.find map local with
   | recipients -> recipients

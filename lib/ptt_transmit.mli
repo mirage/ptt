@@ -10,6 +10,7 @@ module Make
     -> info:Ptt.Logic.info
     -> tls:Tls.Config.client
     -> Stack.TCP.t
+    -> ?emitter:Colombe.Reverse_path.t
     -> Ptt.Messaged.key * Md.queue * Md.chunk Md.consumer
     -> ([ `Domain of [ `host ] Domain_name.t * Ptt.Mxs.t | `Ipaddr of Ipaddr.t ]
        * Ptt.Aggregate.resolved_elt)

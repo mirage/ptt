@@ -26,6 +26,9 @@ val empty : postmaster:Emile.mailbox -> domain:[ `host ] Domain_name.t -> t
 val add : local:Emile.local -> Emile.mailbox -> t -> t
 (** [add ~local mailbox m] appends a new deliver mailbox to [local] into [m]. *)
 
+val exists : Colombe.Reverse_path.t -> t -> bool
+(** [exists addr t] checks if [addr] exists into the given [t]. *)
+
 val recipients : local:Emile.local -> t -> Colombe.Forward_path.t list
 (** [recipients ~local m] returns all associated mailboxes to [local] in [m]. *)
 
