@@ -25,12 +25,16 @@ jobs:
         name: Extract the branch name
         run: echo "BRANCH=${GITHUB_REF##*/}" >> $GITHUB_ENV
       -
+        name: Set the commit used for the opam repository
+        run: echo "COMMIT_OPAM_REPOSITORY=67a3d729ae0a48d689cd3a6cf17fa41494a4cb72"
+      -
         name: Build relay
         uses: docker/build-push-action@v2
         with:
           context: .
           build-args: |
             BRANCH=${{ env.BRANCH }}
+            COMMIT_OPAM_REPOSITORY=${{ env.COMMIT_OPAM_REPOSITORY }}
           tags: mirage/ptt:${{ env.BRANCH }}
           file: ./Dockerfile.relay
       -
@@ -40,6 +44,7 @@ jobs:
           context: .
           build-args: |
             BRANCH=${{ env.BRANCH }}
+            COMMIT_OPAM_REPOSITORY=${{ env.COMMIT_OPAM_REPOSITORY }}
           file: ./Dockerfile.submission
       -
         name: Build signer
@@ -48,6 +53,7 @@ jobs:
           context: .
           build-args: |
             BRANCH=${{ env.BRANCH }}
+            COMMIT_OPAM_REPOSITORY=${{ env.COMMIT_OPAM_REPOSITORY }}
           file: ./Dockerfile.signer
       -
         name: Build spamfilter
@@ -56,6 +62,7 @@ jobs:
           context: .
           build-args: |
             BRANCH=${{ env.BRANCH }}
+            COMMIT_OPAM_REPOSITORY=${{ env.COMMIT_OPAM_REPOSITORY }}
           file: ./Dockerfile.spamfilter
       -
         name: Build verifier
@@ -64,4 +71,5 @@ jobs:
           context: .
           build-args: |
             BRANCH=${{ env.BRANCH }}
+            COMMIT_OPAM_REPOSITORY=${{ env.COMMIT_OPAM_REPOSITORY }}
           file: ./Dockerfile.verifier
