@@ -77,7 +77,7 @@ let stack = generic_stackv4v6 default_network
 let dns = generic_dns_client stack
 let tcp = tcpv4v6_of_stackv4v6 stack
 let git_client =
-  let happy_eyeballs = git_happy_eyeballs stack dns (generic_happy_eyeballs stack dns) in
+  let happy_eyeballs = mimic_happy_eyeballs stack dns (generic_happy_eyeballs stack dns) in
   git_ssh ~key:ssh_key tcp happy_eyeballs
 
 let () =
