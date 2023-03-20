@@ -26,7 +26,7 @@ jobs:
         run: echo "BRANCH=${GITHUB_REF##*/}" >> $GITHUB_ENV
       -
         name: Set the commit used for the opam repository
-        run: echo "COMMIT_OPAM_REPOSITORY=67a3d729ae0a48d689cd3a6cf17fa41494a4cb72"
+        run: echo "COMMIT_OPAM_REPOSITORY=c03ceac6872a8ff0ebed2c4fa28b0013fb1984e2"
       -
         name: Build relay
         uses: docker/build-push-action@v2
