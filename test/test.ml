@@ -6,7 +6,7 @@ let () = Fmt.set_style_renderer Fmt.stdout `Ansi_tty
 let () = Fmt.set_style_renderer Fmt.stderr `Ansi_tty
 let () = Logs.set_level ~all:true (Some Logs.Debug)
 let () = Logs.set_reporter reporter
-let () = Mirage_crypto_rng_unix.initialize ()
+let () = Mirage_crypto_rng_unix.initialize (module Mirage_crypto_rng.Fortuna)
 let () = Sys.set_signal Sys.sigpipe Sys.Signal_ignore
 
 module Scheduler = Colombe.Sigs.Make (struct type +'a t = 'a Lwt.t end)

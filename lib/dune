@@ -42,7 +42,7 @@
  (name hm)
  (public_name ptt.hm)
  (modules hm)
- (libraries dns-client.mirage uspf mirage-random ptt.transmit))
+ (libraries dns-client-mirage uspf mirage-random ptt.transmit))
 
 (library
  (name ptt_value)

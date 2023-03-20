@@ -18,6 +18,9 @@ depends: [
   "git-kv"            {>= "0.0.2"}
   "git-unix"          {>= "3.10.0"}
   "ca-certs"
+  "uspf"
+  "uspf-lwt"
+  "dns-client-lwt"    {>= "7.0.0"}
   "cmdliner"          {>= "1.1.0"}
   "mirage-clock-unix" {>= "3.1.0"}
   "mirage-crypto-rng"

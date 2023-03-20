@@ -32,7 +32,8 @@ depends: [
   "ocaml-syntax-shims"
   "dkim-mirage"       {>= "0.4.0"}
   "mirage-kv"         {>= "4.0.1"}
-  "dns-client"        {>= "6.4.0"}
+  "dns-client"        {>= "7.0.0"}
+  "dns-client-mirage" {>= "7.0.0"}
   "dns-mirage"
   "dns-tsig"
   "lwt"               {>= "5.4.0"}
@@ -50,7 +51,7 @@ build: ["dune" "build" "-p" name "-j" jobs]
 run-test: ["dune" "runtest" "-p" name "-j" jobs]
 dev-repo: "git+https://github.com/mirage/ptt.git"
 pin-depends: [
-  [ "spamtacus-bayesian.dev" "git+https://github.com/mirage/spamtacus.git#25dbb19afc8344f6933652ab8f6c590d887583bc" ]
-  [ "spamtacus.dev"          "git+https://github.com/mirage/spamtacus.git#25dbb19afc8344f6933652ab8f6c590d887583bc" ]
-  [ "spamtacus-mirage.dev"   "git+https://github.com/mirage/spamtacus.git#25dbb19afc8344f6933652ab8f6c590d887583bc" ]
+  [ "spamtacus-bayesian.dev" "git+https://github.com/mirage/spamtacus.git#f572e3dce22d3410a544ac0e34f1c5df9c99c0a3" ]
+  [ "spamtacus.dev"          "git+https://github.com/mirage/spamtacus.git#f572e3dce22d3410a544ac0e34f1c5df9c99c0a3" ]
+  [ "spamtacus-mirage.dev"   "git+https://github.com/mirage/spamtacus.git#f572e3dce22d3410a544ac0e34f1c5df9c99c0a3" ]
 ]
