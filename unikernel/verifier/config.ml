@@ -48,6 +48,13 @@ let packages =
   ; package "domain-name"
   ; package "ca-certs-nss"
   ; package "dns-mirage"
+  ; package "rresult"
+    (* XXX(dinosaure): this package is needed due to opam-monorepo. Indeed, colombe & received are into
+       the same distribution. When opam-monorepo wants to fetch both. It tooks the old version of received
+       from the last colombe package which did not include the rresult deletion.
+
+       Even if opam-monorepo fetches received to (and the last one), dune seems to take the old one from
+       the colombe source. *)
   ; package "dns-certify" ~sublibs:[ "mirage" ] ]
 
 let verifier =
