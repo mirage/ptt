@@ -21,6 +21,7 @@ depends: [
   "cmdliner"          {>= "1.1.0"}
   "mirage-clock-unix" {>= "3.1.0"}
   "mirage-crypto-rng"
+  "uspf-lwt"
   "mirage-time-unix"  {>= "2.0.0"}
   "mimic"             {>= "0.0.1"}
   "alcotest-lwt"      {with-test}
