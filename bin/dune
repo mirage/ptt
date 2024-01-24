@@ -3,7 +3,7 @@
  (public_name ptt.mti_gf)
  (package ptt-bin)
  (modules mti_gf)
- (libraries bos ca-certs mirage-time-unix mirage-clock-unix dns-client.lwt
+ (libraries bos ca-certs mirage-time-unix mirage-clock-unix dns-client-lwt
    tcpip.stack-socket ptt.mti-gf logs.fmt mirage-crypto-rng))
 
 (executable
@@ -12,7 +12,7 @@
  (package ptt-bin)
  (modules lipap)
  (libraries digestif.c ca-certs mirage-time-unix bos mirage-clock-unix
-   dns-client.lwt tcpip.stack-socket ptt.lipap logs.fmt mirage-crypto-rng))
+   dns-client-lwt tcpip.stack-socket ptt.lipap logs.fmt mirage-crypto-rng))
 
 (executable
  (name adduser)
@@ -27,5 +27,5 @@
  (public_name ptt.spf)
  (package ptt-bin)
  (modules spf)
- (libraries cmdliner dns-tsig ptime.clock.os dns-client.lwt mirage-crypto-rng
-   tcpip.stack-socket uspf uspf.lwt dns-mirage))
+ (libraries cmdliner dns-tsig ptime.clock.os dns-client-lwt mirage-crypto-rng
+   tcpip.stack-socket uspf uspf-lwt dns-mirage))

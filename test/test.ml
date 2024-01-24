@@ -6,7 +6,7 @@ let () = Fmt.set_style_renderer Fmt.stdout `Ansi_tty
 let () = Fmt.set_style_renderer Fmt.stderr `Ansi_tty
 let () = Logs.set_level ~all:true (Some Logs.Debug)
 let () = Logs.set_reporter reporter
-let () = Mirage_crypto_rng_unix.initialize ()
+let () = Mirage_crypto_rng_unix.initialize (module Mirage_crypto_rng.Fortuna)
 let () = Sys.set_signal Sys.sigpipe Sys.Signal_ignore
 
 module Scheduler = Colombe.Sigs.Make (struct type +'a t = 'a Lwt.t end)
@@ -875,12 +875,12 @@ let full_test_0 =
   let romain_calascibetta =
     (Rresult.R.get_ok <.> Colombe_emile.to_forward_path)
       (let open Mrmime.Mailbox in
-      Local.[w "romain"; w "calascibetta"]
-      @ Domain.(domain, [a "gmail"; a "com"])) in
+       Local.[w "romain"; w "calascibetta"]
+       @ Domain.(domain, [a "gmail"; a "com"])) in
   let anil =
     (Rresult.R.get_ok <.> Colombe_emile.to_reverse_path)
       (let open Mrmime.Mailbox in
-      Local.[w "anil"] @ Domain.(domain, [a "recoil"; a "org"])) in
+       Local.[w "anil"] @ Domain.(domain, [a "recoil"; a "org"])) in
   let recoil = (Colombe.Domain.of_string_exn <.> Domain_name.to_string) recoil in
   let sendmail contents =
     sendmail
@@ -923,16 +923,16 @@ let full_test_1 =
   let romain_calascibetta =
     (Rresult.R.get_ok <.> Colombe_emile.to_forward_path)
       (let open Mrmime.Mailbox in
-      Local.[w "romain"; w "calascibetta"]
-      @ Domain.(domain, [a "gmail"; a "com"])) in
+       Local.[w "romain"; w "calascibetta"]
+       @ Domain.(domain, [a "gmail"; a "com"])) in
   let anil =
     (Rresult.R.get_ok <.> Colombe_emile.to_reverse_path)
       (let open Mrmime.Mailbox in
-      Local.[w "anil"] @ Domain.(domain, [a "recoil"; a "org"])) in
+       Local.[w "anil"] @ Domain.(domain, [a "recoil"; a "org"])) in
   let thomas =
     (Rresult.R.get_ok <.> Colombe_emile.to_reverse_path)
       (let open Mrmime.Mailbox in
-      Local.[w "thomas"] @ Domain.(domain, [a "gazagnaire"; a "org"])) in
+       Local.[w "thomas"] @ Domain.(domain, [a "gazagnaire"; a "org"])) in
   let recoil = (Colombe.Domain.of_string_exn <.> Domain_name.to_string) recoil in
   let gazagnaire =
     (Colombe.Domain.of_string_exn <.> Domain_name.to_string) gazagnaire in

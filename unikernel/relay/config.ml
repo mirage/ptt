@@ -8,6 +8,10 @@ let ssh_key =
   let doc = Key.Arg.info ~doc:"The private SSH key." [ "ssh-key" ] in
   Key.(create "ssh_key" Arg.(opt (some string) None doc))
 
+let ssh_password =
+  let doc = Key.Arg.info ~doc:"The SSH password." [ "ssh-password" ] in
+  Key.(create "ssh_password" Arg.(opt (some string) None doc))
+
 let ssh_authenticator =
   let doc = Key.Arg.info ~doc:"SSH public key of the remote Git repository." [ "ssh-authenticator" ] in
   Key.(create "ssh_authenticator" Arg.(opt (some string) None doc))
@@ -48,8 +52,8 @@ let stack = generic_stackv4v6 default_network
 let dns = generic_dns_client ~nameservers stack
 let tcp = tcpv4v6_of_stackv4v6 stack
 let git_client =
-  let happy_eyeballs = git_happy_eyeballs stack dns (generic_happy_eyeballs stack dns) in
-  git_ssh ~key:ssh_key tcp happy_eyeballs
+  let happy_eyeballs = mimic_happy_eyeballs stack dns (generic_happy_eyeballs stack dns) in
+  git_ssh ~password:ssh_password ~key:ssh_key tcp happy_eyeballs
 
 let () =
   register "relay"
