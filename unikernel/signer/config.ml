@@ -1,61 +1,71 @@
 open Mirage
 
-let fields =
-  let doc = Key.Arg.info ~doc:"List of fields to sign (separated by a colon)." [ "fields" ] in
-  Key.(create "fields" Arg.(opt (some string) None doc))
+(* NOTE(dinosaure): it's like a DNS client but it uses the primary DNS server to
+   get the possible DKIM public key if it exists (like a client) or [nsupdate]
+   the primary DNS server with what we got from the command-line. *)
+let generic_dns_client timeout dns_server dns_port =
+  let open Functoria.DSL in
+  let pp_label name ppf = function
+    | None -> ()
+    | Some key -> Fmt.pf ppf "@ ~%s:%s" name key in
+  let pp_opt name ppf = function
+    | None -> ()
+    | Some key -> Fmt.pf ppf "@ ?%s:%s" name key in
+  let pop ~err x rest =
+    match (rest, x) with
+    | h :: t, Some _ -> (Some h, t)
+    | _, None -> (None, rest)
+    | _ -> err () in 
+  let packages = [ package "dns-client-mirage" ~min:"9.0.0" ~max:"10.0.0" ] in
+  let runtime_args = [ Runtime_arg.v dns_server; Runtime_arg.v dns_port; ] in
+  let runtime_args = match timeout with
+    | Some timeout -> runtime_args @ [ Runtime_arg.v timeout ]
+    | None -> runtime_args in
+  let pp_nameserver ppf (dns_server, dns_port) =
+    let nameserver = Fmt.str "[\"tcp:%s:%s\"]" dns_server dns_port in
+    pp_label "nameservers" ppf (Some nameserver)
+  in
+  let err () = connect_err "generic_dns_client" 6 ~max:9 in
+  let connect _info modname = function
+    | _random
+      :: _time
+      :: _mclock
+      :: _pclock
+      :: stackv4v6
+      :: happy_eyeballs
+      :: rest ->
+        let[@warning "-8"] Some dns_server, rest = pop ~err (Some dns_server) rest in
+        let[@warning "-8"] Some dns_port, rest = pop ~err (Some dns_port) rest in
+        let timeout, rest = pop ~err timeout rest in
+        let () = match rest with [] -> () | _ -> err () in
+        code ~pos:__POS__ {ocaml|%s.connect @[%a%a@ (%s, %s)@]|ocaml} modname
+          pp_nameserver (dns_server, dns_port) (pp_opt "timeout") timeout stackv4v6
+          happy_eyeballs
+    | _ -> err ()
+  in
+  impl ~runtime_args ~packages ~connect "Dns_client_mirage.Make"
+    (random
+    @-> time
+    @-> mclock
+    @-> pclock
+    @-> stackv4v6
+    @-> happy_eyeballs
+    @-> dns_client)
 
-let dns_server =
-  let doc = Key.Arg.info ~doc:"DNS server IP." [ "dns-server" ] in
-  Key.(create "dns-server" Arg.(required ip_address doc))
+let generic_dns_client ?timeout ?(random = default_random)
+    ?(time = default_time) ?(mclock = default_monotonic_clock)
+    ?(pclock = default_posix_clock) ~dns_server ~dns_port stackv4v6 happy_eyeballs =
+  generic_dns_client timeout dns_server dns_port
+  $ random
+  $ time
+  $ mclock
+  $ pclock
+  $ stackv4v6
+  $ happy_eyeballs
 
-let dns_port =
-  let doc = Key.Arg.info ~doc:"DNS server port." [ "dns-port" ] in
-  Key.(create "dns-port" Arg.(opt int 53 doc))
-
-let dns_key =
-  let doc = Key.Arg.info ~doc:"nsupdate key (name:type:value,...)" [ "dns-key" ] in
-  Key.(create "dns-key" Arg.(required string doc))
-
-let selector =
-  let doc = Key.Arg.info ~doc:"DKIM selector." [ "selector" ] in
-  Key.(create "selector" Arg.(required string doc))
-
-let domain =
-  let doc = Key.Arg.info ~doc:"DKIM domain-name." [ "domain" ] in
-  Key.(create "domain" Arg.(required string doc))
-
-let destination =
-  let doc = Key.Arg.info ~doc:"SMTP server destination." [ "destination" ] in
-  Key.(create "destination" Arg.(required ip_address doc))
-
-let timestamp =
-  let doc = Key.Arg.info ~doc:"The epoch time that the private key was created." [ "timestamp" ] in
-  Key.(create "timestamp" Arg.(opt (some int) None doc))
-
-let expiration =
-  let doc = Key.Arg.info ~doc:"The signature expiration (epoch time)." [ "expiration" ] in
-  Key.(create "expiration" Arg.(opt (some int) None doc))
-
-let private_key =
-  let doc = Key.Arg.info ~doc:"The seed (in base64) of the private RSA key." [ "private-key" ] in
-  Key.(create "private-key" Arg.(required string doc))
-
-let postmaster =
-  let doc = Key.Arg.info ~doc:"The postmaster of the SMTP service." [ "postmaster" ] in
-  Key.(create "postmaster" Arg.(required string doc))
-
-let keys =
-  Key.[ v fields
-      ; v dns_server
-      ; v dns_port
-      ; v dns_key
-      ; v selector
-      ; v domain
-      ; v destination
-      ; v timestamp 
-      ; v expiration
-      ; v private_key
-      ; v postmaster ]
+let dns_server : Ipaddr.t Runtime_arg.arg = Runtime_arg.create ~pos:__POS__ "Unikernel.K.dns_server"
+let dns_port : int Runtime_arg.arg = Runtime_arg.create ~pos:__POS__ "Unikernel.K.dns_port"
+let setup = runtime_arg ~pos:__POS__ "Unikernel.K.setup"
 
 let packages =
   [ package "randomconv"
@@ -68,16 +78,20 @@ let packages =
   ; package "dns-mirage"
   ; package "ca-certs-nss" ]
 
+let runtime_args = [ setup ]
+
 let signer =
-  foreign ~keys ~packages "Unikernel.Make" @@
-  random @-> time @-> mclock @-> pclock @-> stackv4v6 @-> job
+  main ~runtime_args ~packages "Unikernel.Make" @@
+  random @-> time @-> mclock @-> pclock @-> stackv4v6 @-> dns_client @-> job
 
 let random = default_random
 let time = default_time
 let mclock = default_monotonic_clock
 let pclock = default_posix_clock
 let stack = generic_stackv4v6 default_network
+let he = generic_happy_eyeballs stack
+let dns = generic_dns_client ~dns_server ~dns_port stack he
 
 let () =
   register "signer"
-    [ signer $ random $ time $ mclock $ pclock $ stack ]
+    [ signer $ random $ time $ mclock $ pclock $ stack $ dns ]

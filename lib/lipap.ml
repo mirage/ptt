@@ -7,7 +7,6 @@ let src = Logs.Src.create "ptt.lipap"
 module Log : Logs.LOG = (val Logs.src_log src)
 
 module Make
-    (Random : Mirage_random.S)
     (Time : Mirage_time.S)
     (Mclock : Mirage_clock.MCLOCK)
     (Pclock : Mirage_clock.PCLOCK)
@@ -15,23 +14,11 @@ module Make
     (Stack : Tcpip.Stack.V4V6) =
 struct
   include Ptt_tuyau.Client (Stack)
-
-  module Random = struct
-    type g = Random.g
-    type +'a io = 'a Lwt.t
-
-    let generate ?g buf =
-      let len = Bytes.length buf in
-      let raw = Random.generate ?g len in
-      Cstruct.blit_to_bytes raw 0 buf 0 len
-      ; Lwt.return ()
-  end
-
   module Tls = Tls_mirage.Make (Stack.TCP)
   module Flow = Rdwr.Make (Tls)
 
   module Submission =
-    Ptt.Submission.Make (Lwt_scheduler) (Lwt_io) (Flow) (Resolver) (Random)
+    Ptt.Submission.Make (Lwt_scheduler) (Lwt_io) (Flow) (Resolver)
 
   module Server = Ptt_tuyau.Server (Time) (Stack)
   include Ptt_transmit.Make (Pclock) (Stack) (Submission.Md)
@@ -66,16 +53,16 @@ struct
           | exn -> Lwt.return (Error (`Exn exn)))
       >>= function
       | Ok () ->
-        Log.info (fun m -> m "<%a:%d> quit properly" Ipaddr.pp ip port)
-        ; Lwt.return ()
+        Log.info (fun m -> m "<%a:%d> quit properly" Ipaddr.pp ip port);
+        Lwt.return ()
       | Error (`Msg err) ->
-        Log.err (fun m -> m "<%a:%d> %s" Ipaddr.pp ip port err)
-        ; Lwt.return ()
+        Log.err (fun m -> m "<%a:%d> %s" Ipaddr.pp ip port err);
+        Lwt.return ()
       | Error (`Exn exn) ->
         Log.err (fun m ->
             m "<%a:%d> raised an unknown exception: %s" Ipaddr.pp ip port
-              (Printexc.to_string exn))
-        ; Lwt.return () in
+              (Printexc.to_string exn));
+        Lwt.return () in
     let (`Initialized fiber) =
       Server.serve_when_ready ?stop ~handler:(handler pool) service in
     fiber
@@ -92,8 +79,8 @@ struct
             (List.map fst (Ptt.Messaged.recipients key))
           >>= fun recipients -> transmit ~pool ~info ~tls stack v recipients
         in
-        Lwt.async transmit
-        ; Lwt.pause () >>= go in
+        Lwt.async transmit;
+        Lwt.pause () >>= go in
     go ()
 
   let fiber

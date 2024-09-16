@@ -9,15 +9,6 @@ let () = Logs.set_reporter reporter
 let () = Mirage_crypto_rng_unix.initialize (module Mirage_crypto_rng.Fortuna)
 let ( <.> ) f g x = f (g x)
 
-module Random = struct
-  type g = unit
-
-  let generate ?g:_ len =
-    let ic = open_in "/dev/urandom" in
-    let rs = Bytes.create len in
-    really_input ic rs 0 len ; close_in ic ; Cstruct.of_bytes rs
-end
-
 open Rresult
 
 module Resolver = struct
@@ -39,13 +30,9 @@ module Resolver = struct
 end
 
 module Server =
-  Lipap.Make (Random) (Time) (Mclock) (Pclock) (Resolver)
-    (Tcpip_stack_socket.V4V6)
+  Lipap.Make (Time) (Mclock) (Pclock) (Resolver) (Tcpip_stack_socket.V4V6)
 
-let load_file filename =
-  let open Rresult in
-  Bos.OS.File.read filename >>= fun contents ->
-  R.ok (Cstruct.of_string contents)
+let load_file filename = Bos.OS.File.read filename
 
 let cert =
   let open Rresult in
@@ -75,7 +62,7 @@ let fiber ~domain locals =
       ~certificates:(`Single ([cert], private_key))
       ~authenticator:(fun ?ip:_ ~host:_ _ -> Ok None)
       () in
-
+  let tls = Rresult.R.failwith_error_msg tls in
   TCP.connect ~ipv4_only ~ipv6_only Ipaddr.V4.Prefix.global None
   >>= fun tcpv4v6 ->
   let info =
@@ -86,11 +73,12 @@ let fiber ~domain locals =
     ; Ptt.SMTP.zone= Mrmime.Date.Zone.GMT
     ; Ptt.SMTP.size= 0x1000000L
     } in
-  let resolver = Dns_client_lwt.create () in
+  let he = Happy_eyeballs_lwt.create () in
+  let resolver = Dns_client_lwt.create he in
   let tls =
     let authenticator = R.failwith_error_msg (Ca_certs.authenticator ()) in
     Tls.Config.client ~authenticator () in
-
+  let tls = Rresult.R.failwith_error_msg tls in
   Server.fiber ~port:4242 ~locals ~tls tcpv4v6 resolver None Digestif.BLAKE2B
     info authenticator [Ptt.Mechanism.PLAIN]
 

@@ -17,7 +17,8 @@ let ns_check ~domain spf =
     let getrrecord dns key domain_name =
       Dns_client_lwt.get_resource_record dns key domain_name
   end in
-  let dns = Dns_client_lwt.create () in
+  let he = Happy_eyeballs_lwt.create () in
+  let dns = Dns_client_lwt.create he in
   Uspf_lwt.get ~domain dns (module DNS) >>= function
   | Ok spf' when Uspf.Term.equal spf spf' -> Lwt.return `Already_registered
   | Ok _ -> Lwt.return `Must_be_updated
@@ -60,7 +61,7 @@ let ns_update (ipaddr, port) ~dns_key stack ~domain spf =
       |> R.reword_error (R.msgf "%a" Dns_tsig.pp_s)
       |> Lwt.return
       >>? fun (data, mac) ->
-        DNS.send_tcp flow data
+        DNS.send_tcp flow (Cstruct.of_string data)
         >|= R.reword_error (fun _ ->
                 R.msgf "Impossible to send a DNS packet to %a:%d" Ipaddr.pp
                   ipaddr port)
@@ -71,7 +72,7 @@ let ns_update (ipaddr, port) ~dns_key stack ~domain spf =
                   ipaddr port)
         >>? fun data ->
         Dns_tsig.decode_and_verify (Ptime_clock.now ()) dns_key key_name ~mac
-          data
+          (Cstruct.to_string data)
         |> R.reword_error (R.msgf "%a" Dns_tsig.pp_e)
         |> Lwt.return
         >>? fun (packet', _tsig, _mac) ->

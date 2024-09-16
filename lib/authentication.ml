@@ -15,8 +15,8 @@ let is_zero = ( = ) '\000'
 let authenticate {return; bind} hash username password t =
   let ( >>= ) = bind in
   let p = Digestif.digest_string hash password in
-  Bytes.fill (Bytes.unsafe_of_string password) 0 (String.length password) '\000'
-  ; t username p >>= fun v -> return (R.ok v)
+  Bytes.fill (Bytes.unsafe_of_string password) 0 (String.length password) '\000';
+  t username p >>= fun v -> return (R.ok v)
 
 let decode_plain_authentication ({return; _} as scheduler) hash ?stamp t v =
   let parser =

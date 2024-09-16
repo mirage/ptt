@@ -7,7 +7,6 @@ let src = Logs.Src.create "ptt.spartacus"
 module Log : Logs.LOG = (val Logs.src_log src)
 
 module Make
-    (Random : Mirage_random.S)
     (Time : Mirage_time.S)
     (Mclock : Mirage_clock.MCLOCK)
     (Pclock : Mirage_clock.PCLOCK)
@@ -15,24 +14,8 @@ module Make
     (Stack : Tcpip.Stack.V4V6) =
 struct
   include Ptt_tuyau.Client (Stack)
-
-  module Random = struct
-    type g = Random.g
-    type +'a io = 'a Lwt.t
-
-    let generate ?g buf =
-      let len = Bytes.length buf in
-      let raw = Random.generate ?g len in
-      Cstruct.blit_to_bytes raw 0 buf 0 len
-      ; Lwt.return ()
-  end
-
   module Flow = Rdwr.Make (Stack.TCP)
-
-  module Filter =
-    Ptt.Relay.Make (Lwt_scheduler) (Lwt_io) (Flow) (Resolver) (Random)
-  (* XXX(dinosaure): the [filter] is a simple relay. *)
-
+  module Filter = Ptt.Relay.Make (Lwt_scheduler) (Lwt_io) (Flow) (Resolver)
   module Server = Ptt_tuyau.Server (Time) (Stack)
   include Ptt_transmit.Make (Pclock) (Stack) (Filter.Md)
 
@@ -55,16 +38,16 @@ struct
           | exn -> Lwt.return (Error (`Exn exn)))
       >>= function
       | Ok () ->
-        Log.info (fun m -> m "<%a:%d> submitted a message" Ipaddr.pp ip port)
-        ; Lwt.return ()
+        Log.info (fun m -> m "<%a:%d> submitted a message" Ipaddr.pp ip port);
+        Lwt.return ()
       | Error (`Msg err) ->
-        Log.err (fun m -> m "<%a:%d> %s" Ipaddr.pp ip port err)
-        ; Lwt.return ()
+        Log.err (fun m -> m "<%a:%d> %s" Ipaddr.pp ip port err);
+        Lwt.return ()
       | Error (`Exn exn) ->
         Log.err (fun m ->
             m "<%a:%d> raised an unknown exception: %s" Ipaddr.pp ip port
-              (Printexc.to_string exn))
-        ; Lwt.return () in
+              (Printexc.to_string exn));
+        Lwt.return () in
     let (`Initialized fiber) =
       Server.serve_when_ready ?stop ~handler:(handler pool) service in
     fiber
@@ -83,8 +66,8 @@ struct
             | None -> None in
           Spamtacus_mirage.rank consumer >>= function
           | Error (`Msg err) ->
-            Log.err (fun m -> m "Got an error from the incoming email: %s." err)
-            ; Lwt.return_unit
+            Log.err (fun m -> m "Got an error from the incoming email: %s." err);
+            Lwt.return_unit
           | Ok (_label, consumer') ->
             Filter.resolve_recipients ~domain:info.Ptt.SSMTP.domain resolver map
               (List.map fst (Ptt.Messaged.recipients key))
@@ -93,11 +76,11 @@ struct
               Lwt_stream.get consumer' >|= function
               | Some str -> Some (str, 0, String.length str)
               | None -> None in
-            Log.debug (fun m -> m "Send the labelled email to the destination.")
-            ; transmit ~pool ~info ~tls stack (key, queue, consumer') recipients
+            Log.debug (fun m -> m "Send the labelled email to the destination.");
+            transmit ~pool ~info ~tls stack (key, queue, consumer') recipients
         in
-        Lwt.async label_and_transmit
-        ; Lwt.pause () >>= go in
+        Lwt.async label_and_transmit;
+        Lwt.pause () >>= go in
     go ()
 
   let fiber ?(limit = 20) ?stop ?locals ~port ~tls stack resolver info =

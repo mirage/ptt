@@ -9,10 +9,9 @@ module Make
     (Scheduler : SCHEDULER)
     (IO : IO with type 'a t = 'a Scheduler.s)
     (Flow : FLOW with type 'a io = 'a IO.t)
-    (Resolver : RESOLVER with type 'a io = 'a IO.t)
-    (Random : RANDOM with type 'a io = 'a IO.t) =
+    (Resolver : RESOLVER with type 'a io = 'a IO.t) =
 struct
-  include Common.Make (Scheduler) (IO) (Flow) (Resolver) (Random)
+  include Common.Make (Scheduler) (IO) (Flow) (Resolver)
   module Md = Messaged.Make (Scheduler) (IO)
 
   type 'k server = {
@@ -40,8 +39,8 @@ struct
 
   let succ server =
     let v = server.count in
-    server.count <- Int64.succ server.count
-    ; v
+    server.count <- Int64.succ server.count;
+    v
 
   type error =
     [ `Error of [ SSMTP.error | `Invalid_recipients | `Too_many_tries ]
@@ -92,44 +91,42 @@ struct
               go (limit + 1) ~payload m))
         | Mechanism.PLAIN, None -> (
           let stamp = Bytes.create 0x10 in
-          generate ?g:random stamp >>= fun () ->
+          generate ?g:random stamp 0x10;
           let stamp = Bytes.unsafe_to_string stamp in
-          Log.debug (fun m -> m "Generate the stamp %S." stamp)
-          ; let m =
+          Log.debug (fun m -> m "Generate the stamp %S." stamp);
+          let m =
+            let open SSMTP in
+            let open Monad in
+            send ctx Value.TP_334 [Base64.encode_string ~pad:true stamp]
+            >>= fun () -> recv ctx Value.Payload in
+          run flow m >>? fun v ->
+          Log.debug (fun m -> m "Got a payload while authentication: %S" v);
+          Authentication.decode_authentication scheduler hash
+            (Authentication.PLAIN (Some stamp)) server.authenticator v
+          |> Scheduler.prj
+          >>= function
+          | Ok true ->
+            let m = SSMTP.(Monad.send ctx Value.PP_235 ["Accepted, buddy!"]) in
+            run flow m >>? fun () -> IO.return (Ok `Authenticated)
+          | (Error _ | Ok false) as res -> (
+            let () =
+              match res with
+              | Error (`Msg err) ->
+                Log.err (fun m -> m "Got an authentication error: %s" err)
+              | _ -> () in
+            let m =
               let open SSMTP in
               let open Monad in
-              send ctx Value.TP_334 [Base64.encode_string ~pad:true stamp]
-              >>= fun () -> recv ctx Value.Payload in
-            run flow m >>? fun v ->
-            Log.debug (fun m -> m "Got a payload while authentication: %S" v)
-            ; Authentication.decode_authentication scheduler hash
-                (Authentication.PLAIN (Some stamp)) server.authenticator v
-              |> Scheduler.prj
-              >>= function
-              | Ok true ->
-                let m =
-                  SSMTP.(Monad.send ctx Value.PP_235 ["Accepted, buddy!"]) in
-                run flow m >>? fun () -> IO.return (Ok `Authenticated)
-              | (Error _ | Ok false) as res -> (
-                let () =
-                  match res with
-                  | Error (`Msg err) ->
-                    Log.err (fun m -> m "Got an authentication error: %s" err)
-                  | _ -> () in
-                let m =
-                  let open SSMTP in
-                  let open Monad in
-                  let* () =
-                    send ctx Value.PN_535 ["Bad authentication, buddy!"] in
-                  SSMTP.m_submission ctx ~domain_from server.mechanisms in
-                run flow m >>? function
-                | `Quit -> IO.return (Ok `Quit)
-                | `Authentication (_domain_from, m) ->
-                  (* assert (_domain_from = domain_from) ; *)
-                  go (limit + 1) m
-                | `Authentication_with_payload (_domain_from, m, payload) ->
-                  (* assert (_domain_from = domain_from) ; *)
-                  go (limit + 1) ~payload m)) in
+              let* () = send ctx Value.PN_535 ["Bad authentication, buddy!"] in
+              SSMTP.m_submission ctx ~domain_from server.mechanisms in
+            run flow m >>? function
+            | `Quit -> IO.return (Ok `Quit)
+            | `Authentication (_domain_from, m) ->
+              (* assert (_domain_from = domain_from) ; *)
+              go (limit + 1) m
+            | `Authentication_with_payload (_domain_from, m, payload) ->
+              (* assert (_domain_from = domain_from) ; *)
+              go (limit + 1) ~payload m)) in
     go 1 ?payload mechanism
 
   type authentication =
@@ -142,7 +139,7 @@ struct
       -> ipaddr:Ipaddr.t
       -> Flow.t
       -> Resolver.t
-      -> Random.g option
+      -> Mirage_crypto_rng.g option
       -> 'k Digestif.hash
       -> 'k server
       -> (unit, error) result IO.t =
@@ -174,15 +171,15 @@ struct
             Md.push server.messaged key >>= fun producer ->
             let m = SSMTP.m_mail ctx in
             run flow m >>? fun () ->
-            Log.debug (fun m -> m "Start to receive the incoming email.")
-            ; receive_mail
-                ~limit:(Int64.to_int server.info.size)
-                flow ctx
-                SSMTP.(fun ctx -> Monad.recv ctx Value.Payload)
-                producer
-              >>? fun () ->
-              let m = SSMTP.m_end ctx in
-              run flow m >>? fun `Quit -> IO.return (Ok ())
+            Log.debug (fun m -> m "Start to receive the incoming email.");
+            receive_mail
+              ~limit:(Int64.to_int server.info.size)
+              flow ctx
+              SSMTP.(fun ctx -> Monad.recv ctx Value.Payload)
+              producer
+            >>? fun () ->
+            let m = SSMTP.m_end ctx in
+            run flow m >>? fun `Quit -> IO.return (Ok ())
           | false ->
             let e = `Invalid_recipients in
             let m =

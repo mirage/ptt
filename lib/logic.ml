@@ -184,15 +184,14 @@ module Make (Monad : MONAD) = struct
         | Error err ->
           fail err (* TODO(dinosaure): catch [`Invalid_reverse_path _]. *)
         | Ok `Reset ->
-          incr reset
-          ; send ctx Value.PP_250 ["Yes buddy!"] >>= fun () -> mail_from ()
+          incr reset;
+          send ctx Value.PP_250 ["Yes buddy!"] >>= fun () -> mail_from ()
         | Ok v ->
-          incr bad
-          ; Log.warn (fun m ->
-                m "%a sended a bad command: %a" Domain.pp domain_from Request.pp
-                  v)
-          ; send ctx Value.PN_503 ["Command out of sequence"] >>= fun () ->
-            mail_from ()
+          incr bad;
+          Log.warn (fun m ->
+              m "%a sended a bad command: %a" Domain.pp domain_from Request.pp v);
+          send ctx Value.PN_503 ["Command out of sequence"] >>= fun () ->
+          mail_from ()
     and recipients ~from acc =
       if !reset >= 25 || !bad >= 25 then
         m_properly_close_and_fail ctx ~message:"You reached the limit buddy!"
@@ -218,16 +217,15 @@ module Make (Monad : MONAD) = struct
             send ctx Value.Code (452, ["Too many recipients, buddy! "])
             >>= fun () -> fail `Too_many_recipients
         | `Reset ->
-          incr reset
-          ; send ctx Value.PP_250 ["Yes buddy!"] >>= fun () -> mail_from ()
+          incr reset;
+          send ctx Value.PP_250 ["Yes buddy!"] >>= fun () -> mail_from ()
         | `Quit -> m_politely_close ctx
         | v ->
-          incr bad
-          ; Log.warn (fun m ->
-                m "%a sended a bad command: %a" Domain.pp domain_from Request.pp
-                  v)
-          ; send ctx Value.PN_503 ["Command out of sequence"] >>= fun () ->
-            recipients ~from acc in
+          incr bad;
+          Log.warn (fun m ->
+              m "%a sended a bad command: %a" Domain.pp domain_from Request.pp v);
+          send ctx Value.PN_503 ["Command out of sequence"] >>= fun () ->
+          recipients ~from acc in
     mail_from ()
 
   exception Unrecognized_authentication
@@ -249,8 +247,8 @@ module Make (Monad : MONAD) = struct
               return (`Authentication (domain_from, mechanism))
             else raise Unrecognized_authentication
           with Invalid_argument _ | Unrecognized_authentication ->
-            incr bad
-            ; send ctx Value.PN_504 ["Unrecognized authentication!"] >>= auth_0)
+            incr bad;
+            send ctx Value.PN_504 ["Unrecognized authentication!"] >>= auth_0)
         | `Verb ("AUTH", [mechanism; payload]) -> (
           try
             let mechanism = Mechanism.of_string_exn mechanism in
@@ -259,24 +257,23 @@ module Make (Monad : MONAD) = struct
                 (`Authentication_with_payload (domain_from, mechanism, payload))
             else raise Unrecognized_authentication
           with Invalid_argument _ | Unrecognized_authentication ->
-            incr bad
-            ; send ctx Value.PN_504 ["Unrecognized authentication!"] >>= auth_0)
+            incr bad;
+            send ctx Value.PN_504 ["Unrecognized authentication!"] >>= auth_0)
         | `Verb ("AUTH", []) ->
-          incr bad
-          ; let* () = send ctx Value.PN_555 ["Syntax error, buddy!"] in
-            auth_0 ()
+          incr bad;
+          let* () = send ctx Value.PN_555 ["Syntax error, buddy!"] in
+          auth_0 ()
         | `Reset ->
-          incr reset
-          ; send ctx Value.PP_250 ["Yes buddy!"] >>= auth_0
+          incr reset;
+          send ctx Value.PP_250 ["Yes buddy!"] >>= auth_0
         | `Quit -> m_politely_close ctx
         | v ->
-          incr bad
-          ; Log.warn (fun m ->
-                m " %a sended a bad command: %a" Domain.pp domain_from
-                  Request.pp v)
-          ; let* () =
-              send ctx Value.PN_530 ["Authentication required, buddy!"] in
-            auth_0 () in
+          incr bad;
+          Log.warn (fun m ->
+              m " %a sended a bad command: %a" Domain.pp domain_from Request.pp
+                v);
+          let* () = send ctx Value.PN_530 ["Authentication required, buddy!"] in
+          auth_0 () in
     auth_0 ()
 
   let m_mail ctx =

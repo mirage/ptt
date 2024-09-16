@@ -9,10 +9,9 @@ module Make
     (Scheduler : SCHEDULER)
     (IO : IO with type 'a t = 'a Scheduler.s)
     (Flow : FLOW with type 'a io = 'a IO.t)
-    (Resolver : RESOLVER with type 'a io = 'a IO.t)
-    (Random : RANDOM with type 'a io = 'a IO.t) =
+    (Resolver : RESOLVER with type 'a io = 'a IO.t) =
 struct
-  include Common.Make (Scheduler) (IO) (Flow) (Resolver) (Random)
+  include Common.Make (Scheduler) (IO) (Flow) (Resolver)
   module Md = Messaged.Make (Scheduler) (IO)
 
   type server = {info: info; messaged: Md.t; mutable count: int64}
@@ -31,8 +30,8 @@ struct
 
   let succ server =
     let v = server.count in
-    server.count <- Int64.succ server.count
-    ; v
+    server.count <- Int64.succ server.count;
+    v
 
   type error = [ `Error of SMTP.error | `Too_big_data ]
 

@@ -7,7 +7,6 @@
     wrap the SMTP protocol with the Transport Security Layer). *)
 
 module Make
-    (Random : Mirage_random.S)
     (Time : Mirage_time.S)
     (Mclock : Mirage_clock.MCLOCK)
     (Pclock : Mirage_clock.PCLOCK)
@@ -21,7 +20,7 @@ module Make
     -> tls:Tls.Config.client
     -> Stack.TCP.t
     -> Resolver.t
-    -> Random.g option
+    -> Mirage_crypto_rng.g option
     -> 'k Digestif.hash
     -> Ptt.Logic.info
     -> (Ptt_tuyau.Lwt_backend.Lwt_scheduler.t, 'k) Ptt.Authentication.t

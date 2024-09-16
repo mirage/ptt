@@ -31,18 +31,18 @@ let mechanism_test_0 =
   Alcotest.(check mechanism)
     "plain"
     (Ptt.Mechanism.of_string_exn "plain")
-    Ptt.Mechanism.PLAIN
-  ; Alcotest.(check mechanism)
-      "PLAIN"
-      (Ptt.Mechanism.of_string_exn "PLAIN")
-      Ptt.Mechanism.PLAIN
-  ; Alcotest.(check mechanism)
-      "PlAiN"
-      (Ptt.Mechanism.of_string_exn "PlAiN")
-      Ptt.Mechanism.PLAIN
-  ; Alcotest.check_raises "PLAIZ" (Invalid_argument "Invalid mechanism: PLAIZ")
-      (fun () -> ignore @@ Ptt.Mechanism.of_string_exn "PLAIZ")
-  ; Lwt.return_unit
+    Ptt.Mechanism.PLAIN;
+  Alcotest.(check mechanism)
+    "PLAIN"
+    (Ptt.Mechanism.of_string_exn "PLAIN")
+    Ptt.Mechanism.PLAIN;
+  Alcotest.(check mechanism)
+    "PlAiN"
+    (Ptt.Mechanism.of_string_exn "PlAiN")
+    Ptt.Mechanism.PLAIN;
+  Alcotest.check_raises "PLAIZ" (Invalid_argument "Invalid mechanism: PLAIZ")
+    (fun () -> ignore @@ Ptt.Mechanism.of_string_exn "PLAIZ");
+  Lwt.return_unit
 
 let auth0 =
   let module Map = Map.Make (struct
@@ -81,54 +81,51 @@ let authentication_test_0 =
   auth Digestif.SHA1 plain_none auth0 "\000%s\000%s" "romain.calascibetta"
     "toto"
   >>= fun romain ->
-  Alcotest.(check (result bool msg)) "romain" (Ok true) romain
-  ; auth Digestif.SHA1 plain_none auth0 "\000%s\000%s" "thomas" "tata"
-    >>= fun thomas ->
-    Alcotest.(check (result bool msg)) "thomas" (Ok true) thomas
-    ; auth Digestif.SHA1 plain_none auth0 "\000%s\000%s" "anil" "tutu"
-      >>= fun anil ->
-      Alcotest.(check (result bool msg)) "anil" (Ok true) anil
-      ; auth Digestif.SHA1 plain_none auth0 "\000%s\000%s" "hannes" "titi"
-        >>= fun hannes ->
-        Alcotest.(check (result bool msg)) "hannes" (Ok true) hannes
-        ; auth Digestif.SHA1 plain_none auth0 "\000%s\000%s" "gemma" ""
-          >>= fun gemma ->
-          Alcotest.(check (result bool msg)) "gemma" (Ok true) gemma
-          ; auth Digestif.SHA1 plain_none auth0 "\000%s\000%s"
-              "romain.calascibetta" "titi"
-            >>= fun wrong ->
-            Alcotest.(check (result bool msg)) "romain (wrong)" (Ok false) wrong
-            ; auth Digestif.SHA1 plain_none auth0 "\000%s\000%s"
-                "pierre.caillou" "toto"
-              >>= fun pierre ->
-              Alcotest.(check (result bool msg)) "pierre" (Ok false) pierre
-              ; auth Digestif.SHA1 plain_none auth0 "stamp\000%s\000%s"
-                  "romain.calascibetta" "toto"
-                >>= fun bad_stamp ->
-                Alcotest.(check (result bool msg))
-                  "bad stamp"
-                  (Error (`Msg "Unexpected stamp"))
-                  bad_stamp
-                ; auth Digestif.SHA1 plain_none auth0 "salut les copains"
-                  >>= fun malformed ->
-                  Alcotest.(check (result bool msg))
-                    "malformed"
-                    (Error (`Msg "Invalid input"))
-                    malformed
-                  ; auth Digestif.SHA1 (Ptt.Authentication.PLAIN (Some "stamp"))
-                      auth0 "\000%s\000%s" "anil" "tutu"
-                    >>= fun invalid_stamp ->
-                    Alcotest.(check (result bool msg))
-                      "no stamp"
-                      (Error (`Msg "Invalid stamp"))
-                      invalid_stamp
-                    ; auth Digestif.SHA1 plain_none auth0 "\000\000%s" "tutu"
-                      >>= fun invalid_username ->
-                      Alcotest.(check (result bool msg))
-                        "invalid username"
-                        (Error (`Msg "Invalid username: \"\""))
-                        invalid_username
-                      ; Lwt.return_unit
+  Alcotest.(check (result bool msg)) "romain" (Ok true) romain;
+  auth Digestif.SHA1 plain_none auth0 "\000%s\000%s" "thomas" "tata"
+  >>= fun thomas ->
+  Alcotest.(check (result bool msg)) "thomas" (Ok true) thomas;
+  auth Digestif.SHA1 plain_none auth0 "\000%s\000%s" "anil" "tutu"
+  >>= fun anil ->
+  Alcotest.(check (result bool msg)) "anil" (Ok true) anil;
+  auth Digestif.SHA1 plain_none auth0 "\000%s\000%s" "hannes" "titi"
+  >>= fun hannes ->
+  Alcotest.(check (result bool msg)) "hannes" (Ok true) hannes;
+  auth Digestif.SHA1 plain_none auth0 "\000%s\000%s" "gemma" "" >>= fun gemma ->
+  Alcotest.(check (result bool msg)) "gemma" (Ok true) gemma;
+  auth Digestif.SHA1 plain_none auth0 "\000%s\000%s" "romain.calascibetta"
+    "titi"
+  >>= fun wrong ->
+  Alcotest.(check (result bool msg)) "romain (wrong)" (Ok false) wrong;
+  auth Digestif.SHA1 plain_none auth0 "\000%s\000%s" "pierre.caillou" "toto"
+  >>= fun pierre ->
+  Alcotest.(check (result bool msg)) "pierre" (Ok false) pierre;
+  auth Digestif.SHA1 plain_none auth0 "stamp\000%s\000%s" "romain.calascibetta"
+    "toto"
+  >>= fun bad_stamp ->
+  Alcotest.(check (result bool msg))
+    "bad stamp"
+    (Error (`Msg "Unexpected stamp"))
+    bad_stamp;
+  auth Digestif.SHA1 plain_none auth0 "salut les copains" >>= fun malformed ->
+  Alcotest.(check (result bool msg))
+    "malformed"
+    (Error (`Msg "Invalid input"))
+    malformed;
+  auth Digestif.SHA1 (Ptt.Authentication.PLAIN (Some "stamp")) auth0
+    "\000%s\000%s" "anil" "tutu"
+  >>= fun invalid_stamp ->
+  Alcotest.(check (result bool msg))
+    "no stamp"
+    (Error (`Msg "Invalid stamp"))
+    invalid_stamp;
+  auth Digestif.SHA1 plain_none auth0 "\000\000%s" "tutu"
+  >>= fun invalid_username ->
+  Alcotest.(check (result bool msg))
+    "invalid username"
+    (Error (`Msg "Invalid username: \"\""))
+    invalid_username;
+  Lwt.return_unit
 
 let x25519 = Domain_name.(host_exn <.> of_string_exn) "x25519.net"
 let gmail = Domain_name.(host_exn <.> of_string_exn) "gmail.com"
@@ -177,27 +174,27 @@ let aggregate_test_0 =
   let u, r = Ptt.Aggregate.aggregate_by_domains ~domain:x25519 ms in
   Alcotest.(check bool)
     "resolved is empty" true
-    (Ptt.Aggregate.By_ipaddr.is_empty r)
-  ; Alcotest.(check unresolved)
-      "unresolved gmail.com"
-      (`Local
-        [
-          Local.(v [w "romain"; w "calascibetta"])
-        ; Local.(v [w "gemma"; w "d"; w "gordon"])
-        ])
-      (Ptt.Aggregate.By_domain.find gmail u)
-  ; Alcotest.(check unresolved)
-      "unresolved recoil.org"
-      (`Local [Local.(v [w "anil"])])
-      (Ptt.Aggregate.By_domain.find recoil u)
-  ; Alcotest.(check unresolved)
-      "unresolved gazagnaire.org"
-      (`Local [Local.(v [w "thomas"])])
-      (Ptt.Aggregate.By_domain.find gazagnaire u)
-  ; Alcotest.(check unresolved)
-      "unresolved nqsb.io" `All
-      (Ptt.Aggregate.By_domain.find nqsb u)
-  ; Lwt.return_unit
+    (Ptt.Aggregate.By_ipaddr.is_empty r);
+  Alcotest.(check unresolved)
+    "unresolved gmail.com"
+    (`Local
+      [
+        Local.(v [w "romain"; w "calascibetta"])
+      ; Local.(v [w "gemma"; w "d"; w "gordon"])
+      ])
+    (Ptt.Aggregate.By_domain.find gmail u);
+  Alcotest.(check unresolved)
+    "unresolved recoil.org"
+    (`Local [Local.(v [w "anil"])])
+    (Ptt.Aggregate.By_domain.find recoil u);
+  Alcotest.(check unresolved)
+    "unresolved gazagnaire.org"
+    (`Local [Local.(v [w "thomas"])])
+    (Ptt.Aggregate.By_domain.find gazagnaire u);
+  Alcotest.(check unresolved)
+    "unresolved nqsb.io" `All
+    (Ptt.Aggregate.By_domain.find nqsb u);
+  Lwt.return_unit
 
 module Lwt_io = struct
   include Lwt
@@ -228,8 +225,8 @@ let stream_of_string_list l =
     match !l with
     | [] -> Lwt.return None
     | x :: r ->
-      l := r
-      ; Lwt.return (Some x) in
+      l := r;
+      Lwt.return (Some x) in
   stream
 
 let stream_is_empty s =
@@ -273,11 +270,11 @@ let messaged_test_0 =
       let rec consume () =
         v () >>= function
         | Some (str, off, len) ->
-          Buffer.add_substring buf str off len
-          ; consume ()
+          Buffer.add_substring buf str off len;
+          consume ()
         | None ->
-          contents := Buffer.contents buf
-          ; Lwt.return_unit in
+          contents := Buffer.contents buf;
+          Lwt.return_unit in
       consume ()
     | None -> assert false in
   let domain_from = Mrmime.Mailbox.Domain.(v domain [a "x25519"; a "net"]) in
@@ -288,14 +285,13 @@ let messaged_test_0 =
 
   let open Lwt.Infix in
   Lwt.both (do0 ~domain_from ~from hello_world) (do1 ()) >>= fun _ ->
-  Alcotest.(check string) "(random schedule) payload" !contents "Hello World!"
-  ; Lwt.both (do1 ()) (do0 ~domain_from ~from hello_buddy) >>= fun _ ->
-    Alcotest.(check string)
-      "(consumer & producer) payload" !contents "Hello buddy!"
-    ; Lwt.both (do0 ~domain_from ~from hello_guy) (do1 ()) >>= fun _ ->
-      Alcotest.(check string)
-        "(producer & consumer) payload" !contents "Hello guy!"
-      ; Lwt.return_unit
+  Alcotest.(check string) "(random schedule) payload" !contents "Hello World!";
+  Lwt.both (do1 ()) (do0 ~domain_from ~from hello_buddy) >>= fun _ ->
+  Alcotest.(check string)
+    "(consumer & producer) payload" !contents "Hello buddy!";
+  Lwt.both (do0 ~domain_from ~from hello_guy) (do1 ()) >>= fun _ ->
+  Alcotest.(check string) "(producer & consumer) payload" !contents "Hello guy!";
+  Lwt.return_unit
 
 let messaged_test_1 =
   Alcotest_lwt.test_case "messaged 1" `Quick @@ fun _sw () ->
@@ -303,27 +299,27 @@ let messaged_test_1 =
   let last = ref 0 in
   let do0 ~domain_from ~from v =
     let open Lwt.Infix in
-    last := 0
-    ; let key =
-        Ptt.Messaged.v
-          ~domain_from:
-            ((Rresult.R.get_ok <.> Colombe_emile.to_domain) domain_from)
-          ~from:((Rresult.R.get_ok <.> Colombe_emile.to_reverse_path) from, [])
-          ~recipients:[] ~ipaddr:(Ipaddr.V4 Ipaddr.V4.localhost) 0L in
-      Md.push md key >>= fun producer ->
-      let rec consume () =
-        v () >>= function
-        | Some chunk -> producer (Some chunk) >>= fun () -> consume ()
-        | None -> producer None in
-      consume () in
+    last := 0;
+    let key =
+      Ptt.Messaged.v
+        ~domain_from:
+          ((Rresult.R.get_ok <.> Colombe_emile.to_domain) domain_from)
+        ~from:((Rresult.R.get_ok <.> Colombe_emile.to_reverse_path) from, [])
+        ~recipients:[] ~ipaddr:(Ipaddr.V4 Ipaddr.V4.localhost) 0L in
+    Md.push md key >>= fun producer ->
+    let rec consume () =
+      v () >>= function
+      | Some chunk -> producer (Some chunk) >>= fun () -> consume ()
+      | None -> producer None in
+    consume () in
   let do1 () =
     let open Lwt.Infix in
-    last := 1
-    ; Md.await md >>= fun () ->
-      (* XXX(dinosaure): schedule [do1] __after__ [do0]. *)
-      Md.pop md >>= function
-      | Some (_, q, _) -> Md.close q (* XXX(dinosaure): unlock [do0]. *)
-      | None -> assert false in
+    last := 1;
+    Md.await md >>= fun () ->
+    (* XXX(dinosaure): schedule [do1] __after__ [do0]. *)
+    Md.pop md >>= function
+    | Some (_, q, _) -> Md.close q (* XXX(dinosaure): unlock [do0]. *)
+    | None -> assert false in
   let domain_from = Mrmime.Mailbox.Domain.(v domain [a "x25519"; a "net"]) in
   let from =
     let open Mrmime.Mailbox in
@@ -333,22 +329,22 @@ let messaged_test_1 =
   let stream = hello_world () in
   Lwt.both (do0 ~domain_from ~from stream) (do1 ()) >>= fun _ ->
   stream_is_empty stream >>= fun res0 ->
-  Alcotest.(check bool) "stream consumed" res0 true
-  ; Alcotest.(check pass) "random schedule" () ()
-  ; let stream = hello_buddy () in
-    Lwt.both (do1 ())
-      (Lwt_unix.sleep 0.5 >>= fun () -> do0 ~domain_from ~from stream)
-    >>= fun _ ->
-    stream_is_empty stream >>= fun res1 ->
-    Alcotest.(check bool) "stream consumed" res1 true
-    ; Alcotest.(check int) "(consumer & producer)" !last 0
-    ; let stream = hello_guy () in
-      Lwt.both (do0 ~domain_from ~from stream) (Lwt_unix.sleep 0.5 >>= do1)
-      >>= fun _ ->
-      stream_is_empty stream >>= fun res2 ->
-      Alcotest.(check bool) "stream consumed" res2 true
-      ; Alcotest.(check int) "(producer & consumer)" !last 1
-      ; Lwt.return_unit
+  Alcotest.(check bool) "stream consumed" res0 true;
+  Alcotest.(check pass) "random schedule" () ();
+  let stream = hello_buddy () in
+  Lwt.both (do1 ())
+    (Lwt_unix.sleep 0.5 >>= fun () -> do0 ~domain_from ~from stream)
+  >>= fun _ ->
+  stream_is_empty stream >>= fun res1 ->
+  Alcotest.(check bool) "stream consumed" res1 true;
+  Alcotest.(check int) "(consumer & producer)" !last 0;
+  let stream = hello_guy () in
+  Lwt.both (do0 ~domain_from ~from stream) (Lwt_unix.sleep 0.5 >>= do1)
+  >>= fun _ ->
+  stream_is_empty stream >>= fun res2 ->
+  Alcotest.(check bool) "stream consumed" res2 true;
+  Alcotest.(check int) "(producer & consumer)" !last 1;
+  Lwt.return_unit
 
 let put_crlf x = x ^ "\r\n"
 
@@ -361,10 +357,10 @@ let rdwr_from_flows inputs outputs =
     | [] -> inj (Lwt.return `End)
     | x :: r ->
       let len = min (String.length x) len in
-      Bytes.blit_string x 0 bytes off len
-      ; if len = String.length x then inputs := r
-        else inputs := String.sub x len (String.length x - len) :: r
-      ; inj (Lwt.return (`Len len)) in
+      Bytes.blit_string x 0 bytes off len;
+      if len = String.length x then inputs := r
+      else inputs := String.sub x len (String.length x - len) :: r;
+      inj (Lwt.return (`Len len)) in
   let rec wr () bytes off len =
     match !outputs with
     | [] -> Fmt.failwith "Unexpected output: %S" (String.sub bytes off len)
@@ -373,11 +369,11 @@ let rdwr_from_flows inputs outputs =
       let len = min (String.length x) len in
       if String.sub x 0 len <> String.sub bytes off len then
         Fmt.failwith "Expected %S, have %S" (String.sub x 0 len)
-          (String.sub bytes off len)
-      ; if String.length x = len then outputs := r
-        else outputs := String.sub x len (String.length x - len) :: r
-      ; if len < max then wr () bytes (off + len) (max - len)
-        else inj (Lwt.return ()) in
+          (String.sub bytes off len);
+      if String.length x = len then outputs := r
+      else outputs := String.sub x len (String.length x - len) :: r;
+      if len < max then wr () bytes (off + len) (max - len)
+      else inj (Lwt.return ()) in
   ( {Colombe.Sigs.rd; Colombe.Sigs.wr}
   , fun () ->
       match !inputs, !outputs with
@@ -419,9 +415,9 @@ let smtp_test_0 =
   run_state (Ptt.SSMTP.m_relay_init ctx info) rdwr >>= function
   | Ok _ -> Alcotest.fail "Unexpected good result"
   | Error (`Error (`Protocol `End_of_input)) ->
-    Alcotest.(check unit) "empty stream" (check ()) ()
-    ; Alcotest.(check pass) "connection close" () ()
-    ; Lwt.return_unit
+    Alcotest.(check unit) "empty stream" (check ()) ();
+    Alcotest.(check pass) "connection close" () ();
+    Lwt.return_unit
   | Error (`Error err) ->
     Alcotest.failf "Unexpected protocol error: %a" Ptt.SSMTP.pp_error err
 
@@ -445,9 +441,9 @@ let smtp_test_1 =
   let open Lwt.Infix in
   run_state (Ptt.SSMTP.m_relay_init ctx info) rdwr >>= function
   | Ok `Quit ->
-    Alcotest.(check unit) "empty stream" (check ()) ()
-    ; Alcotest.(check pass) "quit" () ()
-    ; Lwt.return_unit
+    Alcotest.(check unit) "empty stream" (check ()) ();
+    Alcotest.(check pass) "quit" () ();
+    Lwt.return_unit
   | Ok (`Submission _) -> Alcotest.fail "Unexpected submission"
   | Error (`Error err) ->
     Alcotest.failf "Unexpected protocol error: %a" Ptt.SSMTP.pp_error err
@@ -475,9 +471,9 @@ let smtp_test_2 =
   let open Lwt.Infix in
   run_state (Ptt.SSMTP.m_relay_init ctx info) rdwr >>= function
   | Ok `Quit ->
-    Alcotest.(check unit) "empty stream" (check ()) ()
-    ; Alcotest.(check pass) "quit" () ()
-    ; Lwt.return_unit
+    Alcotest.(check unit) "empty stream" (check ()) ();
+    Alcotest.(check pass) "quit" () ();
+    Lwt.return_unit
   | Ok (`Submission _) -> Alcotest.fail "Unexpected submission"
   | Error (`Error err) ->
     Alcotest.failf "Unexpected protocol error: %a" Ptt.SSMTP.pp_error err
@@ -516,9 +512,9 @@ let smtp_test_3 =
   run_state (Ptt.SSMTP.m_relay_init ctx info) rdwr >>= function
   | Ok (`Quit | `Submission _) -> Alcotest.fail "Unexpected quit or submission"
   | Error (`Error `Too_many_bad_commands) ->
-    Alcotest.(check unit) "empty stream" (check ()) ()
-    ; Alcotest.(check pass) "too many bad commands" () ()
-    ; Lwt.return_unit
+    Alcotest.(check unit) "empty stream" (check ()) ();
+    Alcotest.(check pass) "too many bad commands" () ();
+    Lwt.return_unit
   | Error (`Error err) ->
     Alcotest.failf "Unexpected protocol error: %a" Ptt.SSMTP.pp_error err
   | Error `Connection_close -> Alcotest.fail "Unexpected connection close"
@@ -546,9 +542,9 @@ let smtp_test_4 =
   run_state (Ptt.SSMTP.m_relay_init ctx info) rdwr >>= function
   | Ok _ -> Alcotest.fail "Unexpected quit or submission"
   | Error (`Error `No_recipients) ->
-    Alcotest.(check unit) "empty stream" (check ()) ()
-    ; Alcotest.(check pass) "no recipients" () ()
-    ; Lwt.return_unit
+    Alcotest.(check unit) "empty stream" (check ()) ();
+    Alcotest.(check pass) "no recipients" () ();
+    Lwt.return_unit
   | Error (`Error err) ->
     Alcotest.failf "Unexpected protocol error: %a" Ptt.SSMTP.pp_error err
   | Error `Connection_close -> Alcotest.fail "Unexpected connection close"
@@ -600,16 +596,16 @@ let smtp_test_5 =
       Domain.(v domain [a "gmail"; a "com"]) in
     Alcotest.(check reverse_path)
       "from" (fst from)
-      ((Rresult.R.get_ok <.> Colombe_emile.to_reverse_path) romain_calascibetta)
-    ; Alcotest.(check (list forward_path))
-        "recipients" (List.map fst recipients)
-        [(Rresult.R.get_ok <.> Colombe_emile.to_forward_path) anil]
-    ; Alcotest.(check domain)
-        "domain" domain_from
-        ((Rresult.R.get_ok <.> Colombe_emile.to_domain) gmail)
-    ; Alcotest.(check unit) "empty stream" (check ()) ()
-    ; Alcotest.(check pass) "submission" () ()
-    ; Lwt.return_unit
+      ((Rresult.R.get_ok <.> Colombe_emile.to_reverse_path) romain_calascibetta);
+    Alcotest.(check (list forward_path))
+      "recipients" (List.map fst recipients)
+      [(Rresult.R.get_ok <.> Colombe_emile.to_forward_path) anil];
+    Alcotest.(check domain)
+      "domain" domain_from
+      ((Rresult.R.get_ok <.> Colombe_emile.to_domain) gmail);
+    Alcotest.(check unit) "empty stream" (check ()) ();
+    Alcotest.(check pass) "submission" () ();
+    Lwt.return_unit
   | Ok `Quit -> Alcotest.fail "Unexpected quit"
   | Error (`Error err) ->
     Alcotest.failf "Unexpected protocol error: %a" Ptt.SSMTP.pp_error err
@@ -638,9 +634,9 @@ let smtp_test_6 =
   run_state (Ptt.SSMTP.m_submission_init ctx info [Ptt.Mechanism.PLAIN]) rdwr
   >>= function
   | Ok `Quit ->
-    Alcotest.(check unit) "empty stream" (check ()) ()
-    ; Alcotest.(check pass) "quit" () ()
-    ; Lwt.return_unit
+    Alcotest.(check unit) "empty stream" (check ()) ();
+    Alcotest.(check pass) "quit" () ();
+    Lwt.return_unit
   | Ok (`Authentication _ | `Authentication_with_payload _) ->
     Alcotest.failf "Unexpected authentication"
   | Ok (`Submission _) -> Alcotest.failf "Unexpected submission"
@@ -673,13 +669,13 @@ let smtp_test_7 =
     let gmail =
       let open Mrmime.Mailbox in
       Domain.(v domain [a "gmail"; a "com"]) in
-    Alcotest.(check unit) "empty stream" (check ()) ()
-    ; Alcotest.(check mechanism) "mechanism" m Ptt.Mechanism.PLAIN
-    ; Alcotest.(check domain)
-        "domain" v
-        ((Rresult.R.get_ok <.> Colombe_emile.to_domain) gmail)
-    ; Alcotest.(check pass) "authentication" () ()
-    ; Lwt.return_unit
+    Alcotest.(check unit) "empty stream" (check ()) ();
+    Alcotest.(check mechanism) "mechanism" m Ptt.Mechanism.PLAIN;
+    Alcotest.(check domain)
+      "domain" v
+      ((Rresult.R.get_ok <.> Colombe_emile.to_domain) gmail);
+    Alcotest.(check pass) "authentication" () ();
+    Lwt.return_unit
   | Ok `Quit | Ok (`Submission _) ->
     Alcotest.failf "Unexpected quit or submission"
   | Error (`Error err) ->
@@ -748,8 +744,8 @@ module Flow = struct
       (fun () -> Lwt_unix.read socket buf off len)
       (fun exn ->
         Logs.err (fun m ->
-            m "[recv] Got an exception: %S." (Printexc.to_string exn))
-        ; Lwt.fail exn)
+            m "[recv] Got an exception: %S." (Printexc.to_string exn));
+        Lwt.fail exn)
 
   let send socket buf off len =
     let open Lwt.Infix in
@@ -761,8 +757,8 @@ module Flow = struct
             go socket buf (off + res) (len - res))
           (fun exn ->
             Logs.err (fun m ->
-                m "[send] Got an exception: %S." (Printexc.to_string exn))
-            ; Lwt.fail exn)
+                m "[send] Got an exception: %S." (Printexc.to_string exn));
+            Lwt.fail exn)
       else Lwt.return_unit in
     go socket (Bytes.unsafe_of_string buf) off len
 end
@@ -773,24 +769,22 @@ let serve_when_ready ?stop ~handler socket =
     (let switched_off =
        let t, u = Lwt.wait () in
        Lwt_switch.add_hook stop (fun () ->
-           Lwt.wakeup_later u `Stopped
-           ; Lwt.return_unit)
-       ; t in
+           Lwt.wakeup_later u `Stopped;
+           Lwt.return_unit);
+       t in
      let rec loop () =
        Lwt_unix.accept socket >>= fun (flow, _) ->
        let[@warning "-8"] (Unix.ADDR_INET (inet_addr, _)) =
          Lwt_unix.getpeername flow in
-       Lwt.async (fun () -> handler (Ipaddr_unix.of_inet_addr inet_addr) flow)
-       ; Lwt.pause () >>= loop in
+       Lwt.async (fun () -> handler (Ipaddr_unix.of_inet_addr inet_addr) flow);
+       Lwt.pause () >>= loop in
      let stop =
        Lwt.pick [switched_off; loop ()] >>= fun `Stopped ->
        Lwt_unix.close socket in
      stop)
 
 let make_relay_smtp_server ?stop ~port info =
-  let module SMTP =
-    Ptt.Relay.Make (Scheduler) (Lwt_io) (Flow) (Resolver) (Random)
-  in
+  let module SMTP = Ptt.Relay.Make (Scheduler) (Lwt_io) (Flow) (Resolver) in
   let conf_server = SMTP.create ~info in
   let messaged = SMTP.messaged conf_server in
   let smtp_relay_server conf_server =
@@ -799,32 +793,31 @@ let make_relay_smtp_server ?stop ~port info =
     let sockaddr =
       Unix.ADDR_INET (Ipaddr_unix.to_inet_addr info.SMTP.ipaddr, port) in
     Lwt_unix.bind socket sockaddr >|= fun () ->
-    Lwt_unix.listen socket 40
+    Lwt_unix.listen socket 40;
 
-    ; let handler ipaddr flow =
-        let open Lwt.Infix in
-        Logs.debug (fun m -> m "Got a new connection. Start to process it!")
-        ; SMTP.accept ~ipaddr flow () conf_server >>= fun res ->
-          Lwt_unix.close flow >>= fun () ->
-          match res with Ok _ -> Lwt.return () | Error _err -> Lwt.return ()
-      in
-      serve_when_ready ?stop ~handler socket in
+    let handler ipaddr flow =
+      let open Lwt.Infix in
+      Logs.debug (fun m -> m "Got a new connection. Start to process it!");
+      SMTP.accept ~ipaddr flow () conf_server >>= fun res ->
+      Lwt_unix.close flow >>= fun () ->
+      match res with Ok _ -> Lwt.return () | Error _err -> Lwt.return () in
+    serve_when_ready ?stop ~handler socket in
   let smtp_logic messaged ms =
     let open Lwt.Infix in
     Lwt.return
       (`Queue
         (let th, u = Lwt.wait () in
          Lwt_switch.add_hook stop (fun () ->
-             Lwt.wakeup_later u `Stopped
-             ; Lwt.return_unit)
-         ; let rec loop () =
-             SMTP.Md.await messaged >>= fun () ->
-             SMTP.Md.pop messaged >>= function
-             | Some (key, queue, _) ->
-               SMTP.Md.close queue >>= fun () -> Queue.push key ms ; loop ()
-             | None -> loop () in
-           Lwt.pick [th; loop ()] >|= fun `Stopped ->
-           Queue.fold (rev List.cons) [] ms)) in
+             Lwt.wakeup_later u `Stopped;
+             Lwt.return_unit);
+         let rec loop () =
+           SMTP.Md.await messaged >>= fun () ->
+           SMTP.Md.pop messaged >>= function
+           | Some (key, queue, _) ->
+             SMTP.Md.close queue >>= fun () -> Queue.push key ms; loop ()
+           | None -> loop () in
+         Lwt.pick [th; loop ()] >|= fun `Stopped ->
+         Queue.fold (rev List.cons) [] ms)) in
   Lwt.both
     (smtp_relay_server conf_server)
     (smtp_logic messaged (Queue.create ()))
@@ -914,8 +907,8 @@ let full_test_0 =
       Ptt.Messaged.v ~domain_from:recoil ~from:(anil, [])
         ~recipients:[romain_calascibetta, []]
         ~ipaddr:(Ipaddr.V4 Ipaddr.V4.localhost) 0L
-    ]
-  ; Lwt.return_unit
+    ];
+  Lwt.return_unit
 
 let full_test_1 =
   Alcotest_lwt.test_case "Receive emails from Anil and Thomas" `Quick
@@ -977,8 +970,8 @@ let full_test_1 =
     ; Ptt.Messaged.v ~domain_from:recoil ~from:(anil, [])
         ~recipients:[romain_calascibetta, []]
         ~ipaddr:(Ipaddr.V4 Ipaddr.V4.localhost) 0L
-    ]
-  ; Lwt.return_unit
+    ];
+  Lwt.return_unit
 
 let fiber =
   Alcotest_lwt.run "ptt"

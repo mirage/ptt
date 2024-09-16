@@ -19,8 +19,8 @@
  (public_name ptt.adduser)
  (package ptt-bin)
  (modules adduser sSH)
- (libraries logs.cli fmt.tty fmt.cli ca-certs mirage-flow git-unix git-kv
-   mirage-clock-unix ptt.value cmdliner))
+ (libraries logs.cli logs.fmt fmt.tty fmt.cli ca-certs mirage-flow git-unix
+   git-kv mirage-clock-unix ptt.value cmdliner))
 
 (executable
  (name spf)

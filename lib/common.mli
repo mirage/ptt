@@ -5,10 +5,9 @@ module Make
     (Scheduler : SCHEDULER)
     (IO : IO with type 'a t = 'a Scheduler.s)
     (Flow : FLOW with type 'a io = 'a IO.t)
-    (Resolver : RESOLVER with type 'a io = 'a IO.t)
-    (Random : RANDOM with type 'a io = 'a IO.t) : sig
+    (Resolver : RESOLVER with type 'a io = 'a IO.t) : sig
   type 'w resolver
-  type 'g random = ?g:'g -> bytes -> unit IO.t
+  type 'g random = ?g:'g -> bytes -> ?off:int -> int -> unit
   type 'a consumer = 'a option -> unit IO.t
 
   val ( >>= ) : 'a IO.t -> ('a -> 'b IO.t) -> 'b IO.t
@@ -19,7 +18,7 @@ module Make
     -> ('b, 'err) result IO.t
 
   val resolver : Resolver.t resolver
-  val generate : Random.g random
+  val generate : Mirage_crypto_rng.g random
   val scheduler : Scheduler.t Colombe.Sigs.impl
   val rdwr : (Flow.t, Scheduler.t) Colombe.Sigs.rdwr
 
