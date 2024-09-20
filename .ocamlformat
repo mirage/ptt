@@ -1,4 +1,4 @@
-version=0.26.1
+version=0.26.2
 module-item-spacing=compact
 break-struct=natural
 break-infix=fit-or-vertical
@@ -15,7 +15,6 @@ space-around-arrays=false
 break-cases=fit
 break-fun-decl=smart
 cases-exp-indent=2
-sequence-style=before
 if-then-else=compact
 field-space=tight
 indent-after-in=0

@@ -6,7 +6,6 @@
     real destination is [foo@gmail.com]. *)
 
 module Make
-    (Random : Mirage_random.S)
     (Time : Mirage_time.S)
     (Mclock : Mirage_clock.MCLOCK)
     (Pclock : Mirage_clock.PCLOCK)

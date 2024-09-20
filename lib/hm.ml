@@ -7,34 +7,16 @@ let src = Logs.Src.create "ptt.hm"
 module Log : Logs.LOG = (val Logs.src_log src)
 
 module Make
-    (Random : Mirage_random.S)
     (Time : Mirage_time.S)
     (Mclock : Mirage_clock.MCLOCK)
     (Pclock : Mirage_clock.PCLOCK)
     (Resolver : Ptt.Sigs.RESOLVER with type +'a io = 'a Lwt.t)
     (Stack : Tcpip.Stack.V4V6)
-    (DNS : Dns_client_mirage.S
-             with type Transport.stack = Stack.t
-              and type 'a Transport.io = 'a Lwt.t) =
+    (DNS : Dns_client_mirage.S with type 'a Transport.io = 'a Lwt.t) =
 struct
   include Ptt_tuyau.Client (Stack)
-
-  module Random = struct
-    type g = Random.g
-    type +'a io = 'a Lwt.t
-
-    let generate ?g buf =
-      let len = Bytes.length buf in
-      let raw = Random.generate ?g len in
-      Cstruct.blit_to_bytes raw 0 buf 0 len
-      ; Lwt.return ()
-  end
-
   module Flow = Rdwr.Make (Stack.TCP)
-
-  module Verifier =
-    Ptt.Relay.Make (Lwt_scheduler) (Lwt_io) (Flow) (Resolver) (Random)
-
+  module Verifier = Ptt.Relay.Make (Lwt_scheduler) (Lwt_io) (Flow) (Resolver)
   module Server = Ptt_tuyau.Server (Time) (Stack)
   include Ptt_transmit.Make (Pclock) (Stack) (Verifier.Md)
   module Lwt_scheduler = Uspf.Sigs.Make (Lwt)
@@ -71,16 +53,16 @@ struct
           | exn -> Lwt.return (Error (`Exn exn)))
       >>= function
       | Ok () ->
-        Log.info (fun m -> m "<%a:%d> submitted a message" Ipaddr.pp ip port)
-        ; Lwt.return ()
+        Log.info (fun m -> m "<%a:%d> submitted a message" Ipaddr.pp ip port);
+        Lwt.return ()
       | Error (`Msg err) ->
-        Log.err (fun m -> m "<%a:%d> %s" Ipaddr.pp ip port err)
-        ; Lwt.return ()
+        Log.err (fun m -> m "<%a:%d> %s" Ipaddr.pp ip port err);
+        Lwt.return ()
       | Error (`Exn exn) ->
         Log.err (fun m ->
             m "<%a:%d> raised an unknown exception: %s" Ipaddr.pp ip port
-              (Printexc.to_string exn))
-        ; Lwt.return () in
+              (Printexc.to_string exn));
+        Lwt.return () in
     let (`Initialized fiber) =
       Server.serve_when_ready ?stop ~handler:(handler pool) service in
     fiber
@@ -99,8 +81,8 @@ struct
       match !lst with
       | [] -> Lwt.return_none
       | str :: rest ->
-        lst := rest
-        ; Lwt.return_some (str, 0, String.length str)
+        lst := rest;
+        Lwt.return_some (str, 0, String.length str)
 
   let stream_of_field (field_name : Mrmime.Field_name.t) unstrctrd =
     stream_of_list
@@ -117,8 +99,8 @@ struct
       | None ->
         if !current == b then Lwt.return_none
         else (
-          current := b
-          ; next ()) in
+          current := b;
+          next ()) in
     next
 
   let smtp_logic ~pool ~info ~tls stack resolver messaged map dns =
@@ -127,38 +109,36 @@ struct
       Verifier.Md.pop messaged >>= function
       | None -> Lwt.pause () >>= go
       | Some (key, queue, consumer) ->
-        Log.debug (fun m -> m "Got an email.")
-        ; let verify_and_transmit () =
-            Verifier.resolve_recipients ~domain:info.Ptt.SSMTP.domain resolver
-              map
-              (List.map fst (Ptt.Messaged.recipients key))
-            >>= fun recipients ->
-            let sender, _ = Ptt.Messaged.from key in
-            let ctx =
-              Uspf.empty |> Uspf.with_ip (Ptt.Messaged.ipaddr key) |> fun ctx ->
-              Option.fold ~none:ctx
-                ~some:(fun sender -> Uspf.with_sender (`MAILFROM sender) ctx)
-                sender in
-            Uspf.get ~ctx state dns (module Uspf_dns) |> Lwt_scheduler.prj
-            >>= function
-            | Error (`Msg err) ->
-              Log.err (fun m -> m "Got an error from the SPF verifier: %s." err)
-              ; (* TODO(dinosaure): save this result into the incoming email. *)
-                transmit ~pool ~info ~tls stack (key, queue, consumer)
-                  recipients
-            | Ok record ->
-              Uspf.check ~ctx state dns (module Uspf_dns) record
-              |> Lwt_scheduler.prj
-              >>= fun res ->
-              let receiver =
-                `Domain (Domain_name.to_strings info.Ptt.SSMTP.domain) in
-              let field_name, unstrctrd = Uspf.to_field ~ctx ~receiver res in
-              let stream = stream_of_field field_name unstrctrd in
-              let consumer = concat_stream stream consumer in
-              transmit ~pool ~info ~tls stack (key, queue, consumer) recipients
-          in
-          Lwt.async verify_and_transmit
-          ; Lwt.pause () >>= go in
+        Log.debug (fun m -> m "Got an email.");
+        let verify_and_transmit () =
+          Verifier.resolve_recipients ~domain:info.Ptt.SSMTP.domain resolver map
+            (List.map fst (Ptt.Messaged.recipients key))
+          >>= fun recipients ->
+          let sender, _ = Ptt.Messaged.from key in
+          let ctx =
+            Uspf.empty |> Uspf.with_ip (Ptt.Messaged.ipaddr key) |> fun ctx ->
+            Option.fold ~none:ctx
+              ~some:(fun sender -> Uspf.with_sender (`MAILFROM sender) ctx)
+              sender in
+          Uspf.get ~ctx state dns (module Uspf_dns) |> Lwt_scheduler.prj
+          >>= function
+          | Error (`Msg err) ->
+            Log.err (fun m -> m "Got an error from the SPF verifier: %s." err);
+            (* TODO(dinosaure): save this result into the incoming email. *)
+            transmit ~pool ~info ~tls stack (key, queue, consumer) recipients
+          | Ok record ->
+            Uspf.check ~ctx state dns (module Uspf_dns) record
+            |> Lwt_scheduler.prj
+            >>= fun res ->
+            let receiver =
+              `Domain (Domain_name.to_strings info.Ptt.SSMTP.domain) in
+            let field_name, unstrctrd = Uspf.to_field ~ctx ~receiver res in
+            let stream = stream_of_field field_name unstrctrd in
+            let consumer = concat_stream stream consumer in
+            transmit ~pool ~info ~tls stack (key, queue, consumer) recipients
+        in
+        Lwt.async verify_and_transmit;
+        Lwt.pause () >>= go in
     go ()
 
   let fiber ?(limit = 20) ?stop ?locals ~port ~tls stack resolver info dns =

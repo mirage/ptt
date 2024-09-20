@@ -16,11 +16,10 @@ let ssh_edn, ssh_protocol = Mimic.register ~name:"ssh" (module SSH)
 let unix_ctx_with_ssh () =
   Git_unix.ctx (Happy_eyeballs_lwt.create ()) >|= fun ctx ->
   let open Mimic in
-  let k0 scheme user path host port capabilities =
+  let k0 scheme user path host port mode =
     match scheme, Unix.gethostbyname host with
     | `SSH, {Unix.h_addr_list; _} when Array.length h_addr_list > 0 ->
-      Lwt.return_some
-        {SSH.user; path; host= h_addr_list.(0); port; capabilities}
+      Lwt.return_some {SSH.user; path; host= h_addr_list.(0); port; mode}
     | _ -> Lwt.return_none in
   ctx
   |> Mimic.fold Smart_git.git_transmission
@@ -121,7 +120,7 @@ let renderer =
 
 let reporter ppf =
   let report src level ~over k msgf =
-    let k _ = over () ; k () in
+    let k _ = over (); k () in
     let with_metadata header _tags k ppf fmt =
       Fmt.kpf k ppf
         ("%a[%a]: " ^^ fmt ^^ "\n%!")
@@ -132,10 +131,10 @@ let reporter ppf =
   {Logs.report}
 
 let setup_logs style_renderer level =
-  Fmt_tty.setup_std_outputs ?style_renderer ()
-  ; Logs.set_level level
-  ; Logs.set_reporter (reporter Fmt.stderr)
-  ; Option.is_none level
+  Fmt_tty.setup_std_outputs ?style_renderer ();
+  Logs.set_level level;
+  Logs.set_reporter (reporter Fmt.stderr);
+  Option.is_none level
 
 let setup_logs = Term.(const setup_logs $ renderer $ verbosity)
 

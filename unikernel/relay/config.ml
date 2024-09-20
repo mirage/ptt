@@ -1,37 +1,25 @@
 open Mirage
 
-let remote =
-  let doc = Key.Arg.info ~doc:"Remote Git repository." [ "r"; "remote" ] in
-  Key.(create "remote" Arg.(required string doc))
-
 let ssh_key =
-  let doc = Key.Arg.info ~doc:"The private SSH key." [ "ssh-key" ] in
-  Key.(create "ssh_key" Arg.(opt (some string) None doc))
-
-let ssh_password =
-  let doc = Key.Arg.info ~doc:"The SSH password." [ "ssh-password" ] in
-  Key.(create "ssh_password" Arg.(opt (some string) None doc))
+  Runtime_arg.create ~pos:__POS__
+    {|let open Cmdliner in
+      let doc = Arg.info ~doc:"The private SSH key (rsa:<seed> or ed25519:<b64-key>)." ["ssh-key"] in
+      Arg.(value & opt (some string) None doc)|}
 
 let ssh_authenticator =
-  let doc = Key.Arg.info ~doc:"SSH public key of the remote Git repository." [ "ssh-authenticator" ] in
-  Key.(create "ssh_authenticator" Arg.(opt (some string) None doc))
+  Runtime_arg.create ~pos:__POS__
+    {|let open Cmdliner in
+      let doc = Arg.info ~doc:"SSH authenticator." ["ssh-auth"] in
+      Arg.(value & opt (some string) None doc)|}
 
-let domain =
-  let doc = Key.Arg.info ~doc:"SMTP domain-name." [ "domain" ] in
-  Key.(create "domain" Arg.(required string doc))
+let ssh_password =
+  Runtime_arg.create ~pos:__POS__
+    {|let open Cmdliner in
+      let doc = Arg.info ~doc:"The private SSH password." [ "ssh-password" ] in
+      Arg.(value & opt (some string) None doc)|}
 
-let postmaster =
-  let doc = Key.Arg.info ~doc:"The postmaster of the SMTP service." [ "postmaster" ] in
-  Key.(create "postmaster" Arg.(required string doc))
-
-let nameservers =
-  let doc = Key.Arg.info ~doc:"DNS nameserver used to resolve SMTP servers." [ "nameserver" ] in
-  Key.(create "nameservers" Arg.(opt_all string doc))
-
-let keys =
-  Key.[ v domain
-      ; v postmaster
-      ; v remote ]
+let nameservers = Runtime_arg.create ~pos:__POS__ "Unikernel.K.nameservers"
+let setup = runtime_arg ~pos:__POS__ "Unikernel.K.setup"
 
 let packages =
   [ package "randomconv"
@@ -40,21 +28,23 @@ let packages =
   ; package "domain-name"
   ; package "dns-mirage" ]
 
-let relay =
-  foreign ~keys ~packages "Unikernel.Make" @@
-  random @-> time @-> mclock @-> pclock @-> stackv4v6 @-> dns_client @-> git_client @-> job
+let runtime_args = [ setup ]
 
-let random = default_random
+let relay =
+  main ~runtime_args ~packages "Unikernel.Make" @@
+  time @-> mclock @-> pclock @-> stackv4v6 @-> dns_client @-> git_client @-> job
+
 let time = default_time
 let mclock = default_monotonic_clock
 let pclock = default_posix_clock
 let stack = generic_stackv4v6 default_network
-let dns = generic_dns_client ~nameservers stack
+let he = generic_happy_eyeballs stack
+let dns = generic_dns_client ~nameservers stack he
 let tcp = tcpv4v6_of_stackv4v6 stack
 let git_client =
-  let happy_eyeballs = mimic_happy_eyeballs stack dns (generic_happy_eyeballs stack dns) in
-  git_ssh ~password:ssh_password ~key:ssh_key tcp happy_eyeballs
+  let git = mimic_happy_eyeballs stack he dns in
+  git_ssh ~password:ssh_password ~key:ssh_key ~authenticator:ssh_authenticator tcp git
 
 let () =
   register "relay"
-    [ relay $ random $ time $ mclock $ pclock $ stack $ dns $ git_client ]
+    [ relay $ time $ mclock $ pclock $ stack $ dns $ git_client ]

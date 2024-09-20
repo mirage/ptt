@@ -117,16 +117,15 @@ let m_relay_init ctx info =
           |> reword_error tls_error
           >>= fun () -> m_relay_init ctx info
         | `Reset ->
-          incr reset
-          ; let* () = send ctx Value.PP_250 ["Yes buddy!"] in
-            go ()
+          incr reset;
+          let* () = send ctx Value.PP_250 ["Yes buddy!"] in
+          go ()
         | `Quit -> m_politely_close ctx
         | _ ->
-          incr bad
-          ; let* () =
-              send ctx Value.PN_530 ["Must issue a STARTTLS command first."]
-            in
-            go () in
+          incr bad;
+          let* () =
+            send ctx Value.PN_530 ["Must issue a STARTTLS command first."] in
+          go () in
     go ()
 
 let m_submission_init ctx info ms =
@@ -164,14 +163,13 @@ let m_submission_init ctx info ms =
           |> reword_error tls_error
           >>= fun () -> m_submission_init ctx info ms
         | `Reset ->
-          incr reset
-          ; let* () = send ctx Value.PP_250 ["Yes, buddy!"] in
-            go ()
+          incr reset;
+          let* () = send ctx Value.PP_250 ["Yes, buddy!"] in
+          go ()
         | `Quit -> m_politely_close ctx
         | _ ->
-          incr bad
-          ; let* () =
-              send ctx Value.PN_530 ["Must issue a STARTTLS command first."]
-            in
-            go () in
+          incr bad;
+          let* () =
+            send ctx Value.PN_530 ["Must issue a STARTTLS command first."] in
+          go () in
     go ()

@@ -60,22 +60,22 @@ module Client (Stack : Tcpip.Stack.V4V6) = struct
       Log.debug (fun m ->
           m "Email to %a was sent!"
             Fmt.(Dump.list Colombe.Forward_path.pp)
-            recipients)
-      ; Lwt.return (Ok ())
+            recipients);
+      Lwt.return (Ok ())
     | Error (`Sendmail `STARTTLS_unavailable) ->
       Lwt.return_error `STARTTLS_unavailable
     | Error (`Sendmail err) ->
       Log.err (fun m ->
           m "Got a sendmail error when we tried to sent to %a: %a"
             Fmt.(Dump.list Colombe.Forward_path.pp)
-            recipients Sendmail_with_starttls.pp_error err)
-      ; Lwt.return (R.error_msgf "%a" Sendmail_with_starttls.pp_error err)
+            recipients Sendmail_with_starttls.pp_error err);
+      Lwt.return (R.error_msgf "%a" Sendmail_with_starttls.pp_error err)
     | Error (`Msg msg) as err ->
       Log.err (fun m ->
           m "Got an error when we tried to sent to %a: %s"
             Fmt.(Dump.list Colombe.Forward_path.pp)
-            recipients msg)
-      ; Lwt.return err
+            recipients msg);
+      Lwt.return err
     | Error (`Exn exn) ->
       Lwt.return (R.error_msgf "Unknown error: %s" (Printexc.to_string exn))
 
@@ -131,12 +131,12 @@ module Server (Time : Mirage_time.S) (Stack : Tcpip.Stack.V4V6) = struct
 
     let listener flow =
       Lwt_mutex.lock mutex >>= fun () ->
-      Queue.push flow queue
-      ; Lwt_condition.signal condition ()
-      ; Lwt_mutex.unlock mutex
-      ; Lwt.return_unit in
-    Stack.TCP.listen ~port stack listener
-    ; Lwt.return {stack; queue; condition; mutex; closed= false}
+      Queue.push flow queue;
+      Lwt_condition.signal condition ();
+      Lwt_mutex.unlock mutex;
+      Lwt.return_unit in
+    Stack.TCP.listen ~port stack listener;
+    Lwt.return {stack; queue; condition; mutex; closed= false}
 
   let rec accept ({queue; condition; mutex; _} as t) =
     Lwt_mutex.lock mutex >>= fun () ->
@@ -146,30 +146,30 @@ module Server (Time : Mirage_time.S) (Stack : Tcpip.Stack.V4V6) = struct
       else Lwt.return_unit in
     await () >>= fun () ->
     match Queue.pop queue with
-    | flow -> Lwt_mutex.unlock mutex ; Lwt.return_ok flow
+    | flow -> Lwt_mutex.unlock mutex; Lwt.return_ok flow
     | exception Queue.Empty ->
-      if t.closed then (Lwt_mutex.unlock mutex ; Lwt.return_error `Closed)
-      else (Lwt_mutex.unlock mutex ; accept t)
+      if t.closed then (Lwt_mutex.unlock mutex; Lwt.return_error `Closed)
+      else (Lwt_mutex.unlock mutex; accept t)
 
   let close ({stack; condition; _} as t) =
-    t.closed <- true
-    ; Stack.TCP.disconnect stack >>= fun () ->
-      Lwt_condition.signal condition ()
-      ; Lwt.return_unit
+    t.closed <- true;
+    Stack.TCP.disconnect stack >>= fun () ->
+    Lwt_condition.signal condition ();
+    Lwt.return_unit
 
   let serve_when_ready ?stop ~handler service =
     `Initialized
       (let switched_off =
          let t, u = Lwt.wait () in
          Lwt_switch.add_hook stop (fun () ->
-             Lwt.wakeup_later u (Ok `Stopped)
-             ; Lwt.return_unit)
-         ; t in
+             Lwt.wakeup_later u (Ok `Stopped);
+             Lwt.return_unit);
+         t in
        let rec loop () =
          accept service >>= function
          | Ok flow ->
-           Lwt.async (fun () -> handler flow)
-           ; loop ()
+           Lwt.async (fun () -> handler flow);
+           loop ()
          | Error `Closed -> Lwt.return_error `Closed
          | Error _ -> Lwt.pause () >>= loop in
        let stop_result =

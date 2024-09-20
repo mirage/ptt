@@ -28,18 +28,16 @@ struct
     let rec go () =
       consumer () >>= function
       | Some ((str, off, len) as v) ->
-        Log.debug (fun m -> m "Send to %d recipient(s)" (List.length producers))
-        ; Log.debug (fun m ->
-              m "@[<hov>%a@]"
-                (Hxd_string.pp Hxd.default)
-                (String.sub str off len))
-        ; List.iter (fun producer -> producer (Some v)) producers
-        ; Lwt.pause () >>= go
+        Log.debug (fun m -> m "Send to %d recipient(s)" (List.length producers));
+        Log.debug (fun m ->
+            m "@[<hov>%a@]" (Hxd_string.pp Hxd.default) (String.sub str off len));
+        List.iter (fun producer -> producer (Some v)) producers;
+        Lwt.pause () >>= go
       | None ->
         Log.debug (fun m ->
-            m "Send <End-of-flow> to %d recipient(s)." (List.length producers))
-        ; List.iter (fun producer -> producer None) producers
-        ; Lwt.return () in
+            m "Send <End-of-flow> to %d recipient(s)." (List.length producers));
+        List.iter (fun producer -> producer None) producers;
+        Lwt.return () in
     go
 
   let ( <+> ) s0 s1 =
@@ -52,8 +50,8 @@ struct
         | None ->
           if !current == s1 then Lwt.return None
           else (
-            current := s1
-            ; Lwt_scheduler.prj (next ())) in
+            current := s1;
+            Lwt_scheduler.prj (next ())) in
       Lwt_scheduler.inj res in
     next
 
@@ -114,36 +112,36 @@ struct
     let rec go = function
       | [] ->
         Log.err (fun m ->
-            m "Impossible to send an email to %a (no solution found)." pp_key k)
-        ; Lwt.return ()
+            m "Impossible to send an email to %a (no solution found)." pp_key k);
+        Lwt.return ()
       | {Ptt.Mxs.mx_ipaddr; _} :: rest -> (
         Log.debug (fun m ->
             m "Transmit the incoming email to %a (%a)." Ipaddr.pp mx_ipaddr
-              Domain.pp mx_domain)
-        ; Lwt_pool.use pool (fun (encoder, decoder, queue) ->
-              sendmail ~encoder:(Fun.const encoder) ~decoder:(Fun.const decoder)
-                ~queue:(Fun.const queue) ~info ~tls stack mx_ipaddr emitter
+              Domain.pp mx_domain);
+        Lwt_pool.use pool (fun (encoder, decoder, queue) ->
+            sendmail ~encoder:(Fun.const encoder) ~decoder:(Fun.const decoder)
+              ~queue:(Fun.const queue) ~info ~tls stack mx_ipaddr emitter stream
+              recipients
+            >>= function
+            | Ok () -> Lwt.return_ok ()
+            | Error `STARTTLS_unavailable
+            (* TODO(dinosaure): when [insecure]. *) ->
+              Log.warn (fun m ->
+                  m
+                    "The SMTP receiver %a does not implement STARTTLS, restart \
+                     in clear."
+                    Domain.pp mx_domain);
+              sendmail_without_tls ~encoder:(Fun.const encoder)
+                ~decoder:(Fun.const decoder) ~info stack mx_ipaddr emitter
                 stream recipients
-              >>= function
-              | Ok () -> Lwt.return_ok ()
-              | Error `STARTTLS_unavailable
-              (* TODO(dinosaure): when [insecure]. *) ->
-                Log.warn (fun m ->
-                    m
-                      "The SMTP receiver %a does not implement STARTTLS, \
-                       restart in clear."
-                      Domain.pp mx_domain)
-                ; sendmail_without_tls ~encoder:(Fun.const encoder)
-                    ~decoder:(Fun.const decoder) ~info stack mx_ipaddr emitter
-                    stream recipients
-              | Error err -> Lwt.return_error err)
-          >>= function
-          | Ok () -> Lwt.return_unit
-          | Error err ->
-            Log.err (fun m ->
-                m "Impossible to send the given email to %a: %a." Domain.pp
-                  mx_domain pp_error err)
-            ; go rest) in
+            | Error err -> Lwt.return_error err)
+        >>= function
+        | Ok () -> Lwt.return_unit
+        | Error err ->
+          Log.err (fun m ->
+              m "Impossible to send the given email to %a: %a." Domain.pp
+                mx_domain pp_error err);
+          go rest) in
     let sort =
       List.sort (fun {Ptt.Mxs.preference= a; _} {Ptt.Mxs.preference= b; _} ->
           icompare a b) in
@@ -162,12 +160,12 @@ struct
     let transmit = plug_consumer_to_producers consumer producers in
     Log.debug (fun m ->
         m "Start to send the incoming email to %d recipient(s)."
-          (List.length targets))
-    ; Lwt.both (transmit ())
-        (Lwt_list.iter_s
-           (sendmail_to_a_target ~pool ~info ~tls ~key stack emitter)
-           targets)
-      >>= fun ((), ()) ->
-      Log.debug (fun m -> m "Email sended!")
-      ; Md.close queue
+          (List.length targets));
+    Lwt.both (transmit ())
+      (Lwt_list.iter_s
+         (sendmail_to_a_target ~pool ~info ~tls ~key stack emitter)
+         targets)
+    >>= fun ((), ()) ->
+    Log.debug (fun m -> m "Email sended!");
+    Md.close queue
 end

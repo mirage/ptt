@@ -5,8 +5,7 @@ module Make
     (Scheduler : SCHEDULER)
     (IO : IO with type 'a t = 'a Scheduler.s)
     (Flow : FLOW with type 'a io = 'a IO.t)
-    (Resolver : RESOLVER with type 'a io = 'a IO.t)
-    (Random : RANDOM with type 'a io = 'a IO.t) : sig
+    (Resolver : RESOLVER with type 'a io = 'a IO.t) : sig
   module Md : module type of Messaged.Make (Scheduler) (IO)
 
   type 'k server
@@ -49,7 +48,7 @@ module Make
     -> ipaddr:Ipaddr.t
     -> Flow.t
     -> Resolver.t
-    -> Random.g option
+    -> Mirage_crypto_rng.g option
     -> 'k Digestif.hash
     -> 'k server
     -> (unit, error) result IO.t

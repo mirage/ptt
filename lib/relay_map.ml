@@ -17,15 +17,15 @@ let add ~local mailbox t =
   | Error (`Msg err) -> invalid_arg err
   | Ok mailbox -> (
     Log.debug (fun m ->
-        m "Add %a with %a." Emile.pp_local local Colombe.Forward_path.pp mailbox)
-    ; try
-        let rest = Hashtbl.find t.map local in
-        if not (List.exists (Colombe.Forward_path.equal mailbox) rest) then
-          Hashtbl.add t.map local (mailbox :: rest)
-        ; t
-      with Not_found ->
-        Hashtbl.add t.map local [mailbox]
-        ; t)
+        m "Add %a with %a." Emile.pp_local local Colombe.Forward_path.pp mailbox);
+    try
+      let rest = Hashtbl.find t.map local in
+      if not (List.exists (Colombe.Forward_path.equal mailbox) rest) then
+        Hashtbl.add t.map local (mailbox :: rest);
+      t
+    with Not_found ->
+      Hashtbl.add t.map local [mailbox];
+      t)
 
 let exists reverse_path t =
   match reverse_path with
@@ -40,8 +40,8 @@ let recipients ~local {map; _} =
   match Hashtbl.find map local with
   | recipients -> recipients
   | exception Not_found ->
-    Log.err (fun m -> m "%a not found into our local map." Emile.pp_local local)
-    ; []
+    Log.err (fun m -> m "%a not found into our local map." Emile.pp_local local);
+    []
 
 let all t = Hashtbl.fold (fun _ vs a -> vs @ a) t.map []
 let ( <.> ) f g x = f (g x)
@@ -94,8 +94,7 @@ let expand t unresolved resolved =
         Log.debug (fun m ->
             m "Replace locals %a by their destinations."
               Fmt.(Dump.list Emile.pp_local)
-              vs)
-        ; let vs =
-            List.fold_left (fun a local -> recipients ~local t @ a) [] vs in
-          List.fold_left fold (unresolved, resolved) vs in
+              vs);
+        let vs = List.fold_left (fun a local -> recipients ~local t @ a) [] vs in
+        List.fold_left fold (unresolved, resolved) vs in
   By_domain.fold fold unresolved (By_domain.empty, resolved)

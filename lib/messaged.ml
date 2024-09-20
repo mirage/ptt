@@ -95,62 +95,62 @@ struct
   (* XXX(dinosaure): preferred one writer / one reader *)
   let pipe_of_queue ?(chunk = 0x1000) queue =
     if chunk <= 0 then
-      Fmt.invalid_arg "stream_of_queue: chunk must be bigger than 0"
+      Fmt.invalid_arg "stream_of_queue: chunk must be bigger than 0";
 
-    ; let close = ref false in
-      let mutex = Mutex.create () in
-      let condition = Condition.create () in
+    let close = ref false in
+    let mutex = Mutex.create () in
+    let condition = Condition.create () in
 
-      let consumer () =
+    let consumer () =
+      Mutex.lock mutex >>= fun () ->
+      let rec wait () =
+        if Ke.is_empty queue && not !close then
+          Condition.wait condition mutex >>= wait
+        else return () in
+      wait () >>= fun () ->
+      let len = min (Ke.length queue) chunk in
+
+      if len = 0 && !close then (Mutex.unlock mutex; return None)
+      else
+        let buf = Bytes.create chunk in
+        Log.debug (fun m -> m "Transmit %d byte(s) from the client." len);
+        Ke.N.keep_exn queue ~blit:blit_to_bytes ~length:Bytes.length ~off:0 ~len
+          buf;
+        Ke.N.shift_exn queue len;
+        Mutex.unlock mutex;
+        return (Some (Bytes.unsafe_to_string buf, 0, len)) in
+
+    let rec producer = function
+      | None ->
+        Log.debug (fun m ->
+            m "The client finished the transmission of the message.");
         Mutex.lock mutex >>= fun () ->
-        let rec wait () =
-          if Ke.is_empty queue && not !close then
-            Condition.wait condition mutex >>= wait
-          else return () in
-        wait () >>= fun () ->
-        let len = min (Ke.length queue) chunk in
-
-        if len = 0 && !close then (Mutex.unlock mutex ; return None)
+        close := true;
+        Condition.broadcast condition;
+        Mutex.unlock mutex;
+        return ()
+      | Some (buf, off, len) as v -> (
+        Mutex.lock mutex >>= fun () ->
+        if !close then (Mutex.unlock mutex; return ())
         else
-          let buf = Bytes.create chunk in
-          Log.debug (fun m -> m "Transmit %d byte(s) from the client." len)
-          ; Ke.N.keep_exn queue ~blit:blit_to_bytes ~length:Bytes.length ~off:0
-              ~len buf
-          ; Ke.N.shift_exn queue len
-          ; Mutex.unlock mutex
-          ; return (Some (Bytes.unsafe_to_string buf, 0, len)) in
-
-      let rec producer = function
-        | None ->
-          Log.debug (fun m ->
-              m "The client finished the transmission of the message.")
-          ; Mutex.lock mutex >>= fun () ->
-            close := true
-            ; Condition.broadcast condition
-            ; Mutex.unlock mutex
-            ; return ()
-        | Some (buf, off, len) as v -> (
-          Mutex.lock mutex >>= fun () ->
-          if !close then (Mutex.unlock mutex ; return ())
-          else
-            match
-              Ke.N.push queue ~blit:blit_of_string ~length:String.length ~off
-                ~len buf
-            with
-            | None ->
-              Condition.signal condition
-              ; Mutex.unlock mutex
-              ; Log.debug (fun m -> m "The internal queue is full.")
-              ; pause () >>= fun () -> producer v
-            | Some _ ->
-              Condition.signal condition ; Mutex.unlock mutex ; return ()) in
-      {q= queue; m= mutex; c= condition; f= close}, producer, consumer
+          match
+            Ke.N.push queue ~blit:blit_of_string ~length:String.length ~off ~len
+              buf
+          with
+          | None ->
+            Condition.signal condition;
+            Mutex.unlock mutex;
+            Log.debug (fun m -> m "The internal queue is full.");
+            pause () >>= fun () -> producer v
+          | Some _ -> Condition.signal condition; Mutex.unlock mutex; return ())
+    in
+    {q= queue; m= mutex; c= condition; f= close}, producer, consumer
 
   let close queue =
     Mutex.lock queue.m >>= fun () ->
-    queue.f := true
-    ; Mutex.unlock queue.m
-    ; return ()
+    queue.f := true;
+    Mutex.unlock queue.m;
+    return ()
 
   type 'a producer = 'a option -> unit IO.t
   type 'a consumer = unit -> 'a option IO.t
@@ -169,25 +169,25 @@ struct
     let queue, _ = Ke.create ~capacity:0x1000 Bigarray.Char in
     let queue, producer, consumer = pipe_of_queue ?chunk queue in
     Mutex.lock t.m >>= fun () ->
-    Queue.push (key, queue, consumer) t.q
-    ; Condition.signal t.c
-    ; Mutex.unlock t.m
-    ; return producer
+    Queue.push (key, queue, consumer) t.q;
+    Condition.signal t.c;
+    Mutex.unlock t.m;
+    return producer
 
   let await t =
     Mutex.lock t.m >>= fun () ->
     let rec await () =
       if Queue.is_empty t.q then Condition.wait t.c t.m >>= await else return ()
     in
-    await () >>= fun () -> Mutex.unlock t.m ; return ()
+    await () >>= fun () -> Mutex.unlock t.m; return ()
 
   let pop t =
     Mutex.lock t.m >>= fun () ->
     try
       let key, queue, consumer = Queue.pop t.q in
-      Mutex.unlock t.m
-      ; return (Some (key, queue, consumer))
-    with _exn -> Mutex.unlock t.m ; return None
+      Mutex.unlock t.m;
+      return (Some (key, queue, consumer))
+    with _exn -> Mutex.unlock t.m; return None
 
   let broadcast t = Condition.broadcast t.c
 end

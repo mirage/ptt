@@ -17,16 +17,16 @@ type endpoint = {
   ; path: string
   ; host: Unix.inet_addr
   ; port: int
-  ; capabilities: [ `Wr | `Rd ]
+  ; mode: [ `Rd | `Wr ]
 }
 
 let pp_inet_addr ppf inet_addr =
   Fmt.string ppf (Unix.string_of_inet_addr inet_addr)
 
-let connect {user; path; host; port; capabilities} =
+let connect {user; path; host; port; mode} =
   let edn = Fmt.str "%s@%a" user pp_inet_addr host in
   let cmd =
-    match capabilities with
+    match mode with
     | `Rd -> Fmt.str {sh|git-upload-pack '%s'|sh} path
     | `Wr -> Fmt.str {sh|git-receive-pack '%s'|sh} path in
   let cmd = Fmt.str "ssh -p %d %s %a" port edn Fmt.(quote string) cmd in
@@ -45,7 +45,7 @@ let read t =
 
 let write t cs =
   let str = Cstruct.to_string cs in
-  try output_string t.oc str ; flush t.oc ; Lwt.return_ok ()
+  try output_string t.oc str; flush t.oc; Lwt.return_ok ()
   with Unix.Unix_error (err, f, v) -> Lwt.return_error (`Error (err, f, v))
 
 let writev t css =
@@ -57,4 +57,9 @@ let writev t css =
       | Error _ as err -> Lwt.return err) in
   go t css
 
-let close t = close_in t.ic ; close_out t.oc ; Lwt.return_unit
+let close t = close_in t.ic; close_out t.oc; Lwt.return_unit
+
+let shutdown t = function
+  | `read -> close_in t.ic; Lwt.return_unit
+  | `write -> close_out t.oc; Lwt.return_unit
+  | `read_write -> close t

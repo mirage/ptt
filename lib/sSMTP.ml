@@ -14,9 +14,9 @@ module Value = struct
     let fiber : a send -> [> Encoder.error ] Encoder.state = function
       | Payload ->
         let k encoder =
-          Encoder.write v encoder
-          ; Encoder.write "\r\n" encoder
-          ; Encoder.flush (fun _ -> Encoder.Done) encoder in
+          Encoder.write v encoder;
+          Encoder.write "\r\n" encoder;
+          Encoder.flush (fun _ -> Encoder.Done) encoder in
         Encoder.safe k encoder
       | PP_220 -> Reply.Encoder.response (`PP_220 v) encoder
       | PP_221 -> Reply.Encoder.response (`PP_221 v) encoder

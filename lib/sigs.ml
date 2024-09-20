@@ -51,13 +51,6 @@ module type RESOLVER = sig
     t -> string -> string -> (Ipaddr.t, [> Rresult.R.msg ]) result io
 end
 
-module type RANDOM = sig
-  type g
-  type +'a io
-
-  val generate : ?g:g -> bytes -> unit io
-end
-
 module type FLOW = sig
   type t
   type +'a io
