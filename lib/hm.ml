@@ -160,5 +160,6 @@ struct
       [
         smtp_verifier_service ~pool:pool0 ?stop ~port stack resolver conf_server
       ; smtp_logic ~pool:pool1 ~info ~tls stack resolver messaged locals dns
+      ; smtp_send_emails ...
       ]
 end

@@ -28,11 +28,11 @@ module Client (Stack : Tcpip.Stack.V4V6) = struct
       ~info
       ~tls
       stack
-      mx_ipaddr
-      emitter
-      producer
-      recipients =
-    Stack.TCP.create_connection stack (mx_ipaddr, 25)
+      ipaddr
+      sender
+      recipients
+      stream =
+    Stack.TCP.create_connection stack (ipaddr, 25)
     >|= R.reword_error (fun err -> `Flow err)
     >>? fun flow ->
     let flow' = Flow.make flow in
@@ -40,47 +40,21 @@ module Client (Stack : Tcpip.Stack.V4V6) = struct
       Sendmail_with_starttls.Context_with_tls.make ?encoder ?decoder ?queue ()
     in
     let domain =
-      let vs = Domain_name.to_strings info.Ptt.Logic.domain in
+      let vs = Domain_name.to_strings info.Ptt.Logic.domain in (* the domain of our SMTP stack => ptt *)
       Colombe.Domain.Domain vs in
     Lwt.catch
       (fun () ->
-        Sendmail_with_starttls.sendmail lwt rdwr flow' ctx tls ~domain emitter
-          recipients producer
+        Sendmail_with_starttls.sendmail lwt rdwr flow' ctx tls ~domain sender
+          recipients stream
         |> Lwt_scheduler.prj
-        >|= R.reword_error (fun err -> `Sendmail err))
       (function
-        | Failure err ->
-          Lwt.return (R.error_msg err)
-          (* XXX(dinosaure): should come from [rdwr]. *)
+        | Failure err -> Lwt.return (R.error_msg err)
         | exn -> Lwt.return (Error (`Exn exn)))
     >>= fun res ->
-    Stack.TCP.close flow >>= fun () ->
-    match res with
-    | Ok () ->
-      Log.debug (fun m ->
-          m "Email to %a was sent!"
-            Fmt.(Dump.list Colombe.Forward_path.pp)
-            recipients);
-      Lwt.return (Ok ())
-    | Error (`Sendmail `STARTTLS_unavailable) ->
-      Lwt.return_error `STARTTLS_unavailable
-    | Error (`Sendmail err) ->
-      Log.err (fun m ->
-          m "Got a sendmail error when we tried to sent to %a: %a"
-            Fmt.(Dump.list Colombe.Forward_path.pp)
-            recipients Sendmail_with_starttls.pp_error err);
-      Lwt.return (R.error_msgf "%a" Sendmail_with_starttls.pp_error err)
-    | Error (`Msg msg) as err ->
-      Log.err (fun m ->
-          m "Got an error when we tried to sent to %a: %s"
-            Fmt.(Dump.list Colombe.Forward_path.pp)
-            recipients msg);
-      Lwt.return err
-    | Error (`Exn exn) ->
-      Lwt.return (R.error_msgf "Unknown error: %s" (Printexc.to_string exn))
+    Stack.TCP.close flow >|= fun () -> res
 
   let sendmail_without_tls
-      ?encoder ?decoder ~info stack mx_ipaddr emitter producer recipients =
+      ?encoder ?decoder ~info stack ipaddr sender recipients stream =
     Stack.TCP.create_connection stack (mx_ipaddr, 25)
     >|= R.reword_error (fun err -> `Flow err)
     >>? fun flow ->
@@ -93,24 +67,11 @@ module Client (Stack : Tcpip.Stack.V4V6) = struct
       (fun () ->
         Sendmail.sendmail lwt rdwr flow' ctx ~domain emitter recipients producer
         |> Lwt_scheduler.prj
-        >|= R.reword_error (fun err -> `Sendmail err))
       (function
         | Failure err -> Lwt.return (R.error_msg err)
         | exn -> Lwt.return (Error (`Exn exn)))
     >>= fun res ->
-    Stack.TCP.close flow >>= fun () ->
-    match res with
-    | Ok () -> Lwt.return (Ok ())
-    | Error (`Sendmail err) ->
-      Lwt.return (R.error_msgf "%a" Sendmail.pp_error err)
-    | Error (`Msg _) as err -> Lwt.return err
-    | Error (`Exn exn) ->
-      Lwt.return (R.error_msgf "Unknown error: %s" (Printexc.to_string exn))
-
-  let pp_error ppf = function
-    | `Msg err -> Fmt.string ppf err
-    | `Flow err -> Stack.TCP.pp_error ppf err
-    | `STARTTLS_unavailable -> Fmt.string ppf "STARTTLS unavailable"
+    Stack.TCP.close flow >|= fun () -> res
 end
 
 module Server (Time : Mirage_time.S) (Stack : Tcpip.Stack.V4V6) = struct
