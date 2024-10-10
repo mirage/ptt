@@ -1,103 +1,93 @@
 open Rresult
-open Ptt_tuyau.Lwt_backend
 open Lwt.Infix
 
 let src = Logs.Src.create "ptt.lipap"
 
 module Log : Logs.LOG = (val Logs.src_log src)
 
+let ( $ ) f g = fun x -> f (g x)
+
 module Make
     (Time : Mirage_time.S)
     (Mclock : Mirage_clock.MCLOCK)
     (Pclock : Mirage_clock.PCLOCK)
-    (Resolver : Ptt.Sigs.RESOLVER with type +'a io = 'a Lwt.t)
-    (Stack : Tcpip.Stack.V4V6) =
+    (Stack : Tcpip.Stack.V4V6)
+    (Dns_client : Dns_client_mirage.S)
+    (Happy_eyeballs : Happy_eyeballs_mirage.S with type flow = Stack.TCP.flow) =
 struct
-  include Ptt_tuyau.Client (Stack)
-  module Tls = Tls_mirage.Make (Stack.TCP)
-  module Flow = Rdwr.Make (Tls)
+  module Submission = Ptt.Submission.Make (Stack)
+  module Server = Ptt_server.Make (Time) (Stack)
+  module Sendmail = Ptt_sendmail.Make (Pclock) (Stack) (Happy_eyeballs)
 
-  module Submission =
-    Ptt.Submission.Make (Lwt_scheduler) (Lwt_io) (Flow) (Resolver)
+  let resolver =
+    let open Ptt_common in
+    let getmxbyname dns domain_name =
+      Dns_client.getaddrinfo dns Dns.Rr_map.Mx domain_name
+      >|= Result.map snd in
+    let gethostbyname dns domain_name =
+      let ipv4 =
+        Dns_client.gethostbyname dns domain_name
+        >|= Result.map (fun ipv4 -> Ipaddr.V4 ipv4) in
+      let ipv6 =
+        Dns_client.gethostbyname6 dns domain_name
+        >|= Result.map (fun ipv6 -> Ipaddr.V6 ipv6) in
+      Lwt.all [ ipv4; ipv6 ] >|= function
+      | [ _; (Ok _ as ipv6) ] -> ipv6
+      | [ (Ok _ as ipv4); Error _ ] -> ipv4
+      | [ (Error _ as err); _ ] -> err
+      | [] | [_] | _ :: _ :: _ -> assert false in
+    { getmxbyname; gethostbyname }
 
-  module Server = Ptt_tuyau.Server (Time) (Stack)
-  include Ptt_transmit.Make (Pclock) (Stack) (Submission.Md)
-
-  let smtp_submission_service
-      ~pool ?stop ~port stack resolver random hash conf_server =
-    let tls =
-      match (Submission.info conf_server).Ptt.SSMTP.tls with
-      | Some tls -> tls
-      | None ->
-        Fmt.invalid_arg "Impossible to launch a submission server without TLS"
-    in
-    Server.init ~port stack >>= fun service ->
-    let handler pool flow =
-      let ip, port = Stack.TCP.dst flow in
-      Lwt.catch
+  let server_job ~pool ?stop ~port random hash stack dns server close =
+    let handler flow =
+      let ipaddr, port = Stack.TCP.dst flow in
+      Lwt.finalize
         (fun () ->
           Lwt_pool.use pool @@ fun (encoder, decoder, _) ->
-          Tls.server_of_flow tls flow >>= function
-          | Error err ->
-            Stack.TCP.close flow >>= fun () ->
-            Lwt.return_error (R.msgf "%a" Tls.pp_write_error err)
-          | Ok flow ->
-            Submission.accept ~encoder:(Fun.const encoder)
-              ~decoder:(Fun.const decoder) ~ipaddr:ip (Flow.make flow) resolver
-              random hash conf_server
-            >|= R.reword_error (R.msgf "%a" Submission.pp_error)
-            >>= fun res ->
-            Tls.close flow >>= fun () -> Lwt.return res)
-        (function
-          | Failure err -> Lwt.return (R.error_msg err)
-          | exn -> Lwt.return (Error (`Exn exn)))
+          Submission.accept ~encoder:(Fun.const encoder)
+            ~decoder:(Fun.const decoder) ~ipaddr flow dns resolver
+            random hash server
+          >|= R.reword_error (R.msgf "%a" Submission.pp_error))
+        (fun () -> Stack.TCP.close flow)
       >>= function
-      | Ok () ->
-        Log.info (fun m -> m "<%a:%d> quit properly" Ipaddr.pp ip port);
-        Lwt.return ()
+      | Ok () -> Lwt.return ()
       | Error (`Msg err) ->
-        Log.err (fun m -> m "<%a:%d> %s" Ipaddr.pp ip port err);
-        Lwt.return ()
-      | Error (`Exn exn) ->
-        Log.err (fun m ->
-            m "<%a:%d> raised an unknown exception: %s" Ipaddr.pp ip port
-              (Printexc.to_string exn));
+        Log.err (fun m -> m "<%a:%d> %s" Ipaddr.pp ipaddr port err);
         Lwt.return () in
-    let (`Initialized fiber) =
-      Server.serve_when_ready ?stop ~handler:(handler pool) service in
-    fiber
+    Server.init ~port stack >>= fun service ->
+    Server.serve_when_ready ?stop ~handler service
+    |> fun (`Initialized job) ->
+    let job = job >|= close in job
 
-  let smtp_logic ~pool ~info ~tls stack resolver messaged map =
+  let logic_job ~info map (ic, oc) =
     let rec go () =
-      Submission.Md.await messaged >>= fun () ->
-      Submission.Md.pop messaged >>= function
-      | None -> Lwt.pause () >>= go
-      | Some ((key, _, _) as v) ->
-        let transmit () =
-          Submission.resolve_recipients ~domain:info.Ptt.SSMTP.domain resolver
-            map
-            (List.map fst (Ptt.Messaged.recipients key))
-          >>= fun recipients -> transmit ~pool ~info ~tls stack v recipients
-        in
-        Lwt.async transmit;
-        Lwt.pause () >>= go in
+      Lwt_stream.get ic >>= function
+      | None -> oc None; Lwt.return_unit
+      | Some (key, stream) ->
+        let sender = fst (Ptt.Messaged.from key) in
+        let recipients = Ptt.Messaged.recipients key in
+        let recipients = List.map fst recipients in
+        let recipients = Ptt_map.expand ~info map recipients in
+        let recipients = Ptt_aggregate.to_recipients ~info recipients in
+        let id = Ptt_common.id_to_messageID ~info (Ptt.Messaged.id key) in
+        let elts = List.map (fun recipients ->
+          (* TODO(dinosaure): Can we use multiple MAIL FROM to keep the original
+             sender? We actually force <ptt.mti-gf@info.Ptt_common.domain> to be
+             SPF-valid in front of SMTP servers even if we are not the original
+             author of the email. The original author is kept into the [Sender]
+             field of the email which is unchanged. *)
+          { Ptt_sendmail.sender
+          ; recipients
+          ; data= Lwt_stream.clone stream
+          ; policies= []
+          ; id }) recipients in
+        List.iter (oc $ Option.some) elts;
+      Lwt.pause () >>= go in
     go ()
 
-  let fiber
-      ?(limit = 20)
-      ?stop
-      ?locals
-      ~port
-      ~tls
-      stack
-      resolver
-      random
-      hash
-      info
-      authenticator
-      mechanisms =
-    let conf_server = Submission.create ~info ~authenticator mechanisms in
-    let messaged = Submission.messaged conf_server in
+  let job  ?(limit = 20) ?stop ~locals ~port ~tls ~info
+    random hash stack dns he
+    authenticator mechanisms =
     let pool0 =
       Lwt_pool.create limit @@ fun () ->
       let encoder = Bytes.create Colombe.Encoder.io_buffer_size in
@@ -110,10 +100,12 @@ struct
       let decoder = Bytes.create Colombe.Decoder.io_buffer_size in
       let queue = Ke.Rke.create ~capacity:0x1000 Bigarray.char in
       Lwt.return (encoder, decoder, queue) in
+    let pool1 =
+      { Ptt_sendmail.pool= fun fn -> Lwt_pool.use pool1 fn } in
+    let ic_server, stream0, close0 = Submission.create ~info ~authenticator mechanisms in
+    let oc_server, push0 = Sendmail.v ~resolver ~pool:pool1 ~info tls in
     Lwt.join
-      [
-        smtp_submission_service ~pool:pool0 ?stop ~port stack resolver random
-          hash conf_server
-      ; smtp_logic ~pool:pool1 ~info ~tls stack resolver messaged locals
-      ]
+      [ server_job ~pool:pool0 ?stop ~port random hash stack dns ic_server close0
+      ; logic_job ~info locals (stream0, push0)
+      ; Sendmail.job dns he oc_server ]
 end

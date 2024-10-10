@@ -89,15 +89,15 @@ let pp_error ppf = function
   | `No_recipients -> Fmt.string ppf "No recipients"
   | `Too_many_recipients -> Fmt.string ppf "Too many recipients"
 
-type info = Logic.info = {
-    domain: [ `host ] Domain_name.t
+type info = Ptt_common.info = {
+    domain: Colombe.Domain.t
   ; ipaddr: Ipaddr.t
   ; tls: Tls.Config.server option
   ; zone: Mrmime.Date.Zone.t
   ; size: int64
 }
 
-type submission = Logic.submission = {
+type email = Logic.email = {
     from: Messaged.from
   ; recipients: (Forward_path.t * (string * string option) list) list
   ; domain_from: Domain.t
@@ -107,10 +107,10 @@ include Logic.Make (Monad)
 
 let m_submission_init ctx info ms =
   let open Monad in
-  let* () = send ctx Value.PP_220 [Domain_name.to_string info.Logic.domain] in
+  let* () = send ctx Value.PP_220 [Colombe.Domain.to_string info.Ptt_common.domain] in
   m_submission_init ctx info ms
 
 let m_relay_init ctx info =
   let open Monad in
-  let* () = send ctx Value.PP_220 [Domain_name.to_string info.Logic.domain] in
+  let* () = send ctx Value.PP_220 [Colombe.Domain.to_string info.Ptt_common.domain] in
   m_relay_init ctx info

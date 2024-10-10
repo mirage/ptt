@@ -1,25 +1,23 @@
-open Colombe.Sigs
 open Rresult
 
-type ('s, 'k) t
+type 'k t
 (** The {i authenticator} type. *)
 
 type username = Emile.local
 type 'k password = 'k Digestif.t
 
-val v : (username -> 'k password -> (bool, 's) io) -> ('s, 'k) t
+val v : (username -> 'k password -> bool Lwt.t) -> 'k t
 (** [v authenticator] makes an {i authenticator}. *)
 
 type mechanism =
   | PLAIN of string option  (** Type of mechanism used by the client. *)
 
 val decode_authentication :
-     's impl
-  -> 'k Digestif.hash
+     'k Digestif.hash
   -> mechanism
-  -> ('s, 'k) t
+  -> 'k t
   -> string
-  -> ((bool, [> R.msg ]) result, 's) io
+  -> (Emile.local * bool, [> R.msg ]) result Lwt.t
 (** [decode_authentication scheduler hash mechanism t payload] tries to decode
     [payload] according [mechanism] used. Then, it applies the {i authenticator}
     [t] with decoded value. [hash] is used as a {i witness} of which hash

@@ -1,4 +1,3 @@
-open Sigs
 open Colombe
 
 type from = Reverse_path.t * (string * string option) list
@@ -13,7 +12,7 @@ val ipaddr : key -> Ipaddr.t
 val pp : key Fmt.t
 val equal : key -> key -> bool
 
-val v :
+val key :
      domain_from:Domain.t
   -> from:from
   -> recipients:recipient list
@@ -21,6 +20,9 @@ val v :
   -> int64
   -> key
 
+type t = (key * string Lwt_stream.t) Lwt_stream.t
+
+(*
 module type S = sig
   type +'a s
   type queue
@@ -59,3 +61,4 @@ end
 
 module Make (Scheduler : SCHEDULER) (IO : IO with type 'a t = 'a Scheduler.s) :
   S with type +'a s = 'a IO.t
+*)

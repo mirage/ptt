@@ -1,48 +1,78 @@
 (library
+ (name ptt_common)
+ (public_name ptt.common)
+ (modules ptt_common mxs)
+ (libraries lwt logs cstruct mirage-flow colombe tls mrmime dns))
+
+(library
+ (name ptt_sendmail)
+ (public_name ptt.sendmail)
+ (modules ptt_sendmail)
+ (libraries emile colombe.emile mrmime sendmail-mirage ptt.common))
+
+(library
+ (name ptt_aggregate)
+ (public_name ptt.aggregate)
+ (modules ptt_aggregate)
+ (libraries ptt.common ptt.sendmail))
+
+(library
+ (name ptt_flow)
+ (public_name ptt.flow)
+ (modules ptt_flow)
+ (libraries ke colombe tcpip))
+
+(library
+ (name ptt_map)
+ (public_name ptt.map)
+ (modules ptt_map)
+ (libraries ptt.common colombe.emile))
+
+(library
  (name ptt)
  (public_name ptt)
- (modules ptt aggregate authentication common logic mechanism messaged mxs
-   relay_map relay sigs sMTP sSMTP submission)
- (libraries digestif mrmime colombe.emile domain-name dns sendmail.starttls
+ (modules ptt authentication logic mechanism messaged
+   relay sigs sMTP sSMTP submission)
+ (libraries ptt.common ptt.flow ptt.aggregate digestif mrmime colombe.emile domain-name dns sendmail.starttls
    logs ipaddr)
  (preprocess future_syntax))
 
 (library
- (name ptt_tuyau)
- (public_name ptt.tuyau)
- (modules ptt_tuyau lwt_backend)
+ (name ptt_server)
+ (public_name ptt.server)
+ (modules ptt_server)
  (libraries lwt tls-mirage bigstringaf mirage-time mirage-flow tcpip mimic
    ptt.rdwr ptt))
 
-(library
- (name ptt_transmit)
- (public_name ptt.transmit)
- (modules ptt_transmit)
- (libraries hxd.core hxd.string ptt.tuyau mirage-clock received))
+; (library
+;  (name ptt_transmit)
+;  (public_name ptt.transmit)
+;  (modules ptt_transmit)
+;  (libraries hxd.core hxd.string ptt.tuyau mirage-clock received))
 
 (library
  (name lipap)
  (public_name ptt.lipap)
  (modules lipap)
- (libraries tls ptt.transmit mirage-random tls-mirage))
+ (libraries mirage-time mirage-clock mirage-random ptt ptt.map ptt.server dns-client-mirage))
 
 (library
  (name mti_gf)
  (public_name ptt.mti-gf)
  (modules mti_gf)
- (libraries mirage-random ptt.transmit))
+ (libraries mirage-time mirage-clock mirage-random ptt ptt.map ptt.server dns-client-mirage))
 
 (library
  (name nec)
  (public_name ptt.nec)
  (modules nec)
- (libraries dkim-mirage mirage-random ptt.transmit))
+ (libraries mirage-time mirage-clock mirage-random ptt ptt.map ptt.server dkim-mirage dns-client-mirage))
 
 (library
  (name hm)
  (public_name ptt.hm)
  (modules hm)
- (libraries dns-client-mirage uspf mirage-random ptt.transmit))
+ (libraries mirage-time mirage-clock mirage-random ptt ptt.map ptt.server uspf-mirage))
 
 (library
  (name ptt_value)
@@ -54,7 +84,7 @@
  (name spartacus)
  (public_name ptt.spartacus)
  (modules spartacus)
- (libraries spamtacus-mirage mirage-random ptt.transmit))
+ (libraries mirage-time mirage-clock mirage-random ptt ptt.map ptt.server spamtacus-mirage dns-client-mirage))
 
 (library
  (name rdwr)

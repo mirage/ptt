@@ -8,48 +8,39 @@ module Value : sig
        Encoder.encoder
     -> 'x send
     -> 'x
-    -> (unit, [> `Protocol of SSMTP.Value.error ]) t
+    -> (unit, error) t
 
   val decode_without_tls :
-    Decoder.decoder -> 'x recv -> ('x, [> `Protocol of SSMTP.Value.error ]) t
+    Decoder.decoder -> 'x recv -> ('x, error) t
 end
 
 module Value_with_tls :
-    module type of Sendmail_with_starttls.Make_with_tls (Value)
+  module type of Sendmail_with_starttls.Make_with_tls (Value)
 
-module Monad :
-    module type of
-      State.Scheduler (Sendmail_with_starttls.Context_with_tls) (Value_with_tls)
+module Monad : Logic.MONAD
+  with type context = Sendmail_with_starttls.Context_with_tls.t
+   and type error = Value_with_tls.error
 
 type context = Sendmail_with_starttls.Context_with_tls.t
 
 type error =
-  [ `Tls of
-    [ `Protocol of Value.error
-    | `Tls_alert of Tls.Packet.alert_type
-    | `Tls_failure of Tls.Engine.failure
-    | `Tls_closed ]
-  | `Protocol of
-    [ `Protocol of Value.error
-    | `Tls_alert of Tls.Packet.alert_type
-    | `Tls_failure of Tls.Engine.failure
-    | `Tls_closed ]
-  | `No_recipients
-  | `Invalid_recipients
+  [ `No_recipients
+  | `Protocol of Value_with_tls.error
   | `Too_many_bad_commands
-  | `Too_many_recipients ]
+  | `Too_many_recipients
+  | `Tls of Value_with_tls.error ]
 
 val pp_error : error Fmt.t
 
-type info = Logic.info = {
-    domain: [ `host ] Domain_name.t
+type info = Ptt_common.info = {
+    domain: Colombe.Domain.t
   ; ipaddr: Ipaddr.t
   ; tls: Tls.Config.server option
   ; zone: Mrmime.Date.Zone.t
   ; size: int64
 }
 
-type submission = Logic.submission = {
+type email = Logic.email = {
     from: Messaged.from
   ; recipients: (Forward_path.t * (string * string option) list) list
   ; domain_from: Domain.t
@@ -71,13 +62,13 @@ val m_submission :
   -> ( [> `Quit
        | `Authentication of Domain.t * Mechanism.t
        | `Authentication_with_payload of Domain.t * Mechanism.t * string ]
-     , [> error ] )
+     , [> error ])
      Colombe.State.t
 
 val m_relay :
      context
   -> domain_from:Domain.t
-  -> ([> `Quit | `Submission of submission ], [> error ]) Colombe.State.t
+  -> ([> `Quit | `Send of email ], [> error ]) Colombe.State.t
 
 val m_mail : context -> (unit, [> error ]) Colombe.State.t
 val m_end : context -> ([> `Quit ], [> error ]) Colombe.State.t
@@ -85,7 +76,7 @@ val m_end : context -> ([> `Quit ], [> error ]) Colombe.State.t
 val m_relay_init :
      context
   -> info
-  -> ([> `Quit | `Submission of submission ], [> error ]) Colombe.State.t
+  -> ([> `Quit | `Send of email ], [> error ]) Colombe.State.t
 
 val m_submission_init :
      context
@@ -94,5 +85,5 @@ val m_submission_init :
   -> ( [> `Quit
        | `Authentication of Domain.t * Mechanism.t
        | `Authentication_with_payload of Domain.t * Mechanism.t * string ]
-     , [> error ] )
+     , [> error ])
      Colombe.State.t
