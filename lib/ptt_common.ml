@@ -53,7 +53,7 @@ let recipients_are_reachable ~info dns resolver recipients =
           | Ok domain_name -> Set.add domain_name acc
           | Error _ -> raise (Invalid_recipients value))
       Set.empty recipients
-    |> Set.to_list in
+    |> Set.elements in
   let ( let* ) = Lwt.bind in
   let mail_exchange_are_reachable { Dns.Mx.mail_exchange; _ } =
     let* result = resolver.gethostbyname dns mail_exchange in
@@ -64,7 +64,7 @@ let recipients_are_reachable ~info dns resolver recipients =
     let* result = resolver.getmxbyname dns domain in
     match result with
     | Ok mxs ->
-        let lst = Dns.Rr_map.Mx_set.to_list mxs in
+        let lst = Dns.Rr_map.Mx_set.elements mxs in
         let lst = List.sort Dns.Mx.compare lst in
         Lwt_list.exists_p mail_exchange_are_reachable lst
     | Error _ -> Lwt.return false in

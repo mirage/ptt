@@ -62,4 +62,4 @@ let expand ~info t recipients =
         | None -> []
       else [ recipient ]) recipients
   |> List.concat
-  |> Set.of_list |> Set.to_list
+  |> Set.of_list |> Set.elements

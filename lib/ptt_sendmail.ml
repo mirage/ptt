@@ -171,14 +171,14 @@ module Make
                 | Error (`Msg msg) ->
                   warn_about_an_unreachable_mail_exchange ~domain ~mail_exchange msg;
                   Lwt.return acc end in
-            resolve (Dns.Rr_map.Mx_set.to_list mxs) >|= Mxs.vs >|= Result.ok
+            resolve (Dns.Rr_map.Mx_set.elements mxs) >|= Mxs.vs >|= Result.ok
         | Error _ as err -> Lwt.return err end >>= function
     | Error _ -> no_mail_exchange_service elt
     | Ok mxs ->
       if Mxs.is_empty mxs
       then no_mail_exchange_service elt
       else
-        let mxs = Mxs.to_list mxs in
+        let mxs = Mxs.bindings mxs in
         let rec go = function
           | [] ->
               (* NOTE(dinosaure): we verified that [mxs] contains at least one
@@ -207,7 +207,7 @@ module Make
     | None -> Lwt.return_unit
 
   let v
-    : type a. resolver:_ -> ?pool:pool -> info:Ptt_common.info -> Tls.Config.client -> _
+    : resolver:_ -> ?pool:pool -> info:Ptt_common.info -> Tls.Config.client -> _
     = fun ~resolver ?pool ~info tls ->
     let stream, push = Lwt_stream.create () in
     { stream; push; info; resolver; tls; pool }, push

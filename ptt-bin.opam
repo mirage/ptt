@@ -11,7 +11,7 @@ homepage: "https://github.com/mirage/ptt"
 doc: "https://mirage.github.io/ptt/"
 bug-reports: "https://github.com/mirage/ptt/issues"
 depends: [
-  "ocaml"             {>= "4.07.0"}
+  "ocaml"             {>= "4.14.0"}
   "dune"
   "ptt"               {= version}
   "bos"

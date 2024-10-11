@@ -89,9 +89,9 @@ let to_recipients ~info recipients =
   let by_domains, by_ipaddrs = aggregate_by_domains ~info recipients in
   let by_domains = List.map (fun (domain, locals) ->
     let domain = `Domain domain in
-    Ptt_sendmail.{ domain; locals }) (By_domain.to_list by_domains) in
+    Ptt_sendmail.{ domain; locals }) (By_domain.bindings by_domains) in
   let by_ipaddrs = List.map (fun (ipaddr, locals) ->
     let domain = `Ipaddr ipaddr in
     let locals = (locals :> [ `Some of Emile.local list | `Postmaster | `All]) in
-    Ptt_sendmail.{ domain; locals }) (By_ipaddr.to_list by_ipaddrs) in
+    Ptt_sendmail.{ domain; locals }) (By_ipaddr.bindings by_ipaddrs) in
   List.rev_append by_domains by_ipaddrs
