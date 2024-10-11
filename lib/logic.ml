@@ -54,8 +54,7 @@ module Value = struct
     | Reply.Encoder.error
     | `Too_many_bad_commands
     | `No_recipients
-    | `Too_many_recipients
-    | `Invalid_recipients ]
+    | `Too_many_recipients ]
 
   let pp_error ppf = function
     | #Reply.Encoder.error as err -> Reply.Encoder.pp_error ppf err
@@ -63,7 +62,6 @@ module Value = struct
     | `Too_many_bad_commands -> Fmt.string ppf "Too many bad commands"
     | `No_recipients -> Fmt.string ppf "No recipients"
     | `Too_many_recipients -> Fmt.string ppf "Too many recipients"
-    | `Invalid_recipients -> Fmt.string ppf "Invalid recipients"
 end
 
 module type MONAD = sig
@@ -100,19 +98,19 @@ module type MONAD = sig
   val decode :
        context
     -> 'a Value.recv
-    -> (   context
-        -> 'a
-        -> ('b, ([> `Protocol of error ] as 'err)) Colombe.State.t)
+    -> (context -> 'a -> ('b, ([> `Protocol of error ] as 'err)) Colombe.State.t)
     -> ('b, 'err) Colombe.State.t
 
   val send :
        context
     -> 'a Value.send
     -> 'a
-    -> (unit, [> `Protocol of error ]) Colombe.State.t
+    -> (unit, ([> `Protocol of error ] as 'err)) Colombe.State.t
 
   val recv :
-    context -> 'a Value.recv -> ('a, [> `Protocol of error ]) Colombe.State.t
+       context
+    -> 'a Value.recv
+    -> ('a, ([> `Protocol of error ] as 'err)) Colombe.State.t
 
   val return : 'a -> ('a, 'err) Colombe.State.t
   val fail : 'err -> ('a, 'err) Colombe.State.t
@@ -129,17 +127,7 @@ end
 let () = Colombe.Request.Decoder.add_extension "STARTTLS"
 let () = Colombe.Request.Decoder.add_extension "AUTH"
 
-(* XXX(dinosaure): shoud be ok! *)
-
-type info = {
-    domain: [ `host ] Domain_name.t
-  ; ipaddr: Ipaddr.t
-  ; tls: Tls.Config.server option
-  ; zone: Mrmime.Date.Zone.t
-  ; size: int64
-}
-
-type submission = {
+type email = {
     from: Messaged.from
   ; recipients: (Forward_path.t * (string * string option) list) list
   ; domain_from: Domain.t
@@ -151,7 +139,7 @@ module Log = (val Logs.src_log src : Logs.LOG)
 
 module Make (Monad : MONAD) = struct
   let politely ~domain ~ipaddr =
-    Fmt.str "%a at your service, [%s]" Domain_name.pp domain
+    Fmt.str "%a at your service, [%s]" Domain.pp domain
       (Ipaddr.to_string ipaddr)
 
   let m_properly_close_and_fail ctx ?(code = 554) ~message err =
@@ -206,7 +194,7 @@ module Make (Monad : MONAD) = struct
               `No_recipients
           | acc ->
             let recipients = List.rev acc in
-            return (`Submission {from; recipients; domain_from}))
+            return (`Send {from; recipients; domain_from}))
         | `Recipient v ->
           (* XXX(dinosaure): the minimum number of recipients that MUST be
              buffered is 100 recipients. *)
@@ -292,8 +280,8 @@ module Make (Monad : MONAD) = struct
     let* () =
       send ctx Value.PP_250
         [
-          politely ~domain:info.domain ~ipaddr:info.ipaddr; "8BITMIME"
-        ; "SMTPUTF8"; Fmt.str "SIZE %Ld" info.size
+          politely ~domain:info.Ptt_common.domain ~ipaddr:info.Ptt_common.ipaddr; "8BITMIME"
+        ; "SMTPUTF8"; Fmt.str "SIZE %Ld" info.Ptt_common.size
         ] in
     m_relay ctx ~domain_from
 
@@ -303,8 +291,8 @@ module Make (Monad : MONAD) = struct
     let* () =
       send ctx Value.PP_250
         [
-          politely ~domain:info.domain ~ipaddr:info.ipaddr; "8BITMIME"
-        ; "SMTPUTF8"; Fmt.str "SIZE %Ld" info.size
+          politely ~domain:info.Ptt_common.domain ~ipaddr:info.Ptt_common.ipaddr; "8BITMIME"
+        ; "SMTPUTF8"; Fmt.str "SIZE %Ld" info.Ptt_common.size
         ; Fmt.str "AUTH %a" Fmt.(list ~sep:(const string " ") Mechanism.pp) ms
         ] in
     m_submission ctx ~domain_from ms

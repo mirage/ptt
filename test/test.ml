@@ -1,11 +1,25 @@
 let () = Printexc.record_backtrace true
-let reporter = Logs_fmt.reporter ()
 let () = Fmt.set_utf_8 Fmt.stdout true
 let () = Fmt.set_utf_8 Fmt.stderr true
 let () = Fmt.set_style_renderer Fmt.stdout `Ansi_tty
 let () = Fmt.set_style_renderer Fmt.stderr `Ansi_tty
 let () = Logs.set_level ~all:true (Some Logs.Debug)
-let () = Logs.set_reporter reporter
+
+let reporter ppf =
+  let report src level ~over k msgf =
+    let k _ =
+      over () ;
+      k () in
+    let with_metadata header _tags k ppf fmt =
+      Format.kfprintf k ppf
+        ("%a[%a]: " ^^ fmt ^^ "\n%!")
+        Logs_fmt.pp_header (level, header)
+        Fmt.(styled `Magenta string)
+        (Logs.Src.name src) in
+    msgf @@ fun ?header ?tags fmt -> with_metadata header tags k ppf fmt in
+  { Logs.report }
+
+let () = Logs.set_reporter (reporter Fmt.stderr)
 let () = Mirage_crypto_rng_unix.initialize (module Mirage_crypto_rng.Fortuna)
 let () = Sys.set_signal Sys.sigpipe Sys.Signal_ignore
 
@@ -62,77 +76,63 @@ let auth0 =
     |> Map.add Local.(v [w "gemma"]) Digestif.(digest_string SHA1 "") in
   let f username password =
     match Map.find username m with
-    | v -> Scheduler.inj (Lwt.return Digestif.(equal SHA1 password v))
-    | exception Not_found -> Scheduler.inj (Lwt.return false) in
+    | v -> Lwt.return Digestif.(equal SHA1 password v)
+    | exception Not_found -> Lwt.return false in
   Ptt.Authentication.v f
 
 let authentication_test_0 =
   Alcotest_lwt.test_case "authentication 0" `Quick @@ fun _sw () ->
+  let open Lwt.Infix in
   let auth hash mechanism authenticator fmt =
     Fmt.kstr
       (fun payload ->
-        Ptt.Authentication.decode_authentication lwt hash mechanism
+        Ptt.Authentication.decode_authentication hash mechanism
           authenticator
-          (Base64.encode_exn payload)
-        |> Scheduler.prj)
+          (Base64.encode_exn payload))
       fmt in
   let plain_none = Ptt.Authentication.PLAIN None in
-  let open Lwt.Infix in
-  auth Digestif.SHA1 plain_none auth0 "\000%s\000%s" "romain.calascibetta"
-    "toto"
-  >>= fun romain ->
+  auth Digestif.SHA1 plain_none auth0 "\000%s\000%s" "romain.calascibetta" "toto"
+  >|= Result.map snd >>= fun romain ->
   Alcotest.(check (result bool msg)) "romain" (Ok true) romain;
   auth Digestif.SHA1 plain_none auth0 "\000%s\000%s" "thomas" "tata"
-  >>= fun thomas ->
+  >|= Result.map snd >>= fun thomas ->
   Alcotest.(check (result bool msg)) "thomas" (Ok true) thomas;
   auth Digestif.SHA1 plain_none auth0 "\000%s\000%s" "anil" "tutu"
-  >>= fun anil ->
+  >|= Result.map snd >>= fun anil ->
   Alcotest.(check (result bool msg)) "anil" (Ok true) anil;
   auth Digestif.SHA1 plain_none auth0 "\000%s\000%s" "hannes" "titi"
-  >>= fun hannes ->
+  >|= Result.map snd >>= fun hannes ->
   Alcotest.(check (result bool msg)) "hannes" (Ok true) hannes;
-  auth Digestif.SHA1 plain_none auth0 "\000%s\000%s" "gemma" "" >>= fun gemma ->
+  auth Digestif.SHA1 plain_none auth0 "\000%s\000%s" "gemma" ""
+  >|= Result.map snd >>= fun gemma ->
   Alcotest.(check (result bool msg)) "gemma" (Ok true) gemma;
-  auth Digestif.SHA1 plain_none auth0 "\000%s\000%s" "romain.calascibetta"
-    "titi"
-  >>= fun wrong ->
+  auth Digestif.SHA1 plain_none auth0 "\000%s\000%s" "romain.calascibetta" "titi"
+  >|= Result.map snd >>= fun wrong ->
   Alcotest.(check (result bool msg)) "romain (wrong)" (Ok false) wrong;
   auth Digestif.SHA1 plain_none auth0 "\000%s\000%s" "pierre.caillou" "toto"
-  >>= fun pierre ->
+  >|= Result.map snd >>= fun pierre ->
   Alcotest.(check (result bool msg)) "pierre" (Ok false) pierre;
-  auth Digestif.SHA1 plain_none auth0 "stamp\000%s\000%s" "romain.calascibetta"
-    "toto"
-  >>= fun bad_stamp ->
-  Alcotest.(check (result bool msg))
-    "bad stamp"
-    (Error (`Msg "Unexpected stamp"))
-    bad_stamp;
-  auth Digestif.SHA1 plain_none auth0 "salut les copains" >>= fun malformed ->
-  Alcotest.(check (result bool msg))
-    "malformed"
-    (Error (`Msg "Invalid input"))
-    malformed;
-  auth Digestif.SHA1 (Ptt.Authentication.PLAIN (Some "stamp")) auth0
-    "\000%s\000%s" "anil" "tutu"
-  >>= fun invalid_stamp ->
-  Alcotest.(check (result bool msg))
-    "no stamp"
-    (Error (`Msg "Invalid stamp"))
-    invalid_stamp;
+  auth Digestif.SHA1 plain_none auth0 "stamp\000%s\000%s" "romain.calascibetta" "toto"
+  >|= Result.map snd >>= fun bad_stamp ->
+  Alcotest.(check (result bool msg)) "bad stamp" (Error (`Msg "Unexpected stamp")) bad_stamp;
+  auth Digestif.SHA1 plain_none auth0 "salut les copains"
+  >|= Result.map snd >>= fun malformed ->
+  Alcotest.(check (result bool msg)) "malformed" (Error (`Msg "Invalid input")) malformed;
+  auth Digestif.SHA1 (Ptt.Authentication.PLAIN (Some "stamp")) auth0 "\000%s\000%s" "anil" "tutu"
+  >|= Result.map snd >>= fun invalid_stamp ->
+  Alcotest.(check (result bool msg)) "no stamp" (Error (`Msg "Invalid stamp")) invalid_stamp;
   auth Digestif.SHA1 plain_none auth0 "\000\000%s" "tutu"
-  >>= fun invalid_username ->
-  Alcotest.(check (result bool msg))
-    "invalid username"
-    (Error (`Msg "Invalid username: \"\""))
-    invalid_username;
+  >|= Result.map snd >>= fun invalid_username ->
+  Alcotest.(check (result bool msg)) "invalid username" (Error (`Msg "Invalid username: \"\"")) invalid_username;
   Lwt.return_unit
 
-let x25519 = Domain_name.(host_exn <.> of_string_exn) "x25519.net"
-let gmail = Domain_name.(host_exn <.> of_string_exn) "gmail.com"
+let x25519 = Colombe.Domain.(Domain [ "x25519"; "net" ])
+let gmail = Colombe.Domain.(Domain [ "gmail"; "com" ])
 let recoil = Domain_name.(host_exn <.> of_string_exn) "recoil.org"
 let nqsb = Domain_name.(host_exn <.> of_string_exn) "nqsb.io"
 let gazagnaire = Domain_name.(host_exn <.> of_string_exn) "gazagnaire.org"
 
+(*
 let pp_unresolved ppf = function
   | `All -> Fmt.string ppf "<all>"
   | `Postmaster -> Fmt.string ppf "<postmaster>"
@@ -154,14 +154,10 @@ let unresolved = Alcotest.testable pp_unresolved equal_unresolved
 let aggregate_test_0 =
   Alcotest_lwt.test_case "aggregate 0" `Quick @@ fun _sw () ->
   let open Mrmime.Mailbox in
-  let m0 =
-    Local.[w "romain"; w "calascibetta"] @ Domain.(domain, [a "gmail"; a "com"])
-  in
+  let m0 = Local.[w "romain"; w "calascibetta"] @ Domain.(domain, [a "gmail"; a "com"]) in
   let m1 = Local.[w "thomas"] @ Domain.(domain, [a "gazagnaire"; a "org"]) in
   let m2 = Local.[w "anil"] @ Domain.(domain, [a "recoil"; a "org"]) in
-  let m3 =
-    Local.[w "gemma"; w "d"; w "gordon"] @ Domain.(domain, [a "gmail"; a "com"])
-  in
+  let m3 = Local.[w "gemma"; w "d"; w "gordon"] @ Domain.(domain, [a "gmail"; a "com"]) in
   let ms =
     List.map
       (Rresult.R.get_ok <.> Colombe_emile.to_forward_path)
@@ -345,6 +341,7 @@ let messaged_test_1 =
   Alcotest.(check bool) "stream consumed" res2 true;
   Alcotest.(check int) "(producer & consumer)" !last 1;
   Lwt.return_unit
+*)
 
 let put_crlf x = x ^ "\r\n"
 
@@ -424,11 +421,14 @@ let smtp_test_0 =
 let smtp_test_1 =
   Alcotest_lwt.test_case "SMTP (relay) 1" `Quick @@ fun _sw () ->
   let rdwr, check =
-    rdwr_from_flows ["EHLO gmail.com"; "QUIT"]
-      [
-        "220 x25519.net"; "250-x25519.net at your service, [127.0.0.1]"
-      ; "250-8BITMIME"; "250-SMTPUTF8"; "250 SIZE 16777216"; "221 Bye, buddy!"
-      ] in
+    rdwr_from_flows
+      [ "EHLO gmail.com"; "QUIT" ]
+      [ "220 x25519.net"
+      ; "250-x25519.net at your service, [127.0.0.1]"
+      ; "250-8BITMIME"
+      ; "250-SMTPUTF8"
+      ; "250 SIZE 16777216"
+      ; "221 Bye, buddy!" ] in
   let ctx = Colombe.State.Context.make () in
   let info =
     {
@@ -444,7 +444,7 @@ let smtp_test_1 =
     Alcotest.(check unit) "empty stream" (check ()) ();
     Alcotest.(check pass) "quit" () ();
     Lwt.return_unit
-  | Ok (`Submission _) -> Alcotest.fail "Unexpected submission"
+  | Ok (`Send _) -> Alcotest.fail "Unexpected submission"
   | Error (`Error err) ->
     Alcotest.failf "Unexpected protocol error: %a" Ptt.SSMTP.pp_error err
   | Error `Connection_close -> Alcotest.fail "Unexpected connection close"
@@ -453,12 +453,16 @@ let smtp_test_2 =
   Alcotest_lwt.test_case "SMTP (relay) 2" `Quick @@ fun _sw () ->
   let rdwr, check =
     rdwr_from_flows
-      ["EHLO gmail.com"; "RSET"; "QUIT"]
-      [
-        "220 x25519.net"; "250-x25519.net at your service, [127.0.0.1]"
-      ; "250-8BITMIME"; "250-SMTPUTF8"; "250 SIZE 16777216"; "250 Yes buddy!"
-      ; "221 Bye, buddy!"
-      ] in
+      [ "EHLO gmail.com"
+      ; "RSET"
+      ; "QUIT" ]
+      [ "220 x25519.net"
+      ; "250-x25519.net at your service, [127.0.0.1]"
+      ; "250-8BITMIME"
+      ; "250-SMTPUTF8"
+      ; "250 SIZE 16777216"
+      ; "250 Yes buddy!"
+      ; "221 Bye, buddy!" ] in
   let ctx = Colombe.State.Context.make () in
   let info =
     {
@@ -474,7 +478,7 @@ let smtp_test_2 =
     Alcotest.(check unit) "empty stream" (check ()) ();
     Alcotest.(check pass) "quit" () ();
     Lwt.return_unit
-  | Ok (`Submission _) -> Alcotest.fail "Unexpected submission"
+  | Ok (`Send _) -> Alcotest.fail "Unexpected submission"
   | Error (`Error err) ->
     Alcotest.failf "Unexpected protocol error: %a" Ptt.SSMTP.pp_error err
   | Error `Connection_close -> Alcotest.fail "Unexpected connection close"
@@ -483,22 +487,23 @@ let smtp_test_3 =
   Alcotest_lwt.test_case "SMTP (relay) 3" `Quick @@ fun _sw () ->
   let rdwr, check =
     rdwr_from_flows
-      [
-        "EHLO gmail.com"; "RSET"; "RSET"; "RSET"; "RSET"; "RSET"; "RSET"; "RSET"
+      [ "EHLO gmail.com"
       ; "RSET"; "RSET"; "RSET"; "RSET"; "RSET"; "RSET"; "RSET"; "RSET"; "RSET"
       ; "RSET"; "RSET"; "RSET"; "RSET"; "RSET"; "RSET"; "RSET"; "RSET"; "RSET"
-      ]
-      [
-        "220 x25519.net"; "250-x25519.net at your service, [127.0.0.1]"
-      ; "250-8BITMIME"; "250-SMTPUTF8"; "250 SIZE 16777216"; "250 Yes buddy!"
+      ; "RSET"; "RSET"; "RSET"; "RSET"; "RSET"; "RSET"; "RSET" ]
+      [ "220 x25519.net"
+      ; "250-x25519.net at your service, [127.0.0.1]"
+      ; "250-8BITMIME"
+      ; "250-SMTPUTF8"
+      ; "250 SIZE 16777216"
       ; "250 Yes buddy!"; "250 Yes buddy!"; "250 Yes buddy!"; "250 Yes buddy!"
       ; "250 Yes buddy!"; "250 Yes buddy!"; "250 Yes buddy!"; "250 Yes buddy!"
       ; "250 Yes buddy!"; "250 Yes buddy!"; "250 Yes buddy!"; "250 Yes buddy!"
       ; "250 Yes buddy!"; "250 Yes buddy!"; "250 Yes buddy!"; "250 Yes buddy!"
       ; "250 Yes buddy!"; "250 Yes buddy!"; "250 Yes buddy!"; "250 Yes buddy!"
       ; "250 Yes buddy!"; "250 Yes buddy!"; "250 Yes buddy!"; "250 Yes buddy!"
-      ; "554 You reached the limit buddy!"
-      ] in
+      ; "250 Yes buddy!"
+      ; "554 You reached the limit buddy!" ] in
   let ctx = Colombe.State.Context.make () in
   let info =
     {
@@ -510,7 +515,7 @@ let smtp_test_3 =
     } in
   let open Lwt.Infix in
   run_state (Ptt.SSMTP.m_relay_init ctx info) rdwr >>= function
-  | Ok (`Quit | `Submission _) -> Alcotest.fail "Unexpected quit or submission"
+  | Ok (`Quit | `Send _) -> Alcotest.fail "Unexpected quit or submission"
   | Error (`Error `Too_many_bad_commands) ->
     Alcotest.(check unit) "empty stream" (check ()) ();
     Alcotest.(check pass) "too many bad commands" () ();
@@ -523,12 +528,16 @@ let smtp_test_4 =
   Alcotest_lwt.test_case "SMTP (relay) 4" `Quick @@ fun _sw () ->
   let rdwr, check =
     rdwr_from_flows
-      ["EHLO gmail.com"; "MAIL FROM:<romain.calascibetta@gmail.com>"; "DATA"]
-      [
-        "220 x25519.net"; "250-x25519.net at your service, [127.0.0.1]"
-      ; "250-8BITMIME"; "250-SMTPUTF8"; "250 SIZE 16777216"; "250 Ok, buddy!"
-      ; "554 No recipients"
-      ] in
+      [ "EHLO gmail.com"
+      ; "MAIL FROM:<romain.calascibetta@gmail.com>"
+      ; "DATA"]
+      [ "220 x25519.net"
+      ; "250-x25519.net at your service, [127.0.0.1]"
+      ; "250-8BITMIME"
+      ; "250-SMTPUTF8"
+      ; "250 SIZE 16777216"
+      ; "250 Ok, buddy!"
+      ; "554 No recipients" ] in
   let ctx = Colombe.State.Context.make () in
   let info =
     {
@@ -561,15 +570,16 @@ let smtp_test_5 =
   Alcotest_lwt.test_case "SMTP (relay) 5" `Quick @@ fun _sw () ->
   let rdwr, check =
     rdwr_from_flows
-      [
-        "EHLO gmail.com"; "MAIL FROM:<romain.calascibetta@gmail.com>"
-      ; "RCPT TO:<anil@recoil.org>"; "DATA"
-      ]
-      [
-        "220 x25519.net"; "250-x25519.net at your service, [127.0.0.1]"
-      ; "250-8BITMIME"; "250-SMTPUTF8"; "250 SIZE 16777216"; "250 Ok, buddy!"
+      [ "EHLO gmail.com"
+      ; "MAIL FROM:<romain.calascibetta@gmail.com>"
+      ; "RCPT TO:<anil@recoil.org>"; "DATA" ]
+      [ "220 x25519.net"
+      ; "250-x25519.net at your service, [127.0.0.1]"
+      ; "250-8BITMIME"
+      ; "250-SMTPUTF8"
+      ; "250 SIZE 16777216"
       ; "250 Ok, buddy!"
-      ] in
+      ; "250 Ok, buddy!" ] in
   let ctx = Colombe.State.Context.make () in
   let info =
     {
@@ -581,9 +591,7 @@ let smtp_test_5 =
     } in
   let open Lwt.Infix in
   run_state (Ptt.SSMTP.m_relay_init ctx info) rdwr >>= function
-  | Ok
-      (`Submission
-        {Ptt.SSMTP.from; Ptt.SSMTP.recipients; Ptt.SSMTP.domain_from}) ->
+  | Ok (`Send {Ptt.SSMTP.from; Ptt.SSMTP.recipients; Ptt.SSMTP.domain_from}) ->
     let romain_calascibetta =
       let open Mrmime.Mailbox in
       Local.[w "romain"; w "calascibetta"]
@@ -615,12 +623,17 @@ let smtp_test_6 =
   Alcotest_lwt.test_case "SMTP (submission) 6" `Quick @@ fun _sw () ->
   let rdwr, check =
     rdwr_from_flows
-      ["EHLO gmail.com"; "MAIL FROM:<romain.calascibetta@gmail.com>"; "QUIT"]
-      [
-        "220 x25519.net"; "250-x25519.net at your service, [127.0.0.1]"
-      ; "250-8BITMIME"; "250-SMTPUTF8"; "250-SIZE 16777216"; "250 AUTH PLAIN"
-      ; "530 Authentication required, buddy!"; "221 Bye, buddy!"
-      ] in
+      [ "EHLO gmail.com"
+      ; "MAIL FROM:<romain.calascibetta@gmail.com>"
+      ; "QUIT" ]
+      [ "220 x25519.net"
+      ; "250-x25519.net at your service, [127.0.0.1]"
+      ; "250-8BITMIME"
+      ; "250-SMTPUTF8"
+      ; "250-SIZE 16777216"
+      ; "250 AUTH PLAIN"
+      ; "530 Authentication required, buddy!"
+      ; "221 Bye, buddy!" ] in
   let ctx = Colombe.State.Context.make () in
   let info =
     {
@@ -648,11 +661,14 @@ let smtp_test_7 =
   Alcotest_lwt.test_case "SMTP (submission) 7" `Quick @@ fun _sw () ->
   let rdwr, check =
     rdwr_from_flows
-      ["EHLO gmail.com"; "AUTH PLAIN"]
-      [
-        "220 x25519.net"; "250-x25519.net at your service, [127.0.0.1]"
-      ; "250-8BITMIME"; "250-SMTPUTF8"; "250-SIZE 16777216"; "250 AUTH PLAIN"
-      ] in
+      [ "EHLO gmail.com"
+      ; "AUTH PLAIN" ]
+      [ "220 x25519.net"
+      ; "250-x25519.net at your service, [127.0.0.1]"
+      ; "250-8BITMIME"
+      ; "250-SMTPUTF8"
+      ; "250-SIZE 16777216"
+      ; "250 AUTH PLAIN" ] in
   let ctx = Colombe.State.Context.make () in
   let info =
     {
@@ -682,6 +698,7 @@ let smtp_test_7 =
     Alcotest.failf "Unexpected protocol error: %a" Ptt.SSMTP.pp_error err
   | Error `Connection_close -> Alcotest.failf "Unexpected connection close"
 
+(*
 module Random = struct
   type g = unit
   type +'a io = 'a Lwt.t
@@ -721,88 +738,51 @@ module Resolver = struct
     let err = Rresult.R.error_msgf "Extension are not available" in
     Lwt.return err
 end
+*)
 
-module Flow = struct
-  type t = Lwt_unix.file_descr
-  type +'a io = 'a Lwt.t
+module Server = Ptt_server.Make (Time) (Tcpip_stack_socket.V4V6)
 
-  let flow endpoint =
-    let sockaddr =
-      match endpoint with
-      | Unix.ADDR_UNIX _ -> endpoint
-      | Unix.ADDR_INET (fake_inet_addr, _) ->
-        let fake_inet_addr = Ipaddr_unix.of_inet_addr fake_inet_addr in
-        Unix.ADDR_INET
-          ( Unix.inet_addr_loopback
-          , Hashtbl.find fake_smtp_servers fake_inet_addr ) in
-    let open Lwt.Infix in
-    let socket = Lwt_unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
-    Lwt_unix.connect socket sockaddr >>= fun () -> Lwt.return socket
+let resolver =
+  let open Ptt_common in
+  let getmxbyname _ domain_name =
+    let mxs =
+      Dns.Rr_map.Mx_set.add
+        {Dns.Mx.preference= 0; mail_exchange= domain_name}
+        Dns.Rr_map.Mx_set.empty in
+    Lwt.return (Ok mxs) in
+  let gethostbyname tbl domain_name =
+    match Hashtbl.find_opt tbl domain_name with
+    | Some v -> Lwt.return (Ok v)
+    | None ->
+      let err = Rresult.R.error_msgf "%a not found" Domain_name.pp domain_name in
+      Lwt.return err in
+  { getmxbyname; gethostbyname }
 
-  let recv socket buf off len =
-    Lwt.catch
-      (fun () -> Lwt_unix.read socket buf off len)
-      (fun exn ->
-        Logs.err (fun m ->
-            m "[recv] Got an exception: %S." (Printexc.to_string exn));
-        Lwt.fail exn)
-
-  let send socket buf off len =
-    let open Lwt.Infix in
-    let rec go socket buf off len =
-      if len > 0 then
-        Lwt.catch
-          (fun () ->
-            Lwt_unix.write socket buf off len >>= fun res ->
-            go socket buf (off + res) (len - res))
-          (fun exn ->
-            Logs.err (fun m ->
-                m "[send] Got an exception: %S." (Printexc.to_string exn));
-            Lwt.fail exn)
-      else Lwt.return_unit in
-    go socket (Bytes.unsafe_of_string buf) off len
-end
-
-let serve_when_ready ?stop ~handler socket =
+let make_smtp_server ?stop ~port tbl info stack =
   let open Lwt.Infix in
-  `Initialized
-    (let switched_off =
-       let t, u = Lwt.wait () in
-       Lwt_switch.add_hook stop (fun () ->
-           Lwt.wakeup_later u `Stopped;
-           Lwt.return_unit);
-       t in
-     let rec loop () =
-       Lwt_unix.accept socket >>= fun (flow, _) ->
-       let[@warning "-8"] (Unix.ADDR_INET (inet_addr, _)) =
-         Lwt_unix.getpeername flow in
-       Lwt.async (fun () -> handler (Ipaddr_unix.of_inet_addr inet_addr) flow);
-       Lwt.pause () >>= loop in
-     let stop =
-       Lwt.pick [switched_off; loop ()] >>= fun `Stopped ->
-       Lwt_unix.close socket in
-     stop)
+  let module SMTP = Ptt.Relay.Make (Tcpip_stack_socket.V4V6) in
+  let ic_server, stream0, close = SMTP.create ~info in
+  let job_server server =
+    let handler flow =
+      let ipaddr, port = Tcpip_stack_socket.V4V6.TCP.dst flow in
+      Lwt.finalize
+        (fun () ->
+          SMTP.accept ~ipaddr flow tbl resolver server
+          >|= Result.map_error (Rresult.R.msgf "%a" SMTP.pp_error))
+        (fun () -> Tcpip_stack_socket.V4V6.TCP.close flow)
+      >>= function
+      | Ok () -> Lwt.return ()
+      | Error (`Msg err) ->
+        Logs.err (fun m -> m "<%a:%d> raised an error: %s" Ipaddr.pp ipaddr port err);
+        Lwt.return () in
+    Server.init ~port stack >|= fun service ->
+    Server.serve_when_ready ?stop ~handler service in
+  job_server ic_server >|= fun (`Initialized th) ->
+  let th = th >|= close in
+  `Initialized th, stream0
 
-let make_relay_smtp_server ?stop ~port info =
-  let module SMTP = Ptt.Relay.Make (Scheduler) (Lwt_io) (Flow) (Resolver) in
-  let conf_server = SMTP.create ~info in
-  let messaged = SMTP.messaged conf_server in
-  let smtp_relay_server conf_server =
-    let open Lwt.Infix in
-    let socket = Lwt_unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
-    let sockaddr =
-      Unix.ADDR_INET (Ipaddr_unix.to_inet_addr info.SMTP.ipaddr, port) in
-    Lwt_unix.bind socket sockaddr >|= fun () ->
-    Lwt_unix.listen socket 40;
-
-    let handler ipaddr flow =
-      let open Lwt.Infix in
-      Logs.debug (fun m -> m "Got a new connection. Start to process it!");
-      SMTP.accept ~ipaddr flow () conf_server >>= fun res ->
-      Lwt_unix.close flow >>= fun () ->
-      match res with Ok _ -> Lwt.return () | Error _err -> Lwt.return () in
-    serve_when_ready ?stop ~handler socket in
-  let smtp_logic messaged ms =
+(*
+  let job_logic messaged ms =
     let open Lwt.Infix in
     Lwt.return
       (`Queue
@@ -821,8 +801,31 @@ let make_relay_smtp_server ?stop ~port info =
   Lwt.both
     (smtp_relay_server conf_server)
     (smtp_logic messaged (Queue.create ()))
+*)
 
-let sendmail ipaddr port ~domain sender recipients contents =
+module Happy_eyeballs_daemon = Happy_eyeballs_mirage.Make
+  (Time) (Mclock) (Tcpip_stack_socket.V4V6)
+
+module Sendmail = Sendmail_mirage.Make
+  (Pclock) (Tcpip_stack_socket.V4V6.TCP) (Happy_eyeballs_daemon)
+
+let sendmail he ipaddr port ~domain sender recipients contents =
+  let open Lwt.Infix in
+  let destination = Fmt.str "%a" Ipaddr.pp ipaddr in
+  let stream = Lwt_stream.of_list contents in
+  let stream = Lwt_stream.map (fun str -> str ^ "\r\n") stream in
+  let mail () =
+    Lwt_stream.get stream >|= function
+    | Some str -> Some (str, 0, String.length str)
+    | None -> None in
+  Sendmail.sendmail he ~destination ~port ~domain
+    sender recipients mail >>= function
+  | Ok () -> Lwt.return_unit
+  | Error (`Msg msg) -> Fmt.failwith "%s" msg
+  | Error (#Sendmail_with_starttls.error as err) ->
+    Fmt.failwith "%a" Sendmail_with_starttls.pp_error err
+
+(*
   let stream = stream_of_string_list contents in
   let stream () =
     let open Lwt.Infix in
@@ -860,130 +863,132 @@ let sendmail ipaddr port ~domain sender recipients contents =
   Scheduler.prj res >>= function
   | Ok () -> Lwt_unix.close socket
   | Error err -> Fmt.failwith "%a" Sendmail.pp_error err
+*)
 
 let key = Alcotest.testable Ptt.Messaged.pp Ptt.Messaged.equal
 
 let full_test_0 =
   Alcotest_lwt.test_case "Receive one email from Anil" `Quick @@ fun _sw () ->
   let romain_calascibetta =
+    let open Mrmime.Mailbox in
     (Rresult.R.get_ok <.> Colombe_emile.to_forward_path)
-      (let open Mrmime.Mailbox in
-       Local.[w "romain"; w "calascibetta"]
-       @ Domain.(domain, [a "gmail"; a "com"])) in
+      (Local.[w "romain"; w "calascibetta"] @ Domain.(domain, [a "gmail"; a "com"])) in
   let anil =
+    let open Mrmime.Mailbox in
     (Rresult.R.get_ok <.> Colombe_emile.to_reverse_path)
-      (let open Mrmime.Mailbox in
-       Local.[w "anil"] @ Domain.(domain, [a "recoil"; a "org"])) in
+      (Local.[w "anil"] @ Domain.(domain, [a "recoil"; a "org"])) in
   let recoil = (Colombe.Domain.of_string_exn <.> Domain_name.to_string) recoil in
+  let ipv4_only = false and ipv6_only = false in
+  let open Lwt.Infix in
+  let open Tcpip_stack_socket.V4V6 in
+  TCP.connect ~ipv4_only ~ipv6_only Ipaddr.V4.Prefix.global None >>= fun tcpv4v6 ->
+  UDP.connect ~ipv4_only ~ipv6_only Ipaddr.V4.Prefix.global None >>= fun udpv4v6 ->
+  connect udpv4v6 tcpv4v6 >>= fun stack ->
+  let he = Happy_eyeballs_daemon.create stack in
   let sendmail contents =
-    sendmail
+    sendmail he
       Ipaddr.(V4 V4.localhost)
       8888 ~domain:recoil anil [romain_calascibetta] contents in
   let stop = Lwt_switch.create () in
   let open Lwt.Infix in
-  make_relay_smtp_server ~stop ~port:8888
-    {
-      Ptt.SMTP.domain= gmail
+  let tbl = Hashtbl.create 0 in
+  make_smtp_server ~stop ~port:8888 tbl
+    { Ptt.SMTP.domain= gmail
     ; ipaddr= Ipaddr.(V4 V4.localhost)
     ; tls= None
     ; zone= Mrmime.Date.Zone.GMT
-    ; size= 0x1000000L
-    }
-  >>= fun (`Initialized th0, `Queue th1) ->
-  Lwt.join
-    [
-      ( sendmail
-          [
-            "From: anil@recoil.org"; "Subject: SMTP server, PLZ!"; ""
-          ; "Hello World!"
-          ]
-      >>= fun () -> Lwt_switch.turn_off stop ); th0
-    ]
-  >>= fun () ->
-  th1 >>= fun contents ->
-  Alcotest.(check (list key))
-    "inbox" contents
-    [
-      Ptt.Messaged.v ~domain_from:recoil ~from:(anil, [])
+    ; size= 0x1000000L } tcpv4v6
+  >>= fun (`Initialized th, stream) ->
+  let sendmail =
+    sendmail
+      [ "From: anil@recoil.org"
+      ; "Subject: SMTP server, PLZ!"
+      ; ""
+      ; "Hello World!" ] >>= fun () ->
+    Logs.debug (fun m -> m "Close the SMTP server");
+    Lwt_switch.turn_off stop in
+  Lwt.join [ sendmail; th ] >>= fun () ->
+  Lwt_stream.to_list stream >|= List.map fst >>= fun inbox ->
+  Alcotest.(check (list key)) "inbox" inbox
+    [ Ptt.Messaged.key ~domain_from:recoil ~from:(anil, [])
         ~recipients:[romain_calascibetta, []]
-        ~ipaddr:(Ipaddr.V4 Ipaddr.V4.localhost) 0L
-    ];
+        ~ipaddr:(Ipaddr.V4 Ipaddr.V4.localhost) 0L ];
   Lwt.return_unit
 
 let full_test_1 =
   Alcotest_lwt.test_case "Receive emails from Anil and Thomas" `Quick
   @@ fun _sw () ->
   let romain_calascibetta =
+    let open Mrmime.Mailbox in
     (Rresult.R.get_ok <.> Colombe_emile.to_forward_path)
-      (let open Mrmime.Mailbox in
-       Local.[w "romain"; w "calascibetta"]
-       @ Domain.(domain, [a "gmail"; a "com"])) in
+      (Local.[w "romain"; w "calascibetta"] @ Domain.(domain, [a "gmail"; a "com"])) in
   let anil =
+    let open Mrmime.Mailbox in
     (Rresult.R.get_ok <.> Colombe_emile.to_reverse_path)
-      (let open Mrmime.Mailbox in
-       Local.[w "anil"] @ Domain.(domain, [a "recoil"; a "org"])) in
+      (Local.[w "anil"] @ Domain.(domain, [a "recoil"; a "org"])) in
   let thomas =
+    let open Mrmime.Mailbox in
     (Rresult.R.get_ok <.> Colombe_emile.to_reverse_path)
-      (let open Mrmime.Mailbox in
-       Local.[w "thomas"] @ Domain.(domain, [a "gazagnaire"; a "org"])) in
+      (Local.[w "thomas"] @ Domain.(domain, [a "gazagnaire"; a "org"])) in
   let recoil = (Colombe.Domain.of_string_exn <.> Domain_name.to_string) recoil in
-  let gazagnaire =
-    (Colombe.Domain.of_string_exn <.> Domain_name.to_string) gazagnaire in
+  let gazagnaire = (Colombe.Domain.of_string_exn <.> Domain_name.to_string) gazagnaire in
+  let ipv4_only = false and ipv6_only = false in
+  let open Lwt.Infix in
+  let open Tcpip_stack_socket.V4V6 in
+  TCP.connect ~ipv4_only ~ipv6_only Ipaddr.V4.Prefix.global None >>= fun tcpv4v6 ->
+  UDP.connect ~ipv4_only ~ipv6_only Ipaddr.V4.Prefix.global None >>= fun udpv4v6 ->
+  connect udpv4v6 tcpv4v6 >>= fun stack ->
+  let he = Happy_eyeballs_daemon.create stack in
   let stop = Lwt_switch.create () in
   let open Lwt.Infix in
-  make_relay_smtp_server ~stop ~port:4444
-    {
-      Ptt.SMTP.domain= gmail
+  let tbl = Hashtbl.create 0 in
+  make_smtp_server ~stop ~port:4444 tbl
+    { Ptt.SMTP.domain= gmail
     ; ipaddr= Ipaddr.(V4 V4.localhost)
     ; tls= None
     ; zone= Mrmime.Date.Zone.GMT
-    ; size= 0x1000000L
-    }
-  >>= fun (`Initialized th0, `Queue th1) ->
+    ; size= 0x1000000L } tcpv4v6
+  >>= fun (`Initialized th, stream) ->
   let sendmail ~domain sender contents =
-    sendmail
-      Ipaddr.(V4 V4.localhost)
+    sendmail he Ipaddr.(V4 V4.localhost)
       4444 ~domain sender [romain_calascibetta] contents in
-  Lwt.join
-    [
-      ( sendmail ~domain:recoil anil
-          [
-            "From: anil@recoil.org"; "Subject: SMTP server, PLZ!"; ""
-          ; "Hello World!"
-          ]
-      >>= fun () ->
-        sendmail ~domain:gazagnaire thomas
-          [
-            "From: anil@recoil.org"; "Subject: SMTP server, PLZ!"; ""
-          ; "Hello World!"
-          ]
-        >>= fun () -> Lwt_switch.turn_off stop ); th0
-    ]
-  >>= fun () ->
-  th1 >>= fun contents ->
+  let sendmail =
+    sendmail ~domain:recoil anil
+      [ "From: anil@recoil.org"
+      ; "Subject: SMTP server, PLZ!"
+      ; ""
+      ; "Hello World!" ]
+    >>= fun () ->
+    sendmail ~domain:gazagnaire thomas
+      [ "From: anil@recoil.org"
+      ; "Subject: SMTP server, PLZ!"
+      ; ""
+      ; "Hello World!" ]
+    >>= fun () -> Lwt_switch.turn_off stop in
+  Lwt.join [ sendmail; th ] >>= fun () ->
+  Lwt_stream.to_list stream >|= List.map fst >|= List.rev >>= fun inbox ->
   Alcotest.(check (list key))
-    "inbox" contents
-    [
-      Ptt.Messaged.v ~domain_from:gazagnaire ~from:(thomas, [])
+    "inbox" inbox
+    [ Ptt.Messaged.key ~domain_from:gazagnaire ~from:(thomas, [])
         ~recipients:[romain_calascibetta, []]
         ~ipaddr:(Ipaddr.V4 Ipaddr.V4.localhost) 1L
-    ; Ptt.Messaged.v ~domain_from:recoil ~from:(anil, [])
+    ; Ptt.Messaged.key ~domain_from:recoil ~from:(anil, [])
         ~recipients:[romain_calascibetta, []]
-        ~ipaddr:(Ipaddr.V4 Ipaddr.V4.localhost) 0L
-    ];
+        ~ipaddr:(Ipaddr.V4 Ipaddr.V4.localhost) 0L ];
   Lwt.return_unit
 
 let fiber =
   Alcotest_lwt.run "ptt"
-    [
-      "mechanism", [mechanism_test_0]; "authentication", [authentication_test_0]
-    ; "aggregate", [aggregate_test_0]
-    ; "messaged", [messaged_test_0; messaged_test_1]
-    ; ( "SMTP"
-      , [
-          smtp_test_0; smtp_test_1; smtp_test_2; smtp_test_3; smtp_test_4
-        ; smtp_test_5; smtp_test_6; smtp_test_7
-        ] ); "Server", [full_test_0; full_test_1]
-    ]
+    [ "mechanism", [mechanism_test_0]
+    ; "authentication", [authentication_test_0]
+    ; "SMTP", [ smtp_test_0
+              ; smtp_test_1
+              ; smtp_test_2
+              ; smtp_test_3
+              ; smtp_test_4
+              ; smtp_test_5
+              ; smtp_test_6
+              ; smtp_test_7 ]
+    ; "server", [full_test_0; full_test_1] ]
 
 let () = Lwt_main.run fiber
