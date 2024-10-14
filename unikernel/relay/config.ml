@@ -32,7 +32,7 @@ let runtime_args = [ setup ]
 
 let relay =
   main ~runtime_args ~packages "Unikernel.Make" @@
-  time @-> mclock @-> pclock @-> stackv4v6 @-> dns_client @-> git_client @-> job
+  time @-> mclock @-> pclock @-> stackv4v6 @-> dns_client @-> happy_eyeballs @-> git_client @-> job
 
 let time = default_time
 let mclock = default_monotonic_clock
@@ -47,4 +47,4 @@ let git_client =
 
 let () =
   register "relay"
-    [ relay $ time $ mclock $ pclock $ stack $ dns $ git_client ]
+    [ relay $ time $ mclock $ pclock $ stack $ dns $ he $ git_client ]

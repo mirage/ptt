@@ -75,6 +75,9 @@ let auth0 =
     |> Map.add Local.(v [w "hannes"]) Digestif.(digest_string SHA1 "titi")
     |> Map.add Local.(v [w "gemma"]) Digestif.(digest_string SHA1 "") in
   let f username password =
+    let username = match username with
+      | `Dot_string vs -> List.map (fun x -> `Atom x) vs
+      | `String _ -> assert false in
     match Map.find username m with
     | v -> Lwt.return Digestif.(equal SHA1 password v)
     | exception Not_found -> Lwt.return false in

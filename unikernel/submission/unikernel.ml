@@ -1,12 +1,12 @@
 open Rresult
 open Lwt.Infix
 
-let ( $ ) f g = fun x -> match f x with Ok x -> g x | Error _ as err -> err
 let ( <.> ) f g = fun x -> f (g x)
+let ( $ ) f g = fun x -> match f x with Ok x -> g x | Error _ as err -> err
 let msgf fmt = Fmt.kstr (fun msg -> `Msg msg) fmt
 
 let local_of_string str =
-  match Angstrom.parse_string ~consume:All Emile.Parser.local_part str with
+  match Angstrom.parse_string ~consume:All Colombe.Path.Decoder.local_part str with
   | Ok v -> Ok v | Error _ -> Error (R.msgf "Invalid local-part: %S" str)
 
 module K = struct
@@ -18,7 +18,7 @@ module K = struct
 
   let domain =
     let doc = Arg.info ~doc:"SMTP domain-name." [ "domain" ] in
-    let domain_name = Arg.conv (Domain_name.(of_string $ host), Domain_name.pp) in
+    let domain_name = Arg.conv Colombe.Domain.(of_string, pp) in
     Arg.(required & opt (some domain_name) None doc)
 
   let hostname =
@@ -54,7 +54,7 @@ module K = struct
 
   type t =
     { remote : string
-    ; domain : [ `host ] Domain_name.t
+    ; domain : Colombe.Domain.t
     ; hostname : [ `host ] Domain_name.t
     ; postmaster : Emile.mailbox
     ; destination : Ipaddr.t
@@ -74,25 +74,12 @@ module Make
   (Mclock : Mirage_clock.MCLOCK)
   (Pclock : Mirage_clock.PCLOCK)
   (Stack : Tcpip.Stack.V4V6)
+  (Happy_eyeballs : Happy_eyeballs_mirage.S with type flow = Stack.TCP.flow)
   (_ : sig end)
 = struct
   module Nss = Ca_certs_nss.Make (Pclock)
   module Certify = Dns_certify_mirage.Make (Random) (Pclock) (Time) (Stack)
   module Store = Git_kv.Make (Pclock)
-
-  (* XXX(dinosaure): this is a fake resolver which enforce the [submission] to
-   * transmit **any** emails to only one and unique SMTP server. *)
-
-  module Resolver = struct
-    type t = Ipaddr.t
-    type +'a io = 'a Lwt.t
-
-    let gethostbyname ipaddr _domain_name = Lwt.return_ok ipaddr
-    let getmxbyname _ipaddr mail_exchange = Lwt.return_ok (Dns.Rr_map.Mx_set.singleton { Dns.Mx.preference= 0; mail_exchange; })
-    let extension ipaddr _ldh _value = Lwt.return_ok ipaddr
-  end
-
-  module Lipap = Lipap.Make (Time) (Mclock) (Pclock) (Resolver) (Stack)
 
   let authentication ctx remote =
     Git_kv.connect ctx remote >>= fun t ->
@@ -101,14 +88,10 @@ module Make
       Logs.warn (fun m -> m "Got an error when we tried to list values from \
                              Git: %a."
         Store.pp_error err);
-      let authentication =
-        let open Ptt_tuyau.Lwt_backend.Lwt_scheduler in
-        Ptt.Authentication.v
-          (fun _local _v -> inj (Lwt.return false)) in
+      let authentication = Ptt.Authentication.v (fun _local _v -> Lwt.return false) in
       Lwt.return authentication
     | Ok values ->
       let tbl = Hashtbl.create 0x10 in
-
       let fill = function
         | (_, `Dictionary) -> Lwt.return_unit
         | (name, `Value) ->
@@ -133,10 +116,7 @@ module Make
       let authentication local v' = match Hashtbl.find tbl local with
         | v -> Lwt.return (Digestif.equal Digestif.BLAKE2B (Digestif.of_blake2b v) v')
         | exception _ -> Lwt.return false in
-      let authentication =
-        let open Ptt_tuyau.Lwt_backend.Lwt_scheduler in
-        Ptt.Authentication.v
-          (fun local v -> inj (authentication local v)) in
+      let authentication = Ptt.Authentication.v authentication in
       Lwt.return authentication
 
   let retrieve_certs stack { K.hostname; dns_key; dns_server; key_seed; _ }=
@@ -156,14 +136,24 @@ module Make
         (Duration.of_day (max 0 (next_expire - 7))) in
       Lwt.return (`Single certificates, seven_days_before_expire)
 
-  let start _random _time _mclock _pclock stack ctx ({ K.remote; domain; postmaster; destination; _ } as cfg) =
+  let start _random _time _mclock _pclock stack he ctx ({ K.remote; domain; postmaster; destination; _ } as cfg) =
     let authenticator = R.failwith_error_msg (Nss.authenticator ()) in
     let tls = R.failwith_error_msg (Tls.Config.client ~authenticator ()) in
     let ip = Stack.ip stack in
     let ipaddr = List.hd (Stack.IP.configured_ips ip) in
     let ipaddr = Ipaddr.Prefix.address ipaddr in
+    let locals = Ptt_map.empty ~postmaster in
     authentication ctx remote >>= fun authentication ->
+    let module Fake_dns = Ptt_fake_dns.Make (struct let ipaddr = destination end) in
+    let module Lipap = Lipap.Make (Time) (Mclock) (Pclock) (Stack) (Fake_dns) (Happy_eyeballs) in
+    Fake_dns.connect () >>= fun dns ->
     let rec loop (certificates, expiration) =
+      let info =
+        { Ptt_common.domain
+        ; ipaddr
+        ; tls= Some (R.failwith_error_msg (Tls.Config.server ~certificates ()))
+        ; zone= Mrmime.Date.Zone.GMT
+        ; size= 10_000_000L (* 10M *) } in
       let stop = Lwt_switch.create () in
       let wait_and_stop () =
         Time.sleep_ns expiration >>= fun () ->
@@ -171,13 +161,8 @@ module Make
         Lwt_switch.turn_off stop >>= fun () ->
         Lwt.return result in
       let server () =
-        Lipap.fiber ~port:465 ~tls (Stack.tcp stack) destination None Digestif.BLAKE2B
-          { Ptt.Logic.domain
-          ; ipaddr
-          ; tls= Some (R.failwith_error_msg (Tls.Config.server ~certificates ()))
-          ; zone= Mrmime.Date.Zone.GMT
-          ; size= 10_000_000L (* 10M *) }
-          authentication [ Ptt.Mechanism.PLAIN ] in
+        Lipap.job ~locals ~port:465 ~tls ~info None Digestif.BLAKE2B (Stack.tcp stack)
+          dns he authentication [ Ptt.Mechanism.PLAIN ] in
       Lwt.both (server ()) (wait_and_stop ()) >>= fun ((), result) ->
       loop result in
     retrieve_certs stack cfg >>= loop

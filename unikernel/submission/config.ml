@@ -23,7 +23,7 @@ let setup = runtime_arg ~pos:__POS__ "Unikernel.K.setup"
 
 let packages =
   [ package "randomconv"
-  ; package "ptt" ~sublibs:[ "value"; "lipap" ]
+  ; package "ptt" ~sublibs:[ "value"; "lipap"; "fake-dns" ]
   ; package "git-kv"
   ; package "dns-mirage"
   ; package "dns-certify" ~sublibs:[ "mirage" ]
@@ -35,7 +35,7 @@ let runtime_args = [ setup ]
 
 let submission =
   main ~runtime_args ~packages "Unikernel.Make" @@
-  random @-> time @-> mclock @-> pclock @-> stackv4v6 @-> git_client @-> job
+  random @-> time @-> mclock @-> pclock @-> stackv4v6 @-> happy_eyeballs @-> git_client @-> job
 
 let random = default_random
 let time = default_time
@@ -51,4 +51,4 @@ let git_client =
 
 let () =
   register "submission"
-    [ submission $ random $ time $ mclock $ pclock $ stack $ git_client ]
+    [ submission $ random $ time $ mclock $ pclock $ stack $ he $ git_client ]

@@ -67,21 +67,8 @@ module Make
   (Mclock : Mirage_clock.MCLOCK)
   (Pclock : Mirage_clock.PCLOCK)
   (Stack : Tcpip.Stack.V4V6)
-  (DNS : Dns_client_mirage.S with type 'a Transport.io = 'a Lwt.t)
+  (Happy_eyeballs : Happy_eyeballs_mirage.S with type flow = Stack.TCP.flow)
 = struct
-  (* XXX(dinosaure): this is a fake resolver which enforce the [verifier] to
-   * transmit **any** emails to only one and unique SMTP server. *)
-
-  module Resolver = struct
-    type t = Ipaddr.t
-    type +'a io = 'a Lwt.t
-
-    let gethostbyname ipaddr _domain_name = Lwt.return_ok ipaddr
-    let getmxbyname _ipaddr mail_exchange = Lwt.return_ok (Dns.Rr_map.Mx_set.singleton { Dns.Mx.preference= 0; mail_exchange; })
-    let extension ipaddr _ldh _value = Lwt.return_ok ipaddr
-  end
-
-  module Verifier = Hm.Make (Time) (Mclock) (Pclock) (Resolver) (Stack) (DNS)
   module Nss = Ca_certs_nss.Make (Pclock)
   module Certify = Dns_certify_mirage.Make (Random) (Pclock) (Time) (Stack)
 
@@ -102,27 +89,31 @@ module Make
         (Duration.of_day (max 0 (next_expire - 7))) in
       Lwt.return (`Single certificates, seven_days_before_expire)
 
-  let start _random _time _mclock _pclock stack dns ({ K.domain; postmaster; destination; _ } as cfg)=
+  let start _random _time _mclock _pclock stack he ({ K.domain; postmaster; destination; _ } as cfg)=
     let authenticator = R.failwith_error_msg (Nss.authenticator ()) in
     let tls = R.failwith_error_msg (Tls.Config.client ~authenticator ()) in
     let ip = Stack.ip stack in
     let ipaddr = List.hd (Stack.IP.configured_ips ip) in
     let ipaddr = Ipaddr.Prefix.address ipaddr in
+    let module Fake_dns = Ptt_fake_dns.Make (struct let ipaddr = destination end) in
+    let module Verifier = Hm.Make (Time) (Mclock) (Pclock) (Stack) (Fake_dns) (Happy_eyeballs) in
+    Fake_dns.connect () >>= fun dns ->
+    let locals = Ptt_map.empty ~postmaster in
     let rec loop (certificates, expiration) =
       let stop = Lwt_switch.create () in
+      let info =
+        { Ptt_common.domain= Colombe.Domain.Domain (Domain_name.to_strings domain)
+        ; ipaddr
+        ; tls= Some (R.failwith_error_msg (Tls.Config.server ~certificates ()))
+        ; zone= Mrmime.Date.Zone.GMT
+        ; size= 10_000_000L (* 10M *) } in
       let wait_and_stop () =
         Time.sleep_ns expiration >>= fun () ->
         retrieve_certs stack cfg >>= fun result ->
         Lwt_switch.turn_off stop >>= fun () ->
         Lwt.return result in
       let server () =
-        Verifier.fiber ~port:25 ~tls (Stack.tcp stack) destination
-          { Ptt.Logic.domain
-          ; ipaddr
-          ; tls= Some (R.failwith_error_msg (Tls.Config.server ~certificates ()))
-          ; zone= Mrmime.Date.Zone.GMT
-          ; size= 10_000_000L (* 10M *) }
-          dns in
+        Verifier.job ~locals ~port:25 ~tls ~info (Stack.tcp stack) dns he in
       Lwt.both (server ()) (wait_and_stop ()) >>= fun ((), result) ->
       loop result in
     retrieve_certs stack cfg >>= loop

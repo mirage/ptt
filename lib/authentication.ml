@@ -4,7 +4,7 @@ open Lwt.Infix
 let ( <.> ) f g x = f (g x)
 
 type 'k t = username -> 'k password -> bool Lwt.t
-and username = Emile.local
+and username = [ `Dot_string of string list | `String of string ]
 and 'k password = 'k Digestif.t
 
 external v : (username -> 'k password -> bool Lwt.t) -> 'k t
@@ -30,12 +30,12 @@ let decode_plain_authentication hash ?stamp t v =
   match stamp, payload with
   | Some stamp, Ok (v0, v1, v2) ->
     if Eqaf.equal stamp v0 then
-      match Angstrom.parse_string ~consume:All Emile.Parser.local_part v1 with
+      match Angstrom.parse_string ~consume:All Colombe.Path.Decoder.local_part v1 with
       | Ok username -> authenticate hash username v2 t
       | Error _ -> Lwt.return (R.error_msgf "Invalid username: %S" v1)
     else Lwt.return (R.error_msgf "Invalid stamp")
   | None, Ok ("", v1, v2) ->
-    begin match Angstrom.parse_string ~consume:All Emile.Parser.local_part v1 with
+    begin match Angstrom.parse_string ~consume:All Colombe.Path.Decoder.local_part v1 with
     | Ok username -> authenticate hash username v2 t
     | Error _ -> Lwt.return (R.error_msgf "Invalid username: %S" v1) end
   | None, Ok (_, _, _) -> Lwt.return (R.error_msgf "Unexpected stamp")

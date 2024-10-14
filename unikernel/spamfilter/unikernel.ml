@@ -10,7 +10,7 @@ module K = struct
 
   let domain =
     let doc = Arg.info ~doc:"SMTP domain-name." [ "domain" ] in
-    let domain_name = Arg.conv (Domain_name.(of_string $ host), Domain_name.pp) in
+    let domain_name = Arg.conv Colombe.Domain.(of_string, pp) in
     Arg.(required & opt (some domain_name) None doc)
 
   let postmaster =
@@ -23,7 +23,7 @@ module K = struct
     Arg.(required & opt (some Mirage_runtime_network.Arg.ip_address) None doc)
 
   type t =
-    { domain : [ `host ] Domain_name.t
+    { domain : Colombe.Domain.t
     ; postmaster : Emile.mailbox
     ; destination : Ipaddr.t }
 
@@ -38,32 +38,26 @@ module Make
   (Mclock : Mirage_clock.MCLOCK)
   (Pclock : Mirage_clock.PCLOCK)
   (Stack : Tcpip.Stack.V4V6)
+  (Happy_eyeballs : Happy_eyeballs_mirage.S with type flow = Stack.TCP.flow)
 = struct
-  (* XXX(dinosaure): this is a fake resolver which enforce the [filter] to
-   * transmit **any** emails to only one and unique SMTP server. *)
 
-  module Resolver = struct
-    type t = Ipaddr.t
-    type +'a io = 'a Lwt.t
-
-    let gethostbyname ipaddr _domain_name = Lwt.return_ok ipaddr
-    let getmxbyname _ipaddr mail_exchange = Lwt.return_ok (Dns.Rr_map.Mx_set.singleton { Dns.Mx.preference= 0; mail_exchange; })
-    let extension ipaddr _ldh _value = Lwt.return_ok ipaddr
-  end
-
-  module SpamFilter = Spartacus.Make (Time) (Mclock) (Pclock) (Resolver) (Stack)
   module Nss = Ca_certs_nss.Make (Pclock)
 
-  let start _time _mclock _pclock stack { K.domain; postmaster; destination }=
+  let start _time _mclock _pclock stack he { K.domain; postmaster; destination }=
     let authenticator = R.failwith_error_msg (Nss.authenticator ()) in
     let tls = R.failwith_error_msg (Tls.Config.client ~authenticator ()) in
     let ip = Stack.ip stack in
     let ipaddr = List.hd (Stack.IP.configured_ips ip) in
     let ipaddr = Ipaddr.Prefix.address ipaddr in
-    SpamFilter.fiber ~port:25 ~tls (Stack.tcp stack) destination
-      { Ptt.Logic.domain
+    let info =
+      { Ptt_common.domain
       ; ipaddr
       ; tls= None
-      ; zone= Mrmime.Date.Zone.GMT (* XXX(dinosaure): any MirageOS use GMT. *)
-      ; size= 10_000_000L (* 10M *) }
+      ; zone= Mrmime.Date.Zone.GMT
+      ; size= 10_000_000L (* 10M *) } in
+    let locals = Ptt_map.empty ~postmaster in
+    let module Fake_dns = Ptt_fake_dns.Make (struct let ipaddr = destination end) in
+    let module Spam_filter = Spartacus.Make (Time) (Mclock) (Pclock) (Stack) (Fake_dns) (Happy_eyeballs) in
+    Fake_dns.connect () >>= fun dns ->
+    Spam_filter.job ~locals ~port:25 ~tls ~info (Stack.tcp stack) dns he
 end

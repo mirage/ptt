@@ -43,6 +43,12 @@
  (libraries lwt tls-mirage bigstringaf mirage-time mirage-flow tcpip mimic ptt))
 
 (library
+ (name ptt_fake_dns)
+ (public_name ptt.fake-dns)
+ (modules ptt_fake_dns)
+ (libraries dns-client-mirage))
+
+(library
  (name lipap)
  (public_name ptt.lipap)
  (modules lipap)

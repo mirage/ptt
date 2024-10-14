@@ -59,18 +59,6 @@ module Make (Stack : Tcpip.Stack.V4V6) = struct
     | `Flow msg -> Fmt.pf ppf "Error at the protocol level: %s" msg
     | `Invalid_recipients -> Fmt.string ppf "Invalid recipients"
 
-  let to_local local =
-    if List.exists (function `String _ -> true | _ -> false) local
-    then
-      let sstr = List.map (function `Atom str -> str | `String str -> str) local in
-      let str = String.concat "." sstr in
-      `String str
-    else
-      let ws, _ = (Fun.flip List.partition_map local) @@ function
-        | `Atom str -> Either.left str
-        | _ -> Either.right () in
-      `Dot_string ws
-
   let authentication ctx ~domain_from (Runner { run; flow; })
     random hash server ?payload mechanism =
     let rec go limit ?payload m =
@@ -86,7 +74,7 @@ module Make (Stack : Tcpip.Stack.V4V6) = struct
           >>= function
           | Ok (user, true) ->
             let m = SSMTP.(Monad.send ctx Value.PP_235 ["Accepted, buddy!"]) in
-            run flow m >>? fun () -> Lwt.return_ok (`Authenticated (to_local user))
+            run flow m >>? fun () -> Lwt.return_ok (`Authenticated user)
           | (Error _ | Ok (_, false)) as res -> begin
             let () =
               match res with
@@ -124,7 +112,7 @@ module Make (Stack : Tcpip.Stack.V4V6) = struct
           | Ok (user, true) ->
             let m = SSMTP.(Monad.send ctx Value.PP_235 ["Accepted, buddy!"]) in
             run flow m >>? fun () ->
-            Lwt.return_ok (`Authenticated (to_local user))
+            Lwt.return_ok (`Authenticated user)
           | (Error _ | Ok (_, false)) as res ->
             let () =
               match res with

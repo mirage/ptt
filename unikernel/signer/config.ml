@@ -69,7 +69,7 @@ let setup = runtime_arg ~pos:__POS__ "Unikernel.K.setup"
 
 let packages =
   [ package "randomconv"
-  ; package "ptt" ~sublibs:[ "nec" ]
+  ; package "ptt" ~sublibs:[ "nec"; "fake-dns" ]
   ; package "dns"
   ; package "dns-client"
   ; package "dns-mirage"
@@ -82,7 +82,7 @@ let runtime_args = [ setup ]
 
 let signer =
   main ~runtime_args ~packages "Unikernel.Make" @@
-  random @-> time @-> mclock @-> pclock @-> stackv4v6 @-> dns_client @-> job
+  random @-> time @-> mclock @-> pclock @-> stackv4v6 @-> dns_client @-> happy_eyeballs @-> job
 
 let random = default_random
 let time = default_time
@@ -94,4 +94,4 @@ let dns = generic_dns_client ~dns_server ~dns_port stack he
 
 let () =
   register "signer"
-    [ signer $ random $ time $ mclock $ pclock $ stack $ dns ]
+    [ signer $ random $ time $ mclock $ pclock $ stack $ dns $ he ]

@@ -94,22 +94,13 @@ module Make
   (Mclock : Mirage_clock.MCLOCK)
   (Pclock : Mirage_clock.PCLOCK)
   (Stack : Tcpip.Stack.V4V6)
-  (DNS : Dns_client_mirage.S)
+  (Dns_client : Dns_client_mirage.S)
+  (Happy_eyeballs : Happy_eyeballs_mirage.S with type flow = Stack.TCP.flow)
 = struct
   (* XXX(dinosaure): this is a fake resolver which enforce the [signer] to
    * transmit **any** emails to only one and unique SMTP server. *)
 
-  module Resolver = struct
-    type t = Ipaddr.t
-    type +'a io = 'a Lwt.t
-
-    let gethostbyname ipaddr _domain_name = Lwt.return_ok ipaddr
-    let getmxbyname _ipaddr mail_exchange = Lwt.return_ok (Dns.Rr_map.Mx_set.singleton { Dns.Mx.preference= 0; mail_exchange; })
-    let extension ipaddr _ldh _value = Lwt.return_ok ipaddr
-  end
-
-  module Nec = Nec.Make (Time) (Mclock) (Pclock) (Resolver) (Stack)
-  module DKIM = Dkim_mirage.Make (Pclock) (DNS)
+  module DKIM = Dkim_mirage.Make (Pclock) (Dns_client)
   module Nss = Ca_certs_nss.Make (Pclock)
 
   let private_rsa_key_from_seed seed =
@@ -167,7 +158,7 @@ module Make
           | Error _ -> assert false
         end @@ fun res -> Stack.TCP.close flow >>= fun () -> Lwt.return res
 
-  let start _random _time _mclock _pclock stack dns
+  let start _random _time _mclock _pclock stack dns he
     ({ K.domain; postmaster; destination; dns_key; fields; selector; seed; timestamp; expiration; _ } as cfg) =
     let dkim = Dkim.v
       ~version:1 ?fields ~selector
@@ -184,10 +175,15 @@ module Make
     let ip = Stack.ip stack in
     let ipaddr = List.hd (Stack.IP.configured_ips ip) in
     let ipaddr = Ipaddr.Prefix.address ipaddr in
-    Nec.fiber ~port:25 ~tls (Stack.tcp stack) destination (private_key, dkim)
-      { Ptt.Logic.domain
+    let locals = Ptt_map.empty ~postmaster in
+    let module Fake_dns = Ptt_fake_dns.Make (struct let ipaddr = destination end) in
+    let module Nec = Nec.Make (Time) (Mclock) (Pclock) (Stack) (Fake_dns) (Happy_eyeballs) in
+    let info =
+      { Ptt_common.domain= Colombe.Domain.Domain (Domain_name.to_strings domain)
       ; ipaddr
       ; tls= None
       ; zone= Mrmime.Date.Zone.GMT
-      ; size= 10_000_000L }
+      ; size= 10_000_000L } in
+    Fake_dns.connect () >>= fun dns ->
+    Nec.job ~locals ~port:25 ~tls ~info (Stack.tcp stack) dns he (private_key, dkim)
 end

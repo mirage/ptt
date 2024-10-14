@@ -89,6 +89,10 @@ module Make
     let consumed = ref false in
     consumed, (fun () -> consumed := true; Lwt_stream.get stream)
 
+  (* NOTE(dinosaure): to ensure that we are able to inject a fake DNS resolver,
+     we must use an IP address as a destination to avoid the resolution mechanism
+     of happy-eyeballs! *)
+
   let sendmail ?(last_option= false) he t ~ipaddr elt =
     let ( let* ) = Lwt.bind in
     let destination = Ipaddr.to_string ipaddr in
