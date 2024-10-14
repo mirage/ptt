@@ -31,8 +31,7 @@
 (library
  (name ptt)
  (public_name ptt)
- (modules ptt authentication logic mechanism messaged
-   relay sigs sMTP sSMTP submission)
+ (modules ptt authentication logic mechanism messaged relay sMTP sSMTP submission)
  (libraries ptt.common ptt.flow ptt.aggregate digestif mrmime colombe.emile domain-name dns sendmail.starttls
    logs ipaddr)
  (preprocess future_syntax))
@@ -41,14 +40,7 @@
  (name ptt_server)
  (public_name ptt.server)
  (modules ptt_server)
- (libraries lwt tls-mirage bigstringaf mirage-time mirage-flow tcpip mimic
-   ptt.rdwr ptt))
-
-; (library
-;  (name ptt_transmit)
-;  (public_name ptt.transmit)
-;  (modules ptt_transmit)
-;  (libraries hxd.core hxd.string ptt.tuyau mirage-clock received))
+ (libraries lwt tls-mirage bigstringaf mirage-time mirage-flow tcpip mimic ptt))
 
 (library
  (name lipap)
@@ -85,9 +77,3 @@
  (public_name ptt.spartacus)
  (modules spartacus)
  (libraries mirage-time mirage-clock mirage-random ptt ptt.map ptt.server spamtacus-mirage dns-client-mirage))
-
-(library
- (name rdwr)
- (public_name ptt.rdwr)
- (modules rdwr)
- (libraries cstruct bigstringaf lwt rresult ke mirage-flow ptt))
