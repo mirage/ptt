@@ -24,22 +24,20 @@ let decode_plain_authentication hash ?stamp t v =
     take_till is_zero >>= fun v0 ->
     char '\000' *> take_till is_zero >>= fun v1 ->
     char '\000' *> available >>= take >>= fun v2 -> return (v0, v1, v2) in
-  match
-    ( stamp
-    , Base64.decode ~pad:false (* XXX(dinosaure): not really sure. *) v
-      >>= (R.reword_error (fun _ -> `Msg "Invalid input")
-          <.> Angstrom.parse_string ~consume:All parser) )
-  with
+  let payload =
+    Base64.decode ~pad:false (* XXX(dinosaure): not really sure. *) v
+    >>= (R.reword_error (fun _ -> `Msg "Invalid input") <.> Angstrom.parse_string ~consume:All parser) in
+  match stamp, payload with
   | Some stamp, Ok (v0, v1, v2) ->
     if Eqaf.equal stamp v0 then
       match Angstrom.parse_string ~consume:All Emile.Parser.local_part v1 with
       | Ok username -> authenticate hash username v2 t
       | Error _ -> Lwt.return (R.error_msgf "Invalid username: %S" v1)
     else Lwt.return (R.error_msgf "Invalid stamp")
-  | None, Ok ("", v1, v2) -> (
-    match Angstrom.parse_string ~consume:All Emile.Parser.local_part v1 with
+  | None, Ok ("", v1, v2) ->
+    begin match Angstrom.parse_string ~consume:All Emile.Parser.local_part v1 with
     | Ok username -> authenticate hash username v2 t
-    | Error _ -> Lwt.return (R.error_msgf "Invalid username: %S" v1))
+    | Error _ -> Lwt.return (R.error_msgf "Invalid username: %S" v1) end
   | None, Ok (_, _, _) -> Lwt.return (R.error_msgf "Unexpected stamp")
   | _, (Error _ as err) -> Lwt.return err
 
