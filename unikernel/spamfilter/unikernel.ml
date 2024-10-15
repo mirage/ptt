@@ -20,17 +20,16 @@ module K = struct
 
   let destination =
     let doc = Arg.info ~doc:"Next SMTP server IP" [ "destination" ] in
-    Arg.(required & opt (some Mirage_runtime_network.Arg.ip_address) None doc)
+    Mirage_runtime.register_arg Arg.(required & opt (some Mirage_runtime_network.Arg.ip_address) None doc)
 
   type t =
     { domain : Colombe.Domain.t
-    ; postmaster : Emile.mailbox
-    ; destination : Ipaddr.t }
+    ; postmaster : Emile.mailbox }
 
-  let v domain postmaster destination =
-    { domain; postmaster; destination }
+  let v domain postmaster =
+    { domain; postmaster }
 
-  let setup = Term.(const v $ domain $ postmaster $ destination)
+  let setup = Term.(const v $ domain $ postmaster)
 end
 
 module Make
@@ -42,8 +41,10 @@ module Make
 = struct
 
   module Nss = Ca_certs_nss.Make (Pclock)
+  module Fake_dns = Ptt_fake_dns.Make (struct let ipaddr = K.destination () end)
+  module Spam_filter = Spartacus.Make (Time) (Mclock) (Pclock) (Stack) (Fake_dns) (Happy_eyeballs)
 
-  let start _time _mclock _pclock stack he { K.domain; postmaster; destination }=
+  let start _time _mclock _pclock stack he { K.domain; postmaster }=
     let authenticator = R.failwith_error_msg (Nss.authenticator ()) in
     let tls = R.failwith_error_msg (Tls.Config.client ~authenticator ()) in
     let ip = Stack.ip stack in
@@ -56,8 +57,6 @@ module Make
       ; zone= Mrmime.Date.Zone.GMT
       ; size= 10_000_000L (* 10M *) } in
     let locals = Ptt_map.empty ~postmaster in
-    let module Fake_dns = Ptt_fake_dns.Make (struct let ipaddr = destination end) in
-    let module Spam_filter = Spartacus.Make (Time) (Mclock) (Pclock) (Stack) (Fake_dns) (Happy_eyeballs) in
     Fake_dns.connect () >>= fun dns ->
     Spam_filter.job ~locals ~port:25 ~tls ~info (Stack.tcp stack) dns he
 end

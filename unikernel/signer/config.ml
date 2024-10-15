@@ -1,9 +1,11 @@
+(* mirage >= 4.8.0 & < 4.9.0 *)
+
 open Mirage
 
 (* NOTE(dinosaure): it's like a DNS client but it uses the primary DNS server to
    get the possible DKIM public key if it exists (like a client) or [nsupdate]
    the primary DNS server with what we got from the command-line. *)
-let generic_dns_client timeout dns_server dns_port =
+let generic_dns_client timeout =
   let open Functoria.DSL in
   let pp_label name ppf = function
     | None -> ()
@@ -17,7 +19,9 @@ let generic_dns_client timeout dns_server dns_port =
     | _, None -> (None, rest)
     | _ -> err () in 
   let packages = [ package "dns-client-mirage" ~min:"9.0.0" ~max:"10.0.0" ] in
-  let runtime_args = [ Runtime_arg.v dns_server; Runtime_arg.v dns_port; ] in
+  let dns_server = Runtime_arg.create ~pos:__POS__ "Unikernel.K.dns_server" in
+  let dns_port = Runtime_arg.create ~pos:__POS__ "Unikernel.K.dns_port" in
+  let runtime_args = Runtime_arg.[ v dns_server; v dns_port; ] in
   let runtime_args = match timeout with
     | Some timeout -> runtime_args @ [ Runtime_arg.v timeout ]
     | None -> runtime_args in
@@ -25,7 +29,7 @@ let generic_dns_client timeout dns_server dns_port =
     let nameserver = Fmt.str "[\"tcp:%s:%s\"]" dns_server dns_port in
     pp_label "nameservers" ppf (Some nameserver)
   in
-  let err () = connect_err "generic_dns_client" 6 ~max:9 in
+  let err () = connect_err "generic_dns_client" 6 in
   let connect _info modname = function
     | _random
       :: _time
@@ -54,8 +58,8 @@ let generic_dns_client timeout dns_server dns_port =
 
 let generic_dns_client ?timeout ?(random = default_random)
     ?(time = default_time) ?(mclock = default_monotonic_clock)
-    ?(pclock = default_posix_clock) ~dns_server ~dns_port stackv4v6 happy_eyeballs =
-  generic_dns_client timeout dns_server dns_port
+    ?(pclock = default_posix_clock) stackv4v6 happy_eyeballs =
+  generic_dns_client timeout
   $ random
   $ time
   $ mclock
@@ -63,8 +67,6 @@ let generic_dns_client ?timeout ?(random = default_random)
   $ stackv4v6
   $ happy_eyeballs
 
-let dns_server : Ipaddr.t Runtime_arg.arg = Runtime_arg.create ~pos:__POS__ "Unikernel.K.dns_server"
-let dns_port : int Runtime_arg.arg = Runtime_arg.create ~pos:__POS__ "Unikernel.K.dns_port"
 let setup = runtime_arg ~pos:__POS__ "Unikernel.K.setup"
 
 let packages =
@@ -90,7 +92,7 @@ let mclock = default_monotonic_clock
 let pclock = default_posix_clock
 let stack = generic_stackv4v6 default_network
 let he = generic_happy_eyeballs stack
-let dns = generic_dns_client ~dns_server ~dns_port stack he
+let dns = generic_dns_client stack he
 
 let () =
   register "signer"

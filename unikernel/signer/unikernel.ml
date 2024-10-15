@@ -37,7 +37,7 @@ module K = struct
 
   let destination =
     let doc = Arg.info ~doc:"Next SMTP server IP" [ "destination" ] in
-    Arg.(required & opt (some Mirage_runtime_network.Arg.ip_address) None doc)
+    Mirage_runtime.register_arg Arg.(required & opt (some Mirage_runtime_network.Arg.ip_address) None doc)
 
   let fields =
     let doc = Arg.info [ "fields" ] ~doc:"List of fields to sign" in
@@ -67,7 +67,6 @@ module K = struct
   type t =
     { domain : [ `host ] Domain_name.t
     ; postmaster : Emile.mailbox
-    ; destination : Ipaddr.t
     ; dns_key : [ `raw ] Domain_name.t * Dns.Dnskey.t
     ; dns_server : Ipaddr.t
     ; dns_port : int
@@ -77,15 +76,31 @@ module K = struct
     ; expiration : int64 option
     ; seed : string }
 
-  let v domain postmaster destination
-    dns_key dns_server dns_port
-    fields selector timestamp expiration seed =
-    { domain; postmaster; destination; dns_key; dns_server; dns_port; fields; selector; timestamp; expiration; seed }
+  let v domain postmaster  dns_key dns_server dns_port fields selector timestamp expiration seed =
+    { domain
+    ; postmaster
+    ; dns_key
+    ; dns_server
+    ; dns_port
+    ; fields
+    ; selector
+    ; timestamp
+    ; expiration
+    ; seed }
 
   let setup =
-    Term.(const v $ domain $ postmaster $ destination
-    $ dns_key $ dns_server $ dns_port
-    $ fields $ selector $ timestamp $ expiration $ seed)
+    let open Term in
+    const v
+    $ domain
+    $ postmaster
+    $ dns_key
+    $ dns_server
+    $ dns_port
+    $ fields
+    $ selector
+    $ timestamp
+    $ expiration
+    $ seed
 end
 
 module Make
@@ -158,8 +173,11 @@ module Make
           | Error _ -> assert false
         end @@ fun res -> Stack.TCP.close flow >>= fun () -> Lwt.return res
 
+  module Fake_dns = Ptt_fake_dns.Make (struct let ipaddr = K.destination () end)
+  module Nec = Nec.Make (Time) (Mclock) (Pclock) (Stack) (Fake_dns) (Happy_eyeballs)
+
   let start _random _time _mclock _pclock stack dns he
-    ({ K.domain; postmaster; destination; dns_key; fields; selector; seed; timestamp; expiration; _ } as cfg) =
+    ({ K.domain; postmaster; dns_key; fields; selector; seed; timestamp; expiration; _ } as cfg) =
     let dkim = Dkim.v
       ~version:1 ?fields ~selector
       ~algorithm:`RSA
@@ -176,8 +194,6 @@ module Make
     let ipaddr = List.hd (Stack.IP.configured_ips ip) in
     let ipaddr = Ipaddr.Prefix.address ipaddr in
     let locals = Ptt_map.empty ~postmaster in
-    let module Fake_dns = Ptt_fake_dns.Make (struct let ipaddr = destination end) in
-    let module Nec = Nec.Make (Time) (Mclock) (Pclock) (Stack) (Fake_dns) (Happy_eyeballs) in
     let info =
       { Ptt_common.domain= Colombe.Domain.Domain (Domain_name.to_strings domain)
       ; ipaddr

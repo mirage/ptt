@@ -42,7 +42,7 @@ module K = struct
 
   let destination =
     let doc = Arg.info ~doc:"Next SMTP server IP" ["destination"] in
-    Arg.(required & opt (some Mirage_runtime_network.Arg.ip_address) None doc)
+    Mirage_runtime.register_arg Arg.(required & opt (some Mirage_runtime_network.Arg.ip_address) None doc)
 
   let key_seed =
     let doc = Arg.info ~doc:"certificate key seed" ["key-seed"] in
@@ -57,15 +57,14 @@ module K = struct
     ; domain : Colombe.Domain.t
     ; hostname : [ `host ] Domain_name.t
     ; postmaster : Emile.mailbox
-    ; destination : Ipaddr.t
     ; dns_key : [ `raw ] Domain_name.t * Dns.Dnskey.t
     ; dns_server : Ipaddr.t
     ; key_seed : string }
 
-  let v remote domain hostname postmaster destination dns_key dns_server key_seed =
-    { remote; domain; hostname; postmaster; destination; dns_key; dns_server; key_seed }
+  let v remote domain hostname postmaster dns_key dns_server key_seed =
+    { remote; domain; hostname; postmaster; dns_key; dns_server; key_seed }
 
-  let setup = Term.(const v $ remote $ domain $ hostname $ postmaster $ destination $ dns_key $ dns_server $ key_seed)
+  let setup = Term.(const v $ remote $ domain $ hostname $ postmaster $ dns_key $ dns_server $ key_seed)
 end
 
 module Make
@@ -136,7 +135,10 @@ module Make
         (Duration.of_day (max 0 (next_expire - 7))) in
       Lwt.return (`Single certificates, seven_days_before_expire)
 
-  let start _random _time _mclock _pclock stack he ctx ({ K.remote; domain; postmaster; destination; _ } as cfg) =
+  module Fake_dns = Ptt_fake_dns.Make (struct let ipaddr = K.destination () end)
+  module Lipap = Lipap.Make (Time) (Mclock) (Pclock) (Stack) (Fake_dns) (Happy_eyeballs)
+
+  let start _random _time _mclock _pclock stack he ctx ({ K.remote; domain; postmaster; _ } as cfg) =
     let authenticator = R.failwith_error_msg (Nss.authenticator ()) in
     let tls = R.failwith_error_msg (Tls.Config.client ~authenticator ()) in
     let ip = Stack.ip stack in
@@ -144,8 +146,6 @@ module Make
     let ipaddr = Ipaddr.Prefix.address ipaddr in
     let locals = Ptt_map.empty ~postmaster in
     authentication ctx remote >>= fun authentication ->
-    let module Fake_dns = Ptt_fake_dns.Make (struct let ipaddr = destination end) in
-    let module Lipap = Lipap.Make (Time) (Mclock) (Pclock) (Stack) (Fake_dns) (Happy_eyeballs) in
     Fake_dns.connect () >>= fun dns ->
     let rec loop (certificates, expiration) =
       let info =
