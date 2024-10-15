@@ -539,7 +539,7 @@ module Sendmail = Sendmail_mirage.Make
 
 let sendmail he ipaddr port ~domain sender recipients contents =
   let open Lwt.Infix in
-  let destination = Fmt.str "%a" Ipaddr.pp ipaddr in
+  let destination = `Ipaddrs [ ipaddr ] in
   let stream = Lwt_stream.of_list contents in
   let stream = Lwt_stream.map (fun str -> str ^ "\r\n") stream in
   let mail () =
@@ -553,7 +553,7 @@ let sendmail he ipaddr port ~domain sender recipients contents =
   | Error (#Sendmail_with_starttls.error as err) ->
     Fmt.failwith "%a" Sendmail_with_starttls.pp_error err
 
-let key = Alcotest.testable Ptt.Messaged.pp Ptt.Messaged.equal
+let key = Alcotest.testable Ptt.Msgd.pp Ptt.Msgd.equal
 
 let full_test_0 =
   Alcotest_lwt.test_case "Receive one email from Anil" `Quick @@ fun _sw () ->
@@ -592,13 +592,18 @@ let full_test_0 =
       [ "From: anil@recoil.org"
       ; "Subject: SMTP server, PLZ!"
       ; ""
-      ; "Hello World!" ] >>= fun () ->
-    Logs.debug (fun m -> m "Close the SMTP server");
-    Lwt_switch.turn_off stop in
-  Lwt.join [ sendmail; th ] >>= fun () ->
-  Lwt_stream.to_list stream >|= List.map fst >>= fun inbox ->
+      ; "Hello World!" ]
+    >>= fun () -> Lwt_switch.turn_off stop
+    >|= fun () -> `Done in
+  let fold (key, _, wk) acc =
+    let acc = match acc with `Done -> [] | `Inbox acc -> acc in
+    Lwt.wakeup_later wk `Ok;
+    Lwt.return (`Inbox (key :: acc)) in
+  Lwt.all [ sendmail; (th >|= fun () -> `Done)
+          ; Lwt_stream.fold_s fold stream (`Inbox []) ] >>= fun results ->
+  let[@warning "-8"] [ `Done; `Done; `Inbox inbox ] = results in
   Alcotest.(check (list key)) "inbox" inbox
-    [ Ptt.Messaged.key ~domain_from:recoil ~from:(anil, [])
+    [ Ptt.Msgd.key ~domain_from:recoil ~from:(anil, [])
         ~recipients:[romain_calascibetta, []]
         ~ipaddr:(Ipaddr.V4 Ipaddr.V4.localhost) 0L ];
   Lwt.return_unit
@@ -652,15 +657,21 @@ let full_test_1 =
       ; "Subject: SMTP server, PLZ!"
       ; ""
       ; "Hello World!" ]
-    >>= fun () -> Lwt_switch.turn_off stop in
-  Lwt.join [ sendmail; th ] >>= fun () ->
-  Lwt_stream.to_list stream >|= List.map fst >|= List.rev >>= fun inbox ->
+    >>= fun () -> Lwt_switch.turn_off stop
+    >|= fun () -> `Done in
+  let fold (key, _, wk) acc =
+    let acc = match acc with `Done -> [] | `Inbox acc -> acc in
+    Lwt.wakeup_later wk `Ok;
+    Lwt.return (`Inbox (key :: acc)) in
+  Lwt.all [ sendmail; (th >|= fun () -> `Done)
+          ; Lwt_stream.fold_s fold stream `Done ] >>= fun results ->
+  let[@warning "-8"] [ `Done; `Done; `Inbox inbox ] = results in
   Alcotest.(check (list key))
     "inbox" inbox
-    [ Ptt.Messaged.key ~domain_from:gazagnaire ~from:(thomas, [])
+    [ Ptt.Msgd.key ~domain_from:gazagnaire ~from:(thomas, [])
         ~recipients:[romain_calascibetta, []]
         ~ipaddr:(Ipaddr.V4 Ipaddr.V4.localhost) 1L
-    ; Ptt.Messaged.key ~domain_from:recoil ~from:(anil, [])
+    ; Ptt.Msgd.key ~domain_from:recoil ~from:(anil, [])
         ~recipients:[romain_calascibetta, []]
         ~ipaddr:(Ipaddr.V4 Ipaddr.V4.localhost) 0L ];
   Lwt.return_unit

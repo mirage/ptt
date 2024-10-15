@@ -10,7 +10,7 @@ module Make (Destination : sig val ipaddr : Ipaddr.t end) = struct
       [ `Plaintext of Ipaddr.t * int 
       | `Tls of Tls.Config.client * Ipaddr.t * int ]
   
-    let create ?nameservers:_ ~timeout:_ _ = assert false
+    let create ?nameservers:_ ~timeout:_ _ = ()
     let nameservers _ = `Tcp, []
     let rng _ = String.empty
     let clock _ = 0L

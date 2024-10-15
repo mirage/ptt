@@ -32,8 +32,9 @@ struct
         Dns_client.gethostbyname6 dns domain_name
         >|= Result.map (fun ipv6 -> Ipaddr.V6 ipv6) in
       Lwt.all [ ipv4; ipv6 ] >|= function
-      | [ _; (Ok _ as ipv6) ] -> ipv6
-      | [ (Ok _ as ipv4); Error _ ] -> ipv4
+      | [ Ok ipv4; Ok ipv6 ] -> Ok [ ipv4; ipv6 ]
+      | [ (Ok ipv4); Error _ ] -> Ok [ ipv4 ]
+      | [ Error _; (Ok ipv6) ] -> Ok [ ipv6 ]
       | [ (Error _ as err); _ ] -> err
       | [] | [_] | _ :: _ :: _ -> assert false in
     { getmxbyname; gethostbyname }
@@ -44,7 +45,7 @@ struct
       Lwt.finalize
         (fun () ->
           Lwt_pool.use pool @@ fun (encoder, decoder, _) ->
-          Submission.accept ~encoder:(Fun.const encoder)
+          Submission.accept_without_starttls ~encoder:(Fun.const encoder)
             ~decoder:(Fun.const decoder) ~ipaddr flow dns resolver
             random hash server
           >|= R.reword_error (R.msgf "%a" Submission.pp_error))
@@ -63,13 +64,13 @@ struct
     let rec go () =
       Lwt_stream.get ic >>= function
       | None -> oc None; Lwt.return_unit
-      | Some (key, stream) ->
-        let sender = fst (Ptt.Messaged.from key) in
-        let recipients = Ptt.Messaged.recipients key in
+      | Some (key, stream, wk) ->
+        let sender = fst (Ptt.Msgd.from key) in
+        let recipients = Ptt.Msgd.recipients key in
         let recipients = List.map fst recipients in
         let recipients = Ptt_map.expand ~info map recipients in
         let recipients = Ptt_aggregate.to_recipients ~info recipients in
-        let id = Ptt_common.id_to_messageID ~info (Ptt.Messaged.id key) in
+        let id = Ptt_common.id_to_messageID ~info (Ptt.Msgd.id key) in
         let elts = List.map (fun recipients ->
           (* TODO(dinosaure): Can we use multiple MAIL FROM to keep the original
              sender? We actually force <ptt.mti-gf@info.Ptt_common.domain> to be
@@ -82,10 +83,11 @@ struct
           ; policies= []
           ; id }) recipients in
         List.iter (oc $ Option.some) elts;
-      Lwt.pause () >>= go in
+        Lwt.wakeup_later wk `Ok;
+        Lwt.pause () >>= go in
     go ()
 
-  let job  ?(limit = 20) ?stop ~locals ~port ~tls ~info
+  let job ?(limit = 20) ?stop ~locals ~port ~tls ~info
     random hash stack dns he
     authenticator mechanisms =
     let pool0 =

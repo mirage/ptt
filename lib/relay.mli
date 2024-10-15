@@ -19,7 +19,7 @@ module Make
 
   val create :
        info:info
-    -> server * (Messaged.key * string Lwt_stream.t) Lwt_stream.t * (unit -> unit)
+    -> server * (Msgd.key * string Lwt_stream.t * Msgd.result Lwt.u) Lwt_stream.t * (unit -> unit)
 
   val accept :
        ?encoder:(unit -> bytes)

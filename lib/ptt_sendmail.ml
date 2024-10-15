@@ -32,6 +32,16 @@ and policy = [ `Ignore ]
 
 [@@@warning "+30"]
 
+let pp_recipients ppf { domain; locals } =
+  let pp_domain ppf = function
+    | `Ipaddr (Ipaddr.V4 ipv4) -> Fmt.pf ppf "[%a]" Ipaddr.V4.pp ipv4
+    | `Ipaddr (Ipaddr.V6 ipv6) -> Fmt.pf ppf "[IPv6:%a]" Ipaddr.V6.pp ipv6
+    | `Domain domain_name -> Domain_name.pp ppf domain_name in
+  match locals with
+  | `All -> Fmt.pf ppf "<%a>" pp_domain domain
+  | `Postmaster -> Fmt.pf ppf "Postmaster@%a" pp_domain domain
+  | `Some locals -> Fmt.pf ppf "%a@%a" Fmt.(Dump.list Emile.pp_local) locals pp_domain domain
+
 let warn_about_an_unreachable_mail_exchange ~domain ~mail_exchange msg =
   Log.warn @@ fun m -> m "Impossible to resolve %a, a mail exchange server for %a: %s"
     Domain_name.pp mail_exchange Domain_name.pp domain msg
@@ -93,9 +103,9 @@ module Make
      we must use an IP address as a destination to avoid the resolution mechanism
      of happy-eyeballs! *)
 
-  let sendmail ?(last_option= false) he t ~ipaddr elt =
+  let sendmail ?(last_option= false) he t ~ipaddrs elt =
     let ( let* ) = Lwt.bind in
-    let destination = Ipaddr.to_string ipaddr in
+    let destination = `Ipaddrs ipaddrs in
     let backup = Lwt_stream.clone elt.data in
     let consumed, stream = to_stream elt.data in
     let recipients = recipients_to_forward_paths elt.recipients in
@@ -115,12 +125,22 @@ module Make
       | Ok (), _ -> Lwt.return `Ok
       | Error _, false -> Lwt.return `Retry
       | Error err, true ->
+          let debug = Lwt_stream.clone backup in
+          let* debug = Lwt_stream.to_list debug in
+          let debug = String.concat "" debug in
+          Log.debug (fun m -> m "Incoming bad email:");
+          Log.debug (fun m -> m "@[<hov>%a@]" (Hxd_string.pp Hxd.default) debug);
           let* forward_path = guess_return_path backup in
           Lwt.return (`Errored (forward_path, err))
     else match result with
       | Ok () -> Lwt.return `Ok
       | Error _ when List.exists ((=) `Ignore) elt.policies -> Lwt.return `Ok
       | Error err ->
+          let debug = Lwt_stream.clone backup in
+          let* debug = Lwt_stream.to_list debug in
+          let debug = String.concat "" debug in
+          Log.debug (fun m -> m "Incoming bad email:");
+          Log.debug (fun m -> m "@[<hov>%a@]" (Hxd_string.pp Hxd.default) debug);
           let* forward_path = guess_return_path backup in
           Lwt.return (`Errored (forward_path, err))
 
@@ -136,7 +156,7 @@ module Make
           Fmt.(list ~sep:(any ",") Colombe.Forward_path.pp) recipients
           Colombe.Reverse_path.pp elt.sender);
         Lwt.return_unit
-    | Some _forward_path -> assert false (* TODO *)
+    | Some _forward_path -> Lwt.return_unit (* TODO *)
 
   let pp_error ppf = function
     | #Sendmail_with_starttls.error as err ->
@@ -154,7 +174,7 @@ module Make
           Colombe.Reverse_path.pp elt.sender
           pp_error err);
         Lwt.return_unit
-    | Some _forward_path -> assert false (* TODO *)
+    | Some _forward_path -> Lwt.return_unit (* TODO *)
 
   let sendmail dns he t elt =
     let ( let* ) = Lwt.bind in
@@ -162,7 +182,7 @@ module Make
     begin match elt.recipients.domain with
       | `Ipaddr ipaddr ->
         let domain = Ipaddr.to_domain_name ipaddr in
-        Lwt.return_ok Mxs.(v ~preference:0 ~domain ipaddr)
+        Lwt.return_ok Mxs.(v ~preference:0 ~domain [ ipaddr ])
       | `Domain domain ->
         let* r = t.resolver.getmxbyname dns domain in
         match r with
@@ -171,7 +191,7 @@ module Make
               begin fun acc ({ Dns.Mx.mail_exchange; _ } as mx) ->
                 let* r = t.resolver.gethostbyname dns mail_exchange in
                 match r with
-                | Ok ipaddr -> Lwt.return ((mx, ipaddr) :: acc)
+                | Ok ipaddrs -> Lwt.return ((mx, ipaddrs) :: acc)
                 | Error (`Msg msg) ->
                   warn_about_an_unreachable_mail_exchange ~domain ~mail_exchange msg;
                   Lwt.return acc end in
@@ -190,13 +210,13 @@ module Make
                  of [mxs] which does not do the recursion. This case should
                  never occur. *)
               assert false
-          | [ _mx, ipaddr ] ->
-            let* result = sendmail ~last_option:true he t ~ipaddr elt in
+          | [ _mx, ipaddrs ] ->
+            let* result = sendmail ~last_option:true he t ~ipaddrs elt in
             begin match result with
             | `Retry | `Ok -> Lwt.return_unit
             | `Errored value -> error_while_sending_email elt value end
-          | (_mx, ipaddr) :: mxs ->
-            let* result = sendmail he t ~ipaddr elt in
+          | (_mx, ipaddrs) :: mxs ->
+            let* result = sendmail he t ~ipaddrs elt in
             match result with
             | `Ok -> Lwt.return_unit
             | `Retry -> go mxs

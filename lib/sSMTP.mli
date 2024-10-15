@@ -16,9 +16,9 @@ module Monad : module type of State.Scheduler (Context) (Value)
 type context = Context.t
 
 type error =
-  [ `Protocol of Value.error
+  [ `No_recipients
+  | `Protocol of Value.error
   | `Too_many_bad_commands
-  | `No_recipients
   | `Too_many_recipients ]
 
 val pp_error : error Fmt.t
@@ -32,7 +32,7 @@ type info = Ptt_common.info = {
 }
 
 type email = Logic.email = {
-    from: Messaged.from
+    from: Msgd.from
   ; recipients: (Forward_path.t * (string * string option) list) list
   ; domain_from: Domain.t
 }
@@ -62,7 +62,16 @@ val m_relay :
   -> ([> `Quit | `Send of email ], [> error ]) Colombe.State.t
 
 val m_mail : context -> (unit, [> error ]) Colombe.State.t
-val m_end : context -> ([> `Quit ], [> error ]) Colombe.State.t
+
+val m_end :
+     [ `Aborted
+     | `Not_enough_memory
+     | `Too_big
+     | `Failed
+     | `Requested_action_not_taken of [ `Temporary | `Permanent ]
+     | `Ok ]
+  -> context
+  -> ([> `Quit ], [> error ]) Colombe.State.t
 
 val m_relay_init :
      context

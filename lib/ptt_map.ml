@@ -33,6 +33,8 @@ let exists_as_sender sender ~info t =
     Colombe.Domain.equal domain info.Ptt_common.domain
     && Hashtbl.mem t.map local
 
+let exists ~local t = Hashtbl.mem t.map local
+
 let recipients ~local {map; _} =
   Hashtbl.find_opt map local
   |> Option.value ~default:[]

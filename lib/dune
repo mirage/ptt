@@ -8,7 +8,7 @@
  (name ptt_sendmail)
  (public_name ptt.sendmail)
  (modules ptt_sendmail)
- (libraries emile colombe.emile mrmime sendmail-mirage ptt.common))
+ (libraries hxd.core hxd.string emile colombe.emile mrmime sendmail-mirage ptt.common))
 
 (library
  (name ptt_aggregate)
@@ -20,7 +20,7 @@
  (name ptt_flow)
  (public_name ptt.flow)
  (modules ptt_flow)
- (libraries ke colombe tcpip))
+ (libraries hxd.core hxd.string logs ke colombe tcpip))
 
 (library
  (name ptt_map)
@@ -31,7 +31,7 @@
 (library
  (name ptt)
  (public_name ptt)
- (modules ptt authentication logic mechanism messaged relay sMTP sSMTP submission)
+ (modules ptt authentication logic mechanism msgd relay sMTP sSMTP submission)
  (libraries ptt.common ptt.flow ptt.aggregate digestif mrmime colombe.emile domain-name dns sendmail.starttls
    logs ipaddr)
  (preprocess future_syntax))
@@ -71,6 +71,12 @@
  (public_name ptt.hm)
  (modules hm)
  (libraries mirage-time mirage-clock mirage-random ptt ptt.map ptt.server uspf-mirage))
+
+(library
+ (name elit)
+ (public_name ptt.elit)
+ (modules elit)
+ (libraries mirage-time mirage-clock mirage-random ptt ptt.map ptt.server dns-client-mirage uspf-mirage))
 
 (library
  (name ptt_value)

@@ -36,6 +36,8 @@ and resource = bytes * bytes * (char, Bigarray.int8_unsigned_elt) Ke.Rke.t
 and 'a push = 'a option -> unit
 and policy = [ `Ignore ]
 
+val pp_recipients : recipients Fmt.t
+
 module Make
   (Clock : Mirage_clock.PCLOCK)
   (Stack : Tcpip.Stack.V4V6)
