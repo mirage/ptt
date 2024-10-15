@@ -22,7 +22,7 @@ module Make (Stack : Tcpip.Stack.V4V6) : sig
     -> Mechanism.t list
     -> 'k server * (Messaged.key * string Lwt_stream.t) Lwt_stream.t * (unit -> unit)
 
-  val accept :
+  val accept_without_starttls :
        ?encoder:(unit -> bytes)
     -> ?decoder:(unit -> bytes)
     -> ipaddr:Ipaddr.t
