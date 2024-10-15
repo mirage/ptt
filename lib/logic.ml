@@ -280,8 +280,10 @@ module Make (Monad : MONAD) = struct
     let* () =
       send ctx Value.PP_250
         [
-          politely ~domain:info.Ptt_common.domain ~ipaddr:info.Ptt_common.ipaddr; "8BITMIME"
-        ; "SMTPUTF8"; Fmt.str "SIZE %Ld" info.Ptt_common.size
+          politely ~domain:info.Ptt_common.domain ~ipaddr:info.Ptt_common.ipaddr
+        ; "8BITMIME"
+        ; "SMTPUTF8"
+        ; Fmt.str "SIZE %Ld" info.Ptt_common.size
         ] in
     m_relay ctx ~domain_from
 
@@ -291,8 +293,10 @@ module Make (Monad : MONAD) = struct
     let* () =
       send ctx Value.PP_250
         [
-          politely ~domain:info.Ptt_common.domain ~ipaddr:info.Ptt_common.ipaddr; "8BITMIME"
-        ; "SMTPUTF8"; Fmt.str "SIZE %Ld" info.Ptt_common.size
+          politely ~domain:info.Ptt_common.domain ~ipaddr:info.Ptt_common.ipaddr
+        ; "8BITMIME"
+        ; "SMTPUTF8"
+        ; Fmt.str "SIZE %Ld" info.Ptt_common.size
         ; Fmt.str "AUTH %a" Fmt.(list ~sep:(const string " ") Mechanism.pp) ms
         ] in
     m_submission ctx ~domain_from ms

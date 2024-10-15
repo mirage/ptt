@@ -44,7 +44,7 @@ struct
       Lwt.finalize
         (fun () ->
           Lwt_pool.use pool @@ fun (encoder, decoder, _) ->
-          Submission.accept ~encoder:(Fun.const encoder)
+          Submission.accept_without_starttls ~encoder:(Fun.const encoder)
             ~decoder:(Fun.const decoder) ~ipaddr flow dns resolver
             random hash server
           >|= R.reword_error (R.msgf "%a" Submission.pp_error))
@@ -85,7 +85,7 @@ struct
       Lwt.pause () >>= go in
     go ()
 
-  let job  ?(limit = 20) ?stop ~locals ~port ~tls ~info
+  let job ?(limit = 20) ?stop ~locals ~port ~tls ~info
     random hash stack dns he
     authenticator mechanisms =
     let pool0 =

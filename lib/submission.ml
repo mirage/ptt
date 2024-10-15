@@ -155,7 +155,7 @@ module Make (Stack : Tcpip.Stack.V4V6) = struct
     in
     go 0 ()
 
-  let accept :
+  let accept_without_starttls :
          ?encoder:(unit -> bytes)
       -> ?decoder:(unit -> bytes)
       -> ipaddr:Ipaddr.t

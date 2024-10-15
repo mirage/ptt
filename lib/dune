@@ -73,6 +73,12 @@
  (libraries mirage-time mirage-clock mirage-random ptt ptt.map ptt.server uspf-mirage))
 
 (library
+ (name elit)
+ (public_name ptt.elit)
+ (modules elit)
+ (libraries mirage-time mirage-clock mirage-random ptt ptt.map ptt.server dns-client-mirage))
+
+(library
  (name ptt_value)
  (public_name ptt.value)
  (modules ptt_value)
