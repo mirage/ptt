@@ -32,8 +32,9 @@ struct
         Dns_client.gethostbyname6 dns domain_name
         >|= Result.map (fun ipv6 -> Ipaddr.V6 ipv6) in
       Lwt.all [ ipv4; ipv6 ] >|= function
-      | [ _; (Ok _ as ipv6) ] -> ipv6
-      | [ (Ok _ as ipv4); Error _ ] -> ipv4
+      | [ Ok ipv4; Ok ipv6 ] -> Ok [ ipv4; ipv6 ]
+      | [ (Ok ipv4); Error _ ] -> Ok [ ipv4 ]
+      | [ Error _; (Ok ipv6) ] -> Ok [ ipv6 ]
       | [ (Error _ as err); _ ] -> err
       | [] | [_] | _ :: _ :: _ -> assert false in
     { getmxbyname; gethostbyname }
@@ -63,7 +64,7 @@ struct
     let rec go () =
       Lwt_stream.get ic >>= function
       | None -> oc None; Lwt.return_unit
-      | Some (key, stream) ->
+      | Some (key, stream, wk) ->
         let sign_and_transmit () =
           Lwt.catch (fun () ->
               let consumer =
@@ -73,12 +74,12 @@ struct
               >>= fun (_signed, consumer) ->
               let stream = Lwt_stream.from consumer in
               let stream = Lwt_stream.map (fun (str, off, len) -> String.sub str off len) stream in
-              let sender, _ = Ptt.Messaged.from key in
-              let recipients = Ptt.Messaged.recipients key in
+              let sender, _ = Ptt.Msgd.from key in
+              let recipients = Ptt.Msgd.recipients key in
               let recipients = List.map fst recipients in
               let recipients = Ptt_map.expand ~info map recipients in
               let recipients = Ptt_aggregate.to_recipients ~info recipients in
-              let id = Ptt_common.id_to_messageID ~info (Ptt.Messaged.id key) in
+              let id = Ptt_common.id_to_messageID ~info (Ptt.Msgd.id key) in
               let elts = List.map (fun recipients ->
                 { Ptt_sendmail.sender
                 ; recipients
@@ -86,6 +87,7 @@ struct
                 ; policies= []
                 ; id }) recipients in
               List.iter (oc $ Option.some) elts;
+              Lwt.wakeup_later wk `Ok;
               Lwt.return_unit)
           @@ fun exn ->
           Log.err (fun m -> m "Impossible to sign the incoming email: %S" (Printexc.to_string exn));

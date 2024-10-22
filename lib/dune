@@ -31,7 +31,7 @@
 (library
  (name ptt)
  (public_name ptt)
- (modules ptt authentication logic mechanism messaged relay sMTP sSMTP submission)
+ (modules ptt authentication logic mechanism msgd relay sMTP sSMTP submission)
  (libraries ptt.common ptt.flow ptt.aggregate digestif mrmime colombe.emile domain-name dns sendmail.starttls
    logs ipaddr)
  (preprocess future_syntax))
@@ -71,6 +71,12 @@
  (public_name ptt.hm)
  (modules hm)
  (libraries mirage-time mirage-clock mirage-random ptt ptt.map ptt.server uspf-mirage))
+
+(library
+ (name elit)
+ (public_name ptt.elit)
+ (modules elit)
+ (libraries mirage-time mirage-clock mirage-random ptt ptt.map ptt.server dns-client-mirage uspf-mirage))
 
 (library
  (name ptt_value)

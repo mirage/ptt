@@ -14,8 +14,8 @@ module Make (Stack : Tcpip.Stack.V4V6) = struct
 
   type 'k server =
     { info: info
-    ; messaged: Messaged.t
-    ; push: ((Messaged.key * string Lwt_stream.t) option -> unit)
+    ; msgd: Msgd.t
+    ; push: ((Msgd.key * string Lwt_stream.t * Msgd.result Lwt.u) option -> unit)
     ; mechanisms: Mechanism.t list
     ; authenticator: 'k Authentication.t
     ; mutable count: int64 }
@@ -30,9 +30,9 @@ module Make (Stack : Tcpip.Stack.V4V6) = struct
   let info {info; _} = info
 
   let create ~info ~authenticator mechanisms =
-    let messaged, push = Lwt_stream.create () in
+    let msgd, push = Lwt_stream.create () in
     let close () = push None in
-    {info; messaged; push; mechanisms; authenticator; count= 0L}, messaged, close
+    {info; msgd; push; mechanisms; authenticator; count= 0L}, msgd, close
 
   let succ server =
     let v = server.count in
@@ -41,10 +41,11 @@ module Make (Stack : Tcpip.Stack.V4V6) = struct
 
   type error =
     [ SSMTP.error
-    | `Too_big_data
+    | Msgd.error
     | `Too_many_tries
     | `Flow of string
-    | `Invalid_recipients ]
+    | `Invalid_recipients
+    | `End_of_input ]
 
   type 'err runner = Runner :
     { run : 'a. 'flow -> ('a, 'err) Colombe.State.t -> ('a, 'err) result Lwt.t
@@ -54,10 +55,11 @@ module Make (Stack : Tcpip.Stack.V4V6) = struct
 
   let pp_error ppf = function
     | #SSMTP.error as err -> SSMTP.pp_error ppf err
-    | `Too_big_data -> Fmt.pf ppf "Too big data"
+    | #Msgd.error as err -> Msgd.pp_error ppf err
     | `Too_many_tries -> Fmt.pf ppf "Too many tries"
     | `Flow msg -> Fmt.pf ppf "Error at the protocol level: %s" msg
     | `Invalid_recipients -> Fmt.string ppf "Invalid recipients"
+    | `End_of_input -> Fmt.string ppf "End of input"
 
   let authentication ctx ~domain_from (Runner { run; flow; })
     random hash server ?payload mechanism =
@@ -140,22 +142,31 @@ module Make (Stack : Tcpip.Stack.V4V6) = struct
 
   let dot = ".\r\n"
 
-  let receive_mail ?(limit = 0x100000) (Runner { run; flow}) ctx m bounded_stream =
+  let receive_mail ?(limit = 0x100000) (Runner { run; flow}) ctx m push =
     let rec go count () =
-      if count >= limit then Lwt.return_error `Too_big_data
+      if count >= limit
+      then begin push None; Lwt.return_error `Too_big end
       else
         run flow (m ctx) >>? function
-        | ".." -> bounded_stream#push dot >>= go (count + 3)
-        | "." -> bounded_stream#close; Lwt.return_ok ()
+        | ".." -> push (Some dot); go (count + 3) ()
+        | "." -> push None; Lwt.return_ok ()
         | str ->
           let len = String.length str in
           let str = str ^ "\r\n" in
-          bounded_stream#push str >>=
-          go (count + len + 2)
+          push (Some str);
+          go (count + len + 2) ()
     in
     go 0 ()
 
-  let accept :
+  let merge from_protocol from_logic =
+    match from_protocol, from_logic with
+    | Error `Too_big, _ -> `Too_big
+    | Error `Not_enough_memory, _ -> `Not_enough_memory
+    | Error `End_of_input, _ -> `Aborted
+    | Error _, _ -> `Requested_action_not_taken `Temporary
+    | Ok (), value -> value
+
+  let accept_without_starttls :
          ?encoder:(unit -> bytes)
       -> ?decoder:(unit -> bytes)
       -> ipaddr:Ipaddr.t
@@ -201,20 +212,26 @@ module Make (Stack : Tcpip.Stack.V4V6) = struct
             let from =
               let sender = Colombe.Path.{ local= user; domain= server.info.SSMTP.domain; rest= [] } in
               Some sender, snd from in
-            let key = Messaged.key ~domain_from ~from ~recipients ~ipaddr id in
-            let stream, bounded_stream = Lwt_stream.create_bounded 0x7ff in
-            server.push (Some (key, stream));
+            let key = Msgd.key ~domain_from ~from ~recipients ~ipaddr id in
+            let stream, push = Lwt_stream.create () in
+            let th, wk = Lwt.task () in
+            server.push (Some (key, stream, wk));
             let m = SSMTP.m_mail ctx in
             run flow m >>? fun () ->
-            Log.debug (fun m -> m "Start to receive the incoming email.");
             receive_mail
               ~limit:(Int64.to_int server.info.size)
               runner ctx
               SSMTP.(fun ctx -> Monad.recv ctx Value.Payload)
-              bounded_stream
-            >>? fun () ->
-            let m = SSMTP.m_end ctx in
-            run flow m >>? fun `Quit -> Lwt.return_ok () end
+              push
+            >>= fun result ->
+            Log.debug (fun m -> m "Email received, waiting result from the logic");
+            th >>= fun result' ->
+            let m = SSMTP.m_end (merge result result') ctx in
+            run flow m >>? fun `Quit ->
+            let result = match merge result result' with
+              | `Ok -> Ok ()
+              | #Msgd.error as err -> Error err in
+            Lwt.return result end
           | false ->
             let e = `Invalid_recipients in
             let m = SSMTP.m_properly_close_and_fail ctx ~message:"No valid recipients" e in

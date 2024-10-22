@@ -33,8 +33,9 @@ struct
         Dns_client.gethostbyname6 dns domain_name
         >|= Result.map (fun ipv6 -> Ipaddr.V6 ipv6) in
       Lwt.all [ ipv4; ipv6 ] >|= function
-      | [ _; (Ok _ as ipv6) ] -> ipv6
-      | [ (Ok _ as ipv4); Error _ ] -> ipv4
+      | [ Ok ipv4; Ok ipv6 ] -> Ok [ ipv4; ipv6 ]
+      | [ (Ok ipv4); Error _ ] -> Ok [ ipv4 ]
+      | [ Error _; (Ok ipv6) ] -> Ok [ ipv6 ]
       | [ (Error _ as err); _ ] -> err
       | [] | [_] | _ :: _ :: _ -> assert false in
     { getmxbyname; gethostbyname }
@@ -72,11 +73,11 @@ struct
     let rec go () =
       Lwt_stream.get ic >>= function
       | None -> oc None; Lwt.return_unit
-      | Some (key, stream) ->
-        let sender, _ = Ptt.Messaged.from key in
+      | Some (key, stream, wk) ->
+        let sender, _ = Ptt.Msgd.from key in
         let ctx =
           Uspf.empty
-          |> Uspf.with_ip (Ptt.Messaged.ipaddr key)
+          |> Uspf.with_ip (Ptt.Msgd.ipaddr key)
           |> fun ctx -> Option.fold ~none:ctx
             ~some:(fun sender -> Uspf.with_sender (`MAILFROM sender) ctx)
             sender in
@@ -84,8 +85,8 @@ struct
           Uspf_client.get ~ctx dns >>= function
           | Error (`Msg msg) ->
             Log.err (fun m -> m "Got an error from SPF: %s" msg);
-            (* TODO(dinosaure): add a new field into the incoming email. *)
-            Lwt.return stream
+            Lwt.wakeup_later wk (`Requested_action_not_taken `Temporary);
+            Lwt.return_unit
           | Ok record ->
             Uspf_client.check ~ctx dns record >>= fun result ->
             let receiver = match info.Ptt_common.domain with
@@ -95,21 +96,25 @@ struct
               | Extension (k, v) -> `Addr (Emile.Ext (k, v)) in
             let field_name, unstrctrd = Uspf.to_field ~ctx ~receiver result in
             let stream = Lwt_stream.append (stream_of_field field_name unstrctrd) stream in
-            Lwt.return stream in
-        verify () >>= fun stream ->
-        let recipients = Ptt.Messaged.recipients key in
-        let recipients = List.map fst recipients in
-        let recipients = Ptt_map.expand ~info map recipients in
-        let recipients = Ptt_aggregate.to_recipients ~info recipients in
-        let id = Ptt_common.id_to_messageID ~info (Ptt.Messaged.id key) in
-        let elts = List.map (fun recipients ->
-          { Ptt_sendmail.sender
-          ; recipients
-          ; data= Lwt_stream.clone stream
-          ; policies= []
-          ; id }) recipients in
-        List.iter (oc $ Option.some) elts;
-        Lwt.pause () >>= go in
+            let result = match result with
+              | `Pass _ | `Neutral | `None -> `Ok
+              | `Permerror | `Fail -> `Requested_action_not_taken `Permanent
+              | `Temperror | `Softfail -> `Requested_action_not_taken `Temporary in
+            Lwt.wakeup_later wk result;
+            let recipients = Ptt.Msgd.recipients key in
+            let recipients = List.map fst recipients in
+            let recipients = Ptt_map.expand ~info map recipients in
+            let recipients = Ptt_aggregate.to_recipients ~info recipients in
+            let id = Ptt_common.id_to_messageID ~info (Ptt.Msgd.id key) in
+            let elts = List.map (fun recipients ->
+              { Ptt_sendmail.sender
+              ; recipients
+              ; data= Lwt_stream.clone stream
+              ; policies= []
+              ; id }) recipients in
+            List.iter (oc $ Option.some) elts;
+            Lwt.return_unit in
+        verify () >>= Lwt.pause >>= go in
     go ()
 
   let job ?(limit = 20) ?stop ~locals ~port ~tls ~info stack dns he =

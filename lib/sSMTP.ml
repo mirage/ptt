@@ -98,7 +98,7 @@ type info = Ptt_common.info = {
 }
 
 type email = Logic.email = {
-    from: Messaged.from
+    from: Msgd.from
   ; recipients: (Forward_path.t * (string * string option) list) list
   ; domain_from: Domain.t
 }
