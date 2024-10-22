@@ -12,8 +12,8 @@ module Make (Stack : Tcpip.Stack.V4V6) = struct
 
   type server =
     { info: info
-    ; messaged: Messaged.t
-    ; push: ((Messaged.key * string Lwt_stream.t) option -> unit)
+    ; msgd: Msgd.t
+    ; push: ((Msgd.key * string Lwt_stream.t * Msgd.result Lwt.u) option -> unit)
     ; mutable count: int64}
   
   and info = Ptt_common.info =
@@ -26,20 +26,20 @@ module Make (Stack : Tcpip.Stack.V4V6) = struct
   let info {info; _} = info
 
   let create ~info =
-    let messaged, push = Lwt_stream.create () in
+    let msgd, push = Lwt_stream.create () in
     let close () = push None in
-    {info; messaged; push; count= 0L}, messaged, close
+    {info; msgd; push; count= 0L}, msgd, close
   
   let succ server =
     let v = server.count in
     server.count <- Int64.succ server.count;
     v
   
-  type error = [ SMTP.error | `Too_big_data | `Flow of string | `Invalid_recipients ]
+  type error = [ SMTP.error | Msgd.error | `Flow of string | `Invalid_recipients ]
   
   let pp_error ppf = function
     | #SMTP.error as err -> SMTP.pp_error ppf err
-    | `Too_big_data -> Fmt.pf ppf "Too big data"
+    | #Msgd.error as err -> Msgd.pp_error ppf err
     | `Flow msg -> Fmt.pf ppf "Error at the protocol level: %s" msg
     | `Invalid_recipients -> Fmt.string ppf "Invalid recipients"
   
@@ -54,7 +54,9 @@ module Make (Stack : Tcpip.Stack.V4V6) = struct
 
   let receive_mail ?(limit = 0x100000) flow ctx m bounded_stream =
     let rec go count () =
-      if count >= limit then Lwt.return_error `Too_big_data
+      if count >= limit
+      then Lwt.return_error `Too_big_data
+      (* NOTE(dinosaure): [552] will be returned later. *)
       else
         run flow (m ctx) >>? function
         | ".." -> bounded_stream#push dot >>= go (count + 3)
@@ -66,6 +68,14 @@ module Make (Stack : Tcpip.Stack.V4V6) = struct
           go (count + len + 2)
     in
     go 0 ()
+
+  let merge from_protocol from_logic =
+    match from_protocol, from_logic with
+    | Error `Too_big_data, _ -> `Too_big
+    | Error `Not_enough_memory, _ -> `Not_enough_memory
+    | Error `End_of_input, _ -> `Aborted
+    | Error _, _ -> `Requested_action_not_taken `Temporary
+    | Ok (), value -> value
   
   let accept :
          ?encoder:(unit -> bytes)
@@ -89,9 +99,10 @@ module Make (Stack : Tcpip.Stack.V4V6) = struct
       >>= function
       | true ->
         let id = succ server in
-        let key = Messaged.key ~domain_from ~from ~recipients ~ipaddr id in
+        let key = Msgd.key ~domain_from ~from ~recipients ~ipaddr id in
         let stream, bounded_stream = Lwt_stream.create_bounded 0x7ff in
-        server.push (Some (key, stream));
+        let th, wk = Lwt.task () in
+        server.push (Some (key, stream, wk));
         let m = SMTP.m_mail ctx in
         run flow m >>? fun () ->
         receive_mail
@@ -99,10 +110,15 @@ module Make (Stack : Tcpip.Stack.V4V6) = struct
           flow ctx
           SMTP.(fun ctx -> Monad.recv ctx Value.Payload)
           bounded_stream
-        >>? fun () ->
-        let m = SMTP.m_end ctx in
+        >>= fun result ->
+        th >>= fun result' ->
+        let m = SMTP.m_end (merge result result') ctx in
         run flow m >>? fun `Quit ->
-        properly_close_tls flow ctx >>? fun () -> Lwt.return_ok ()
+        properly_close_tls flow ctx >>? fun () ->
+        let result = match merge result result' with
+          | `Ok -> Ok ()
+          | #Msgd.error as err -> Error err in
+        Lwt.return result
       | false ->
         let e = `Invalid_recipients in
         let m = SMTP.m_properly_close_and_fail ctx ~message:"No valid recipients" e in

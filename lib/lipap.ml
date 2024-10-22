@@ -63,13 +63,13 @@ struct
     let rec go () =
       Lwt_stream.get ic >>= function
       | None -> oc None; Lwt.return_unit
-      | Some (key, stream) ->
-        let sender = fst (Ptt.Messaged.from key) in
-        let recipients = Ptt.Messaged.recipients key in
+      | Some (key, stream, wk) ->
+        let sender = fst (Ptt.Msgd.from key) in
+        let recipients = Ptt.Msgd.recipients key in
         let recipients = List.map fst recipients in
         let recipients = Ptt_map.expand ~info map recipients in
         let recipients = Ptt_aggregate.to_recipients ~info recipients in
-        let id = Ptt_common.id_to_messageID ~info (Ptt.Messaged.id key) in
+        let id = Ptt_common.id_to_messageID ~info (Ptt.Msgd.id key) in
         let elts = List.map (fun recipients ->
           (* TODO(dinosaure): Can we use multiple MAIL FROM to keep the original
              sender? We actually force <ptt.mti-gf@info.Ptt_common.domain> to be
@@ -82,7 +82,8 @@ struct
           ; policies= []
           ; id }) recipients in
         List.iter (oc $ Option.some) elts;
-      Lwt.pause () >>= go in
+        Lwt.wakeup_later wk `Ok;
+        Lwt.pause () >>= go in
     go ()
 
   let job ?(limit = 20) ?stop ~locals ~port ~tls ~info

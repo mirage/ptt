@@ -65,7 +65,7 @@ struct
     let rec go () =
       Lwt_stream.get ic >>= function
       | None -> oc None; Lwt.return_unit
-      | Some (key, stream) ->
+      | Some (key, stream, wk) ->
         let filter () =
           let backup = Lwt_stream.clone stream in
           Spamtacus_mirage.rank stream >>= function
@@ -75,12 +75,12 @@ struct
           | Ok (_label, stream) ->
             Lwt.return stream in
         filter () >>= fun stream ->
-        let sender, _ = Ptt.Messaged.from key in
-        let recipients = Ptt.Messaged.recipients key in
+        let sender, _ = Ptt.Msgd.from key in
+        let recipients = Ptt.Msgd.recipients key in
         let recipients = List.map fst recipients in
         let recipients = Ptt_map.expand ~info map recipients in
         let recipients = Ptt_aggregate.to_recipients ~info recipients in
-        let id = Ptt_common.id_to_messageID ~info (Ptt.Messaged.id key) in
+        let id = Ptt_common.id_to_messageID ~info (Ptt.Msgd.id key) in
         let elts = List.map (fun recipients ->
           { Ptt_sendmail.sender
           ; recipients
@@ -88,6 +88,7 @@ struct
           ; policies= []
           ; id }) recipients in
         List.iter (oc $ Option.some) elts;
+        Lwt.wakeup_later wk `Ok;
         Lwt.pause () >>= go in
     go ()
 

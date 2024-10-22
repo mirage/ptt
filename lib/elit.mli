@@ -13,6 +13,7 @@ sig
       ?g:Mirage_crypto_rng.g
    -> ?mechanisms:Ptt.Mechanism.t list
    -> postmaster:Emile.mailbox
+   -> ?forward_granted:Ipaddr.Prefix.t list
    -> 'k Digestif.hash
    -> 'k iter
    -> Ipaddr.t
@@ -22,6 +23,8 @@ sig
        ?stop:Lwt_switch.t
     -> 'k t
     -> info:Ptt_common.info
+    -> ?submission:Tls.Config.server
+    -> ?relay:Tls.Config.server
     -> Stack.TCP.t
     -> Dns_client.t
     -> Happy_eyeballs.t

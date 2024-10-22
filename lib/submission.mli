@@ -20,7 +20,7 @@ module Make (Stack : Tcpip.Stack.V4V6) : sig
        info:info
     -> authenticator:'k Authentication.t
     -> Mechanism.t list
-    -> 'k server * (Messaged.key * string Lwt_stream.t) Lwt_stream.t * (unit -> unit)
+    -> 'k server * (Msgd.key * string Lwt_stream.t * Msgd.result Lwt.u) Lwt_stream.t * (unit -> unit)
 
   val accept_without_starttls :
        ?encoder:(unit -> bytes)

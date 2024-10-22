@@ -12,12 +12,13 @@ module Make
     (Mclock : Mirage_clock.MCLOCK)
     (Pclock : Mirage_clock.PCLOCK)
     (Stack : Tcpip.Stack.V4V6)
-    (Dns_client : Dns_client_mirage.S
+    (Dns_client : Dns_client_mirage.S)
     (Happy_eyeballs : Happy_eyeballs_mirage.S with type flow = Stack.TCP.flow) =
 struct
   module Server = Ptt_server.Make (Time) (Stack)
   module Sendmail = Ptt_sendmail.Make (Pclock) (Stack) (Happy_eyeballs)
   module Nss = Ca_certs_nss.Make (Pclock)
+  module Uspf_client = Uspf_mirage.Make (Dns_client)
 
   module Local = struct
     module Submission = Ptt.Submission.Make (Stack)
@@ -58,13 +59,13 @@ struct
       let rec go () =
         Lwt_stream.get ic >>= function
         | None -> oc None; Lwt.return_unit
-        | Some (key, stream) ->
-          let sender = fst (Ptt.Messaged.from key) in
-          let recipients = Ptt.Messaged.recipients key in
+        | Some (key, stream, wk) ->
+          let sender = fst (Ptt.Msgd.from key) in
+          let recipients = Ptt.Msgd.recipients key in
           let recipients = List.map fst recipients in
           let recipients = Ptt_map.expand ~info map recipients in
           let recipients = Ptt_aggregate.to_recipients ~info recipients in
-          let id = Ptt_common.id_to_messageID ~info (Ptt.Messaged.id key) in
+          let id = Ptt_common.id_to_messageID ~info (Ptt.Msgd.id key) in
           let elts = List.map (fun recipients ->
             { Ptt_sendmail.sender
             ; recipients
@@ -72,6 +73,7 @@ struct
             ; policies= []
             ; id }) recipients in
           List.iter (oc $ Option.some) elts;
+          Lwt.wakeup_later wk `Ok;
         Lwt.pause () >>= go in
       go ()
 
@@ -141,30 +143,81 @@ struct
       |> fun (`Initialized job) ->
       let job = job >|= close in job
 
-    let mail_exchange_logic_job ~info map (ic, oc) =
+    let stream_of_field (field_name : Mrmime.Field_name.t) unstrctrd =
+      Lwt_stream.of_list
+        [ (field_name :> string)
+        ; ": "
+        ; Unstrctrd.to_utf_8_string unstrctrd; "\r\n" ]
+
+    let forward_granted ipaddr allowed_to_forward =
+      List.exists (fun prefix -> Ipaddr.Prefix.mem ipaddr prefix) allowed_to_forward
+
+    let only_registered_recipients ~info map recipients =
+      let for_all = function
+        | Colombe.Forward_path.Postmaster -> true
+        | Domain domain' -> Colombe.Domain.equal info.Ptt_common.domain domain'
+        | Forward_path { Colombe.Path.local; domain= domain'; _ } ->
+          Colombe.Domain.equal info.Ptt_common.domain domain'
+          && Ptt_map.exists ~local map in
+      List.for_all for_all recipients
+
+    let verify ~info ~sender ~ipaddr dns stream =
+      let ctx =
+        Uspf.empty
+        |> Uspf.with_ip ipaddr
+        |> fun ctx -> Option.fold ~none:ctx
+          ~some:(fun v -> Uspf.with_sender (`MAILFROM v) ctx)
+          sender in
+      Uspf_client.get ~ctx dns >>= function
+      | Error _ -> Lwt.return (`Requested_action_not_taken `Permanent)
+      | Ok record ->
+        Uspf_client.check ~ctx dns record >>= fun result ->
+        let receiver = match info.Ptt_common.domain with
+          | Colombe.Domain.Domain ds -> `Domain ds
+          | IPv4 ipv4 -> `Addr (Emile.IPv4 ipv4)
+          | IPv6 ipv6 -> `Addr (Emile.IPv6 ipv6)
+          | Extension (k, v) -> `Addr (Emile.Ext (k, v)) in
+        let field_name, unstrctrd = Uspf.to_field ~ctx ~receiver result in
+        let stream = Lwt_stream.append (stream_of_field field_name unstrctrd) stream in
+        Lwt.return (`Ok stream)
+
+    let mail_exchange_logic_job ~info ~map ~allowed_to_forward dns (ic, oc) =
       let sender =
         let local = `Dot_string [ "ptt"; "mti-gf" ] in
         Some (Colombe.Path.{ local; domain= info.Ptt_common.domain; rest= [] }) in
       let rec go () =
         Lwt_stream.get ic >>= function
         | None -> oc None; Lwt.return_unit
-        | Some (key, stream) ->
-          let recipients = Ptt.Messaged.recipients key in
-          let recipients = List.map fst recipients in
-          let recipients = Ptt_map.expand ~info map recipients in
-          let recipients = Ptt_aggregate.to_recipients ~info recipients in
-          let id = Ptt_common.id_to_messageID ~info (Ptt.Messaged.id key) in
-          let elts = List.map (fun recipients ->
-            { Ptt_sendmail.sender
-            ; recipients
-            ; data= Lwt_stream.clone stream
-            ; policies= []
-            ; id }) recipients in
-          List.iter (oc $ Option.some) elts;
-          Lwt.pause () >>= go in
+        | Some (key, stream, wk) ->
+          let fake_recipients = Ptt.Msgd.recipients key in
+          let fake_recipients = List.map fst fake_recipients in
+          let real_recipients = Ptt_map.expand ~info map fake_recipients in
+          let real_recipients = Ptt_aggregate.to_recipients ~info real_recipients in
+          let id = Ptt_common.id_to_messageID ~info (Ptt.Msgd.id key) in
+          verify ~info
+            ~sender:(fst (Ptt.Msgd.from key))
+            ~ipaddr:(Ptt.Msgd.ipaddr key) dns stream >>= function
+          | #Ptt.Msgd.error as err ->
+            Lwt.wakeup_later wk err;
+            Lwt.pause () >>= go
+          | `Ok stream ->
+            let elts = List.map (fun recipients ->
+              { Ptt_sendmail.sender
+              ; recipients
+              ; data= Lwt_stream.clone stream
+              ; policies= []
+              ; id }) real_recipients in
+            let src = Ptt.Msgd.ipaddr key in
+            if forward_granted src allowed_to_forward
+            || only_registered_recipients ~info map fake_recipients
+            then begin
+              List.iter (oc $ Option.some) elts;
+              Lwt.wakeup_later wk `Ok
+            end else Lwt.wakeup_later wk (`Requested_action_not_taken `Permanent);
+            Lwt.pause () >>= go in
       go ()
 
-    let job ?(limit = 20) ?stop ~locals ?port ~tls ~info stack dns he =
+    let job ?(limit = 20) ?stop ~locals ?port ~tls ~info ?(forward_granted= []) stack dns he =
       let pool0 =
         Lwt_pool.create limit @@ fun () ->
         let encoder = Bytes.create 0x7ff in
@@ -181,9 +234,10 @@ struct
         { Ptt_sendmail.pool= fun fn -> Lwt_pool.use pool1 fn } in
       let ic_server, stream0, close0 = Relay.create ~info in
       let oc_server, push0 = Sendmail.v ~resolver:mail_exchange_resolver ~pool:pool1 ~info tls in
+      let allowed_to_forward = forward_granted in
       Lwt.join
         [ mail_exchange_job ~pool:pool0 ?stop ?port stack dns ic_server close0
-        ; mail_exchange_logic_job ~info locals (stream0, push0)
+        ; mail_exchange_logic_job ~info ~map:locals ~allowed_to_forward dns (stream0, push0)
         ; Sendmail.job dns he oc_server ]
   end
 
@@ -194,11 +248,12 @@ struct
     ; hash : 'k Digestif.hash
     ; authentication : 'k Ptt.Authentication.t
     ; mechanisms : Ptt.Mechanism.t list
-    ; destination : Ipaddr.t }
+    ; destination : Ipaddr.t
+    ; forward_granted : Ipaddr.Prefix.t list }
 
   type 'k iter = (Ptt_map.local -> 'k Digestif.t -> Emile.mailbox list -> unit Lwt.t) -> unit Lwt.t
 
-  let v ?g ?(mechanisms= [ Ptt.Mechanism.PLAIN ]) ~postmaster hash iter destination =
+  let v ?g ?(mechanisms= [ Ptt.Mechanism.PLAIN ]) ~postmaster ?(forward_granted= []) hash iter destination =
     let authenticator = R.failwith_error_msg (Nss.authenticator ()) in
     let tls = Rresult.R.failwith_error_msg (Tls.Config.client ~authenticator ()) in
     let locals = Ptt_map.empty ~postmaster in
@@ -213,11 +268,17 @@ struct
       | Some passwd -> Lwt.return (Digestif.equal hash passwd passwd')
       | None -> Lwt.return false in
     let authentication = Ptt.Authentication.v authentication in
-    { locals; tls; random= g; hash; authentication; mechanisms; destination }
+    { locals; tls; random= g; hash; authentication; mechanisms; destination
+    ; forward_granted }
 
-  let job ?stop t ~info stack dns he =
+  let job ?stop t ~info ?submission ?relay stack dns he =
+    if Option.is_some info.Ptt_common.tls
+    then Log.warn (fun m -> m "Discard the TLS server configuration from the [info] value");
+    let submission = { info with Ptt_common.tls= submission } in
+    let relay = { info with Ptt_common.tls= relay } in
     Lwt.join
-      [ Local.job ?stop ~locals:t.locals ~tls:t.tls ~info ~destination:t.destination
+      [ Local.job ?stop ~locals:t.locals ~tls:t.tls ~info:submission ~destination:t.destination
           stack he t.random t.hash t.authentication t.mechanisms
-      ; Out.job ?stop ~locals:t.locals ~tls:t.tls ~info stack dns he ]
+      ; Out.job ?stop ~locals:t.locals ~tls:t.tls ~info:relay ~forward_granted:t.forward_granted
+          stack dns he ]
 end
