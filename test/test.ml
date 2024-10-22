@@ -539,7 +539,7 @@ module Sendmail = Sendmail_mirage.Make
 
 let sendmail he ipaddr port ~domain sender recipients contents =
   let open Lwt.Infix in
-  let destination = Fmt.str "%a" Ipaddr.pp ipaddr in
+  let destination = `Ipaddrs [ ipaddr ] in
   let stream = Lwt_stream.of_list contents in
   let stream = Lwt_stream.map (fun str -> str ^ "\r\n") stream in
   let mail () =

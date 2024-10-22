@@ -52,20 +52,20 @@ module Make (Stack : Tcpip.Stack.V4V6) = struct
 
   let dot = ".\r\n"
 
-  let receive_mail ?(limit = 0x100000) flow ctx m bounded_stream =
+  let receive_mail ?(limit = 0x100000) flow ctx m push =
     let rec go count () =
       if count >= limit
-      then Lwt.return_error `Too_big_data
+      then begin push None; Lwt.return_error `Too_big_data end
       (* NOTE(dinosaure): [552] will be returned later. *)
       else
         run flow (m ctx) >>? function
-        | ".." -> bounded_stream#push dot >>= go (count + 3)
-        | "." -> bounded_stream#close; Lwt.return_ok ()
+          | ".." -> push (Some dot); go (count + 3) ()
+        | "." -> push None; Lwt.return_ok ()
         | str ->
           let len = String.length str in
           let str = str ^ "\r\n" in
-          bounded_stream#push str >>=
-          go (count + len + 2)
+          push (Some str);
+          go (count + len + 2) ()
     in
     go 0 ()
 
@@ -100,7 +100,7 @@ module Make (Stack : Tcpip.Stack.V4V6) = struct
       | true ->
         let id = succ server in
         let key = Msgd.key ~domain_from ~from ~recipients ~ipaddr id in
-        let stream, bounded_stream = Lwt_stream.create_bounded 0x7ff in
+        let stream, push = Lwt_stream.create () in
         let th, wk = Lwt.task () in
         server.push (Some (key, stream, wk));
         let m = SMTP.m_mail ctx in
@@ -109,7 +109,7 @@ module Make (Stack : Tcpip.Stack.V4V6) = struct
           ~limit:(Int64.to_int server.info.size)
           flow ctx
           SMTP.(fun ctx -> Monad.recv ctx Value.Payload)
-          bounded_stream
+          push
         >>= fun result ->
         th >>= fun result' ->
         let m = SMTP.m_end (merge result result') ctx in

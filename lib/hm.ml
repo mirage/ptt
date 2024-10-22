@@ -33,8 +33,9 @@ struct
         Dns_client.gethostbyname6 dns domain_name
         >|= Result.map (fun ipv6 -> Ipaddr.V6 ipv6) in
       Lwt.all [ ipv4; ipv6 ] >|= function
-      | [ _; (Ok _ as ipv6) ] -> ipv6
-      | [ (Ok _ as ipv4); Error _ ] -> ipv4
+      | [ Ok ipv4; Ok ipv6 ] -> Ok [ ipv4; ipv6 ]
+      | [ (Ok ipv4); Error _ ] -> Ok [ ipv4 ]
+      | [ Error _; (Ok ipv6) ] -> Ok [ ipv6 ]
       | [ (Error _ as err); _ ] -> err
       | [] | [_] | _ :: _ :: _ -> assert false in
     { getmxbyname; gethostbyname }

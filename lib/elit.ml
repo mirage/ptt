@@ -60,21 +60,33 @@ struct
         Lwt_stream.get ic >>= function
         | None -> oc None; Lwt.return_unit
         | Some (key, stream, wk) ->
-          let sender = fst (Ptt.Msgd.from key) in
-          let recipients = Ptt.Msgd.recipients key in
-          let recipients = List.map fst recipients in
-          let recipients = Ptt_map.expand ~info map recipients in
-          let recipients = Ptt_aggregate.to_recipients ~info recipients in
-          let id = Ptt_common.id_to_messageID ~info (Ptt.Msgd.id key) in
-          let elts = List.map (fun recipients ->
-            { Ptt_sendmail.sender
-            ; recipients
-            ; data= Lwt_stream.clone stream
-            ; policies= []
-            ; id }) recipients in
-          List.iter (oc $ Option.some) elts;
-          Lwt.wakeup_later wk `Ok;
-        Lwt.pause () >>= go in
+          Lwt.catch 
+            (fun () ->
+              let sender = fst (Ptt.Msgd.from key) in
+              let recipients = Ptt.Msgd.recipients key in
+              let recipients = List.map fst recipients in
+              let recipients = Ptt_map.expand ~info map recipients in
+              let recipients = Ptt_aggregate.to_recipients ~info recipients in
+              let id = Ptt_common.id_to_messageID ~info (Ptt.Msgd.id key) in
+              Log.debug (fun m -> m "%a submitted a new email %a."
+                Colombe.Reverse_path.pp sender Mrmime.MessageID.pp id);
+              let elts = List.map (fun recipients ->
+                { Ptt_sendmail.sender
+                ; recipients
+                ; data= Lwt_stream.clone stream
+                ; policies= []
+                ; id }) recipients in
+              Log.debug (fun m -> m "Notice the SMTP server that everything is ok for %a from %a."
+                Colombe.Reverse_path.pp sender Mrmime.MessageID.pp id);
+              Lwt.wakeup_later wk `Ok;
+              Log.debug (fun m -> m "Send the incoming email %a to our destination."
+                Mrmime.MessageID.pp id);
+              List.iter (oc $ Option.some) elts;
+              Lwt.return_unit)
+          (fun exn ->
+            Log.err (fun m -> m "Got an error into the submission logic: %S" (Printexc.to_string exn));
+            Lwt.return_unit)
+          >>= Lwt.pause >>= go in
       go ()
 
     let job ?(limit = 20) ?stop ~locals ?port ~tls ~info ~destination
@@ -117,8 +129,9 @@ struct
           Dns_client.gethostbyname6 dns domain_name
           >|= Result.map (fun ipv6 -> Ipaddr.V6 ipv6) in
         Lwt.all [ ipv4; ipv6 ] >|= function
-        | [ _; (Ok _ as ipv6) ] -> ipv6
-        | [ (Ok _ as ipv4); Error _ ] -> ipv4
+        | [ Ok ipv4; Ok ipv6 ] -> Ok [ ipv4; ipv6 ]
+        | [ Error _; (Ok ipv6) ] -> Ok [ ipv6 ]
+        | [ (Ok ipv4); Error _ ] -> Ok [ ipv4 ]
         | [ (Error _ as err); _ ] -> err
         | [] | [_] | _ :: _ :: _ -> assert false in
       { getmxbyname; gethostbyname }
@@ -194,10 +207,16 @@ struct
           let real_recipients = Ptt_map.expand ~info map fake_recipients in
           let real_recipients = Ptt_aggregate.to_recipients ~info real_recipients in
           let id = Ptt_common.id_to_messageID ~info (Ptt.Msgd.id key) in
-          verify ~info
-            ~sender:(fst (Ptt.Msgd.from key))
-            ~ipaddr:(Ptt.Msgd.ipaddr key) dns stream >>= function
+          begin
+            if forward_granted (Ptt.Msgd.ipaddr key) allowed_to_forward
+            then Lwt.return (`Ok stream)
+            else verify ~info
+              ~sender:(fst (Ptt.Msgd.from key))
+              ~ipaddr:(Ptt.Msgd.ipaddr key) dns stream end >>= function
           | #Ptt.Msgd.error as err ->
+            Log.warn (fun m -> m "Can verify SPF informations from %a for %a, discard it!"
+              Colombe.Reverse_path.pp (fst (Ptt.Msgd.from key))
+              Mrmime.MessageID.pp id);
             Lwt.wakeup_later wk err;
             Lwt.pause () >>= go
           | `Ok stream ->
@@ -212,8 +231,15 @@ struct
             || only_registered_recipients ~info map fake_recipients
             then begin
               List.iter (oc $ Option.some) elts;
+              Log.debug (fun m -> m "Notice the SMTP server that everything is ok for %a from %a."
+                Colombe.Reverse_path.pp sender Mrmime.MessageID.pp id);
               Lwt.wakeup_later wk `Ok
-            end else Lwt.wakeup_later wk (`Requested_action_not_taken `Permanent);
+            end else begin
+              Log.warn (fun m -> m "Email %a to unknown users (%a), discard it!"
+                Mrmime.MessageID.pp id
+                Fmt.(Dump.list Colombe.Forward_path.pp) fake_recipients);
+              Lwt.wakeup_later wk (`Requested_action_not_taken `Permanent)
+            end;
             Lwt.pause () >>= go in
       go ()
 
@@ -277,7 +303,7 @@ struct
     let submission = { info with Ptt_common.tls= submission } in
     let relay = { info with Ptt_common.tls= relay } in
     Lwt.join
-      [ Local.job ?stop ~locals:t.locals ~tls:t.tls ~info:submission ~destination:t.destination
+      [ Local.job ?stop ~locals:t.locals ~tls:t.tls ~info:submission ~destination:[ t.destination ]
           stack he t.random t.hash t.authentication t.mechanisms
       ; Out.job ?stop ~locals:t.locals ~tls:t.tls ~info:relay ~forward_granted:t.forward_granted
           stack dns he ]
