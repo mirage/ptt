@@ -6,6 +6,7 @@ val empty : postmaster:Emile.mailbox -> t
 val add : local:local -> Emile.mailbox -> t -> unit
 val exists_as_sender : Colombe.Reverse_path.t -> info:Ptt_common.info -> t -> bool
 val recipients : local:local -> t -> Colombe.Forward_path.t list
+val exists : local:local -> t -> bool
 val all : t -> Colombe.Forward_path.t list
 
 val expand :

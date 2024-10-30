@@ -1,3 +1,7 @@
+let src = Logs.Src.create "ptt.flow"
+
+module Log = (val Logs.src_log src)
+
 open Colombe.Sigs
 open Colombe.State
 open Colombe
@@ -73,6 +77,10 @@ module Make (Flow : Mirage_flow.S) = struct
     and wr flow buf off len = inj (Flow'.send flow buf off len) in
     { Colombe.Sigs.rd; wr }
 
+  let pp_data buffer off _ ppf = function
+    | `End -> Fmt.string ppf "<end>"
+    | `Len len -> Fmt.pf ppf "@[<hov>%a@]" (Hxd_string.pp Hxd.default) (Bytes.sub_string buffer off len)
+
   let run :
       type s flow.
       s impl ->
@@ -85,8 +93,12 @@ module Make (Flow : Mirage_flow.S) = struct
   
     let rec go = function
       | Read { buffer; off; len; k } ->
-          rdwr.rd flow buffer off len >>= fun v -> go (k v)
+          rdwr.rd flow buffer off len >>= fun v ->
+          Log.debug (fun m -> m "-> %a" (pp_data buffer off len) v);
+          go (k v)
       | Write { buffer; off; len; k } ->
+          Log.debug (fun m -> m "<- @[<hov>%a@]"
+            (Hxd_string.pp Hxd.default) (String.sub buffer off len));
           rdwr.wr flow buffer off len >>= fun () -> go (k len)
       | Return v -> return (Ok v)
       | Error err -> return (Error err : ('a, 'err) result) in

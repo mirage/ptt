@@ -15,7 +15,7 @@ type ('dns, 'a) getmxbyname =
 type ('dns, 'a) gethostbyname =
      'dns
   -> [ `host ] Domain_name.t
-  -> (Ipaddr.t, [> `Msg of string ] as 'a) result Lwt.t
+  -> (Ipaddr.t list, [> `Msg of string ] as 'a) result Lwt.t
 
 type 'dns resolver =
   { getmxbyname : 'a. ('dns, 'a) getmxbyname

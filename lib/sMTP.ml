@@ -73,7 +73,7 @@ type info = Ptt_common.info = {
 }
 
 type email = Logic.email = {
-    from: Messaged.from
+    from: Msgd.from
   ; recipients: (Forward_path.t * (string * string option) list) list
   ; domain_from: Domain.t
 }
@@ -117,6 +117,12 @@ let m_relay_init ctx info =
           let* () = send ctx Value.PP_250 ["Yes buddy!"] in
           go ()
         | `Quit -> m_politely_close ctx
+        | `Hello _from_domain ->
+            (* NOTE(dinosaure): [nstools.fr] asks [EHLO]/[HELO] two times. We must
+               handle it correctly. *)
+            incr bad;
+            let* () = send ctx Value.PP_250 capabilities in
+            go ()
         | _ ->
           incr bad;
           let* () =
