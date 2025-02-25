@@ -51,5 +51,7 @@ and improve it. Don't use it!
 
 ## Credits
 
-`ptt` has received funding from the Next Generation Internet Initiative (NGI)
-within the framework of the DAPSI Project.
+This project received funding through [NGI Zero Core](https://nlnet.nl/core), a
+fund established by [NLnet](https://nlnet.nl) with financial support from the
+European Commission's [Next Generation Internet](https://ngi.eu) program. Learn
+more at the [NLnet project page](https://nlnet.nl/project/PTT).
