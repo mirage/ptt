@@ -28,14 +28,14 @@ end
 
 module Value_with_tls = Sendmail_with_starttls.Make_with_tls (Value)
 
-module Monad
-  : Logic.MONAD
+module Monad :
+  Logic.MONAD
     with type context = Sendmail_with_starttls.Context_with_tls.t
-     and type error = Value_with_tls.error
-= struct
+     and type error = Value_with_tls.error = struct
   type context = Sendmail_with_starttls.Context_with_tls.t
 
-  include State.Scheduler (Sendmail_with_starttls.Context_with_tls) (Value_with_tls)
+  include
+    State.Scheduler (Sendmail_with_starttls.Context_with_tls) (Value_with_tls)
 end
 
 type context = Sendmail_with_starttls.Context_with_tls.t
@@ -52,14 +52,13 @@ let pp_value_with_tls_error ppf = function
     Fmt.pf ppf "TLS alert: %s" (Tls.Packet.alert_type_to_string alert)
   | `Tls_failure failure ->
     Fmt.pf ppf "TLS failure: %s" (Tls.Engine.string_of_failure failure)
-  | `Tls_closed ->
-    Fmt.string ppf "TLS connection closed by peer"
+  | `Tls_closed -> Fmt.string ppf "TLS connection closed by peer"
   | `Value (#Value.error as err) -> Value.pp_error ppf err
 
 let pp_error ppf = function
   | `Tls (#Value_with_tls.error as err)
   | `Protocol (#Value_with_tls.error as err) ->
-      pp_value_with_tls_error ppf err
+    pp_value_with_tls_error ppf err
   | `No_recipients -> Fmt.string ppf "No recipients"
   | `Too_many_bad_commands -> Fmt.string ppf "Too many bad commands"
   | `Too_many_recipients -> Fmt.string ppf "Too many recipients"
@@ -93,8 +92,9 @@ let m_relay_init ctx info =
       >>= fun () -> recv ctx Value.Helo in
     let capabilities =
       [
-        politely ~domain:info.Ptt_common.domain ~ipaddr:info.Ptt_common.ipaddr; "8BITMIME"
-      ; "SMTPUTF8"; "STARTTLS"; Fmt.str "SIZE %Ld" info.Ptt_common.size
+        politely ~domain:info.Ptt_common.domain ~ipaddr:info.Ptt_common.ipaddr
+      ; "8BITMIME"; "SMTPUTF8"; "STARTTLS"
+      ; Fmt.str "SIZE %Ld" info.Ptt_common.size
       ] in
     let* () = send ctx Value.PP_250 capabilities in
     let reset = ref 0 and bad = ref 0 in
@@ -118,11 +118,11 @@ let m_relay_init ctx info =
           go ()
         | `Quit -> m_politely_close ctx
         | `Hello _from_domain ->
-            (* NOTE(dinosaure): [nstools.fr] asks [EHLO]/[HELO] two times. We must
+          (* NOTE(dinosaure): [nstools.fr] asks [EHLO]/[HELO] two times. We must
                handle it correctly. *)
-            incr bad;
-            let* () = send ctx Value.PP_250 capabilities in
-            go ()
+          incr bad;
+          let* () = send ctx Value.PP_250 capabilities in
+          go ()
         | _ ->
           incr bad;
           let* () =
@@ -143,8 +143,8 @@ let m_submission_init ctx info ms =
       >>= fun () -> recv ctx Value.Helo in
     let capabilities =
       [
-        politely ~domain:info.Ptt_common.domain ~ipaddr:info.Ptt_common.ipaddr; "8BITMIME"
-      ; "SMTPUTF8"; "STARTTLS"
+        politely ~domain:info.Ptt_common.domain ~ipaddr:info.Ptt_common.ipaddr
+      ; "8BITMIME"; "SMTPUTF8"; "STARTTLS"
       ; Fmt.str "AUTH %a" Fmt.(list ~sep:(const string " ") Mechanism.pp) ms
       ; Fmt.str "SIZE %Ld" info.Ptt_common.size
       ] in

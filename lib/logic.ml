@@ -98,7 +98,9 @@ module type MONAD = sig
   val decode :
        context
     -> 'a Value.recv
-    -> (context -> 'a -> ('b, ([> `Protocol of error ] as 'err)) Colombe.State.t)
+    -> (   context
+        -> 'a
+        -> ('b, ([> `Protocol of error ] as 'err)) Colombe.State.t)
     -> ('b, 'err) Colombe.State.t
 
   val send :
@@ -270,16 +272,19 @@ module Make (Monad : MONAD) = struct
 
   let m_end result ctx =
     let open Monad in
-    let* () = match result with
+    let* () =
+      match result with
       | `Ok -> send ctx Value.PP_250 ["Mail sended, buddy!"]
       | `Aborted ->
-        send ctx Value.Code (451, ["Requested action aborted: local error in processing"])
+        send ctx Value.Code
+          (451, ["Requested action aborted: local error in processing"])
       | `Not_enough_memory ->
-        send ctx Value.Code (452, ["Requested action not taken: insufficient system storage"])
+        send ctx Value.Code
+          (452, ["Requested action not taken: insufficient system storage"])
       | `Too_big ->
-        send ctx Value.Code (552, ["Requested mail action aborted: exceeded storage allocation"])
-      | `Failed ->
-        send ctx Value.Code (554, ["Transaction failed"])
+        send ctx Value.Code
+          (552, ["Requested mail action aborted: exceeded storage allocation"])
+      | `Failed -> send ctx Value.Code (554, ["Transaction failed"])
       | `Requested_action_not_taken `Temporary ->
         send ctx Value.Code (450, ["Requested mail action not taken"])
       | `Requested_action_not_taken `Permanent ->
@@ -294,9 +299,7 @@ module Make (Monad : MONAD) = struct
       send ctx Value.PP_250
         [
           politely ~domain:info.Ptt_common.domain ~ipaddr:info.Ptt_common.ipaddr
-        ; "8BITMIME"
-        ; "SMTPUTF8"
-        ; Fmt.str "SIZE %Ld" info.Ptt_common.size
+        ; "8BITMIME"; "SMTPUTF8"; Fmt.str "SIZE %Ld" info.Ptt_common.size
         ] in
     m_relay ctx ~domain_from
 
@@ -307,9 +310,7 @@ module Make (Monad : MONAD) = struct
       send ctx Value.PP_250
         [
           politely ~domain:info.Ptt_common.domain ~ipaddr:info.Ptt_common.ipaddr
-        ; "8BITMIME"
-        ; "SMTPUTF8"
-        ; Fmt.str "SIZE %Ld" info.Ptt_common.size
+        ; "8BITMIME"; "SMTPUTF8"; Fmt.str "SIZE %Ld" info.Ptt_common.size
         ; Fmt.str "AUTH %a" Fmt.(list ~sep:(const string " ") Mechanism.pp) ms
         ] in
     m_submission ctx ~domain_from ms

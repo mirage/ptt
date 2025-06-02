@@ -107,10 +107,14 @@ include Logic.Make (Monad)
 
 let m_submission_init ctx info ms =
   let open Monad in
-  let* () = send ctx Value.PP_220 [Colombe.Domain.to_string info.Ptt_common.domain] in
+  let* () =
+    send ctx Value.PP_220 [Colombe.Domain.to_string info.Ptt_common.domain]
+  in
   m_submission_init ctx info ms
 
 let m_relay_init ctx info =
   let open Monad in
-  let* () = send ctx Value.PP_220 [Colombe.Domain.to_string info.Ptt_common.domain] in
+  let* () =
+    send ctx Value.PP_220 [Colombe.Domain.to_string info.Ptt_common.domain]
+  in
   m_relay_init ctx info

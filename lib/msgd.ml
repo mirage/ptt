@@ -3,12 +3,13 @@ open Colombe
 type from = Reverse_path.t * (string * string option) list
 type recipient = Forward_path.t * (string * string option) list
 
-type key =
-  { domain_from: Domain.t
+type key = {
+    domain_from: Domain.t
   ; from: from
   ; recipients: recipient list
   ; id: int64
-  ; ip: Ipaddr.t }
+  ; ip: Ipaddr.t
+}
 
 let domain_from {domain_from; _} = domain_from
 let from {from; _} = from
@@ -67,8 +68,8 @@ let pp_error ppf = function
   | `Too_big -> Fmt.string ppf "Email too big"
   | `Failed -> Fmt.string ppf "Failed"
   | `Requested_action_not_taken `Temporary ->
-      Fmt.string ppf "Requested action not taken (temporary)"
+    Fmt.string ppf "Requested action not taken (temporary)"
   | `Requested_action_not_taken `Permanent ->
-      Fmt.string ppf "Requested action not taken (permanent)"
+    Fmt.string ppf "Requested action not taken (permanent)"
 
 type t = (key * string Lwt_stream.t * result Lwt.u) Lwt_stream.t

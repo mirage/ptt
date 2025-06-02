@@ -4,22 +4,17 @@ open Colombe
 module Value : sig
   include module type of Logic.Value
 
-  val encode_without_tls :
-       Encoder.encoder
-    -> 'x send
-    -> 'x
-    -> (unit, error) t
-
-  val decode_without_tls :
-    Decoder.decoder -> 'x recv -> ('x, error) t
+  val encode_without_tls : Encoder.encoder -> 'x send -> 'x -> (unit, error) t
+  val decode_without_tls : Decoder.decoder -> 'x recv -> ('x, error) t
 end
 
 module Value_with_tls :
-  module type of Sendmail_with_starttls.Make_with_tls (Value)
+    module type of Sendmail_with_starttls.Make_with_tls (Value)
 
-module Monad : Logic.MONAD
-  with type context = Sendmail_with_starttls.Context_with_tls.t
-   and type error = Value_with_tls.error
+module Monad :
+  Logic.MONAD
+    with type context = Sendmail_with_starttls.Context_with_tls.t
+     and type error = Value_with_tls.error
 
 type context = Sendmail_with_starttls.Context_with_tls.t
 
@@ -62,7 +57,7 @@ val m_submission :
   -> ( [> `Quit
        | `Authentication of Domain.t * Mechanism.t
        | `Authentication_with_payload of Domain.t * Mechanism.t * string ]
-     , [> error ])
+     , [> error ] )
      Colombe.State.t
 
 val m_relay :
@@ -83,9 +78,7 @@ val m_end :
   -> ([> `Quit ], [> error ]) Colombe.State.t
 
 val m_relay_init :
-     context
-  -> info
-  -> ([> `Quit | `Send of email ], [> error ]) Colombe.State.t
+  context -> info -> ([> `Quit | `Send of email ], [> error ]) Colombe.State.t
 
 val m_submission_init :
      context
@@ -94,5 +87,5 @@ val m_submission_init :
   -> ( [> `Quit
        | `Authentication of Domain.t * Mechanism.t
        | `Authentication_with_payload of Domain.t * Mechanism.t * string ]
-     , [> error ])
+     , [> error ] )
      Colombe.State.t

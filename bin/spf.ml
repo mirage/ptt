@@ -18,11 +18,12 @@ let ns_check ~domain spf =
       Dns_client_lwt.get_resource_record dns key domain_name
   end in
   let he = Happy_eyeballs_lwt.create () in
-  let dns = Dns_client_lwt.create he in
-  Uspf_lwt.get ~domain dns (module DNS) >>= function
+  let _dns = Dns_client_lwt.create he in
+  assert false
+(* Uspf_lwt.get ~domain dns (module DNS) >>= function
   | Ok spf' when Uspf.Term.equal spf spf' -> Lwt.return `Already_registered
   | Ok _ -> Lwt.return `Must_be_updated
-  | _ -> Lwt.return `Not_found
+  | _ -> Lwt.return `Not_found *)
 
 let ns_update (ipaddr, port) ~dns_key stack ~domain spf =
   ns_check ~domain spf >>= function

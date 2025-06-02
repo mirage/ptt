@@ -1,15 +1,15 @@
 open Rresult
 
-module Make
-    (Stack : Tcpip.Stack.V4V6) : sig
+module Make (Stack : Tcpip.Stack.V4V6) : sig
   type server
 
-  type info = SMTP.info =
-    { domain: Colombe.Domain.t
+  type info = SMTP.info = {
+      domain: Colombe.Domain.t
     ; ipaddr: Ipaddr.t
     ; tls: Tls.Config.server option
     ; zone: Mrmime.Date.Zone.t
-    ; size: int64 }
+    ; size: int64
+  }
 
   val info : server -> info
 
@@ -19,7 +19,9 @@ module Make
 
   val create :
        info:info
-    -> server * (Msgd.key * string Lwt_stream.t * Msgd.result Lwt.u) Lwt_stream.t * (unit -> unit)
+    -> server
+       * (Msgd.key * string Lwt_stream.t * Msgd.result Lwt.u) Lwt_stream.t
+       * (unit -> unit)
 
   val accept :
        ?encoder:(unit -> bytes)

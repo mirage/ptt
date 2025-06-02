@@ -2,7 +2,7 @@
  (name test)
  (modules test)
  (libraries logs.fmt mirage-crypto-rng.unix ipaddr.unix bos threads mrmime
-   mirage-time-unix mirage-clock-unix ptt ptt.server alcotest-lwt tcpip.stack-socket))
+   mirage-clock-unix ptt ptt.server alcotest-lwt tcpip.stack-socket))
 
 (rule
  (alias runtest)
