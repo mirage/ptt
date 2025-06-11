@@ -107,12 +107,10 @@ module type MONAD = sig
        context
     -> 'a Value.send
     -> 'a
-    -> (unit, ([> `Protocol of error ] as 'err)) Colombe.State.t
+    -> (unit, [> `Protocol of error ]) Colombe.State.t
 
   val recv :
-       context
-    -> 'a Value.recv
-    -> ('a, ([> `Protocol of error ] as 'err)) Colombe.State.t
+    context -> 'a Value.recv -> ('a, [> `Protocol of error ]) Colombe.State.t
 
   val return : 'a -> ('a, 'err) Colombe.State.t
   val fail : 'err -> ('a, 'err) Colombe.State.t

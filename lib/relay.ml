@@ -118,6 +118,16 @@ module Make (Stack : Tcpip.Stack.V4V6) = struct
           SMTP.(fun ctx -> Monad.recv ctx Value.Payload)
           push
         >>= fun result ->
+        Log.debug (fun m ->
+            let pp_error ppf = function
+              | `Protocol _ as err -> SMTP.pp_error ppf err
+              | `Not_enough_memory -> Fmt.string ppf "Not enough memory"
+              | `End_of_input -> Fmt.string ppf "End of input"
+              | `Flow msg -> Fmt.pf ppf "flow: %s" msg
+              | `Too_big_data -> Fmt.pf ppf "Too big data" in
+            m "Email received with an error? %a"
+              Fmt.(Dump.result ~ok:(any "ok") ~error:pp_error)
+              result);
         th >>= fun result' ->
         let m = SMTP.m_end (merge result result') ctx in
         run flow m >>? fun `Quit ->
