@@ -17,8 +17,8 @@ depends: [
   "bos"
   "dns-client"
   "dns-client-lwt"
-  "git-kv"            {>= "0.0.2"}
-  "git-unix"          {>= "3.10.0"}
+  "git-kv"
+  "git-net"
   "ca-certs"
   "cmdliner"          {>= "1.1.0"}
   "mirage-clock-unix" {>= "3.1.0"}

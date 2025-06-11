@@ -1,4 +1,4 @@
-(* mirage >= 4.8.0 & < 4.9.0 *)
+(* mirage >= 4.9.0 & < 4.10.0 *)
 
 open Mirage
 
@@ -18,7 +18,7 @@ let generic_dns_client timeout =
     | h :: t, Some _ -> (Some h, t)
     | _, None -> (None, rest)
     | _ -> err () in 
-  let packages = [ package "dns-client-mirage" ~min:"9.0.0" ~max:"10.0.0" ] in
+  let packages = [ package "dns-client-mirage" ~min:"10.0.0" ~max:"11.0.0" ] in
   let dns_server = Runtime_arg.create ~pos:__POS__ "Unikernel.K.dns_server" in
   let dns_port = Runtime_arg.create ~pos:__POS__ "Unikernel.K.dns_port" in
   let runtime_args = Runtime_arg.[ v dns_server; v dns_port; ] in
@@ -31,11 +31,7 @@ let generic_dns_client timeout =
   in
   let err () = connect_err "generic_dns_client" 6 in
   let connect _info modname = function
-    | _random
-      :: _time
-      :: _mclock
-      :: _pclock
-      :: stackv4v6
+    | stackv4v6
       :: happy_eyeballs
       :: rest ->
         let[@warning "-8"] Some dns_server, rest = pop ~err (Some dns_server) rest in
@@ -48,22 +44,12 @@ let generic_dns_client timeout =
     | _ -> err ()
   in
   impl ~runtime_args ~packages ~connect "Dns_client_mirage.Make"
-    (random
-    @-> time
-    @-> mclock
-    @-> pclock
-    @-> stackv4v6
+    (stackv4v6
     @-> happy_eyeballs
     @-> dns_client)
 
-let generic_dns_client ?timeout ?(random = default_random)
-    ?(time = default_time) ?(mclock = default_monotonic_clock)
-    ?(pclock = default_posix_clock) stackv4v6 happy_eyeballs =
+let generic_dns_client ?timeout stackv4v6 happy_eyeballs =
   generic_dns_client timeout
-  $ random
-  $ time
-  $ mclock
-  $ pclock
   $ stackv4v6
   $ happy_eyeballs
 
@@ -84,16 +70,12 @@ let runtime_args = [ setup ]
 
 let signer =
   main ~runtime_args ~packages "Unikernel.Make" @@
-  random @-> time @-> mclock @-> pclock @-> stackv4v6 @-> dns_client @-> happy_eyeballs @-> job
+  stackv4v6 @-> dns_client @-> happy_eyeballs @-> job
 
-let random = default_random
-let time = default_time
-let mclock = default_monotonic_clock
-let pclock = default_posix_clock
 let stack = generic_stackv4v6 default_network
 let he = generic_happy_eyeballs stack
 let dns = generic_dns_client stack he
 
 let () =
   register "signer"
-    [ signer $ random $ time $ mclock $ pclock $ stack $ dns $ he ]
+    [ signer $ stack $ dns $ he ]

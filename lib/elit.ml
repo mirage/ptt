@@ -6,6 +6,8 @@ let src = Logs.Src.create "ptt.elit"
 module Log : Logs.LOG = (val Logs.src_log src)
 
 let ( $ ) f g = fun x -> f (g x)
+let msgf fmt = Fmt.kstr (fun msg -> `Msg msg) fmt
+let error_msgf fmt = Fmt.kstr (fun msg -> Error (`Msg msg)) fmt
 
 module Make
     (Stack : Tcpip.Stack.V4V6)
@@ -14,7 +16,7 @@ module Make
 struct
   module Server = Ptt_server.Make (Stack)
   module Sendmail = Ptt_sendmail.Make (Stack) (Happy_eyeballs)
-  module Uspf_client = Uspf_mirage.Make (Dns_client)
+  (* module Uspf_client = Uspf_mirage.Make (Dns_client) *)
 
   module Local = struct
     module Submission = Ptt.Submission.Make (Stack)
@@ -183,13 +185,6 @@ struct
       let job = job >|= close in
       job
 
-    let stream_of_field (field_name : Mrmime.Field_name.t) unstrctrd =
-      Lwt_stream.of_list
-        [
-          (field_name :> string); ": "; Unstrctrd.to_utf_8_string unstrctrd
-        ; "\r\n"
-        ]
-
     let forward_granted ipaddr allowed_to_forward =
       List.exists
         (fun prefix -> Ipaddr.Prefix.mem ipaddr prefix)
@@ -204,25 +199,113 @@ struct
           && Ptt_map.exists ~local map in
       List.for_all for_all recipients
 
+    let is_arc_seal =
+      let open Mrmime.Field_name in
+      equal (v "ARC-Seal")
+
+    let get_unstrctrd_exn : type a. a Mrmime.Field.t -> a -> Unstrctrd.t =
+     fun w v ->
+      match w with
+      | Mrmime.Field.Unstructured ->
+        let fold acc = function
+          | #Unstrctrd.elt as elt -> elt :: acc
+          | _ -> acc in
+        let unstrctrd = List.fold_left fold [] v in
+        Result.get_ok (Unstrctrd.of_list (List.rev unstrctrd))
+      | _ -> assert false
+
+    let get_arc_signature :
+           Unstrctrd.t
+        -> (int * Dkim.signed Dkim.t * Dkim.map, [> `Msg of string ]) result =
+     fun unstrctrd ->
+      let ( let* ) = Result.bind in
+      let* m = Dkim.of_unstrctrd_to_map unstrctrd in
+      let none = msgf "Missing i field" in
+      let* i = Option.to_result ~none (Dkim.get_key "i" m) in
+      let* t = Dkim.map_to_t m in
+      try
+        let i = int_of_string i in
+        Ok (i, t, m)
+      with _exn -> error_msgf "Invalid Agent or User Identifier"
+
+    let p =
+      let open Mrmime in
+      let unstructured = Field.(Witness Unstructured) in
+      let open Field_name in
+      Map.empty
+      |> Map.add date unstructured
+      |> Map.add from unstructured
+      |> Map.add sender unstructured
+      |> Map.add reply_to unstructured
+      |> Map.add (v "To") unstructured
+      |> Map.add cc unstructured
+      |> Map.add bcc unstructured
+      |> Map.add subject unstructured
+      |> Map.add message_id unstructured
+      |> Map.add comments unstructured
+      |> Map.add content_type unstructured
+      |> Map.add content_encoding unstructured
+
     let verify ~info ~sender ~ipaddr dns stream =
+      let open Lwt.Syntax in
+      let stream0 = Lwt_stream.clone stream in
+      let stream1 = Lwt_stream.clone stream in
+      let decoder = Mrmime.Hd.decoder p in
+      let rec get_last_uid uid =
+        let open Mrmime in
+        match Hd.decode decoder with
+        | `Field field ->
+          let (Field.Field (fn, w, v)) = Location.prj field in
+          if is_arc_seal fn then
+            match get_arc_signature (get_unstrctrd_exn w v) with
+            | Ok (uid', _, _) -> get_last_uid (Int.max uid uid')
+            | Error _ -> get_last_uid uid
+          else get_last_uid uid
+        | `Malformed _ | `End _ ->
+          Lwt.return uid
+          (* XXX(dinosaure): if it fails, the second loop [go] will fail also. *)
+        | `Await -> (
+          Lwt_stream.get stream1 >>= function
+          | Some str ->
+            Hd.src decoder str 0 (String.length str);
+            get_last_uid uid
+          | None ->
+            Hd.src decoder String.empty 0 0;
+            get_last_uid uid) in
+      let rec go decoder =
+        match Dmarc.Verify.decode decoder with
+        | #Dmarc.Verify.error as err -> Lwt.return_error err
+        | `Info value -> Lwt.return_ok value
+        | `Query (decoder, domain_name, Dns.Rr_map.K record) ->
+          let* response =
+            Dns_client.get_resource_record dns record domain_name in
+          go (Dmarc.Verify.response decoder record response)
+        | `Await decoder -> (
+          Lwt_stream.get stream0 >>= function
+          | Some str -> go (Dmarc.Verify.src decoder str 0 (String.length str))
+          | None -> go (Dmarc.Verify.src decoder String.empty 0 0)) in
       let ctx =
         Uspf.empty |> Uspf.with_ip ipaddr |> fun ctx ->
-        Option.fold ~none:ctx
-          ~some:(fun v -> Uspf.with_sender (`MAILFROM v) ctx)
-          sender in
-      Uspf_client.get_and_check dns ctx >>= fun result ->
-      let result =
-        match result with None -> `Permerror | Some value -> value in
-      let receiver =
-        match info.Ptt_common.domain with
-        | Colombe.Domain.Domain ds -> `Domain ds
-        | IPv4 ipv4 -> `Addr (Emile.IPv4 ipv4)
-        | IPv6 ipv6 -> `Addr (Emile.IPv6 ipv6)
-        | Extension (k, v) -> `Addr (Emile.Ext (k, v)) in
-      let field_name, unstrctrd = Uspf.to_field ~ctx ~receiver result in
-      let stream =
-        Lwt_stream.append (stream_of_field field_name unstrctrd) stream in
-      Lwt.return (`Ok stream)
+        let some = fun v -> Uspf.with_sender (`MAILFROM v) ctx in
+        Option.fold ~none:ctx ~some sender in
+      let dkims_are_valid dkims =
+        let fn = function Dmarc.DKIM.Pass _ -> true | _ -> false in
+        List.for_all fn dkims in
+      Lwt.both (get_last_uid 0) (go (Dmarc.Verify.decoder ~ctx ())) >>= function
+      | uid, Ok (({Dmarc.Verify.spf= `Pass _; _}, dkims, `Pass) as results)
+        when dkims_are_valid dkims ->
+        let receiver =
+          match info.Ptt_common.domain with
+          | Colombe.Domain.Domain ds -> `Domain ds
+          | IPv4 ipv4 -> `Addr (Emile.IPv4 ipv4)
+          | IPv6 ipv6 -> `Addr (Emile.IPv6 ipv6)
+          | Extension (k, v) -> `Addr (Emile.Ext (k, v)) in
+        let encoder = Arc.Encoder.stamp_results ~receiver ~uid:(succ uid) in
+        let authentication_results = Prettym.to_string encoder results in
+        let prefix = Lwt_stream.of_list [authentication_results] in
+        Lwt.return (`Ok (Lwt_stream.append prefix stream))
+      | _, Ok _ -> Lwt.return `Aborted
+      | _, Error _ -> Lwt.return `Aborted
 
     let mail_exchange_logic_job ~info ~map ~allowed_to_forward dns (ic, oc) =
       let sender =

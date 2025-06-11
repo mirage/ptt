@@ -83,7 +83,7 @@
  (public_name ptt.elit)
  (modules elit)
  (libraries mirage-time mirage-clock mirage-random ptt ptt.map ptt.server
-   dns-client-mirage uspf-mirage))
+   dns-client-mirage arc dmarc))
 
 (library
  (name ptt_value)
