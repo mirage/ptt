@@ -56,4 +56,7 @@ pin-depends: [
   [ "spamtacus-bayesian.dev" "git+https://github.com/mirage/spamtacus.git#2d10c6f114e63621bb26999fefd7881f3e673bad" ]
   [ "spamtacus.dev"          "git+https://github.com/mirage/spamtacus.git#2d10c6f114e63621bb26999fefd7881f3e673bad" ]
   [ "spamtacus-mirage.dev"   "git+https://github.com/mirage/spamtacus.git#2d10c6f114e63621bb26999fefd7881f3e673bad" ]
+  [ "uspf.dev"               "git+https://github.com/mirage/uspf.git#a4b90d1e99a607b2d2e8af62f32d5b211787b45d" ]
+  [ "uspf-lwt.dev"           "git+https://github.com/mirage/uspf.git#a4b90d1e99a607b2d2e8af62f32d5b211787b45d" ]
+  [ "uspf-mirage.dev"        "git+https://github.com/mirage/uspf.git#a4b90d1e99a607b2d2e8af62f32d5b211787b45d" ]
 ]

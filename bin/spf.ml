@@ -6,24 +6,13 @@ let ( >>? ) = Lwt_result.bind
 module DNS = Dns_mirage.Make (Tcpip_stack_socket.V4V6)
 
 let ns_check ~domain spf =
-  let module DNS = struct
-    type t = Dns_client_lwt.t
-
-    type error =
-      [ `Msg of string
-      | `No_data of [ `raw ] Domain_name.t * Dns.Soa.t
-      | `No_domain of [ `raw ] Domain_name.t * Dns.Soa.t ]
-
-    let getrrecord dns key domain_name =
-      Dns_client_lwt.get_resource_record dns key domain_name
-  end in
   let he = Happy_eyeballs_lwt.create () in
-  let _dns = Dns_client_lwt.create he in
-  assert false
-(* Uspf_lwt.get ~domain dns (module DNS) >>= function
+  let dns = Dns_client_lwt.create he in
+  let ctx = Uspf.with_sender (`HELO domain) Uspf.empty in
+  Uspf_lwt.get dns ctx >>= function
   | Ok spf' when Uspf.Term.equal spf spf' -> Lwt.return `Already_registered
   | Ok _ -> Lwt.return `Must_be_updated
-  | _ -> Lwt.return `Not_found *)
+  | _ -> Lwt.return `Not_found
 
 let ns_update (ipaddr, port) ~dns_key stack ~domain spf =
   ns_check ~domain spf >>= function
