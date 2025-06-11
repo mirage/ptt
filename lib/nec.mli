@@ -1,13 +1,9 @@
 (** {1:A DKIM signer as a SMTP server.}
 
     This module implements a server which signs incoming emails with a private
-    RSA key. It re-sends emails with the computed DKIM field.
-*)
+    RSA key. It re-sends emails with the computed DKIM field. *)
 
 module Make
-    (Time : Mirage_time.S)
-    (Mclock : Mirage_clock.MCLOCK)
-    (Pclock : Mirage_clock.PCLOCK)
     (Stack : Tcpip.Stack.V4V6)
     (Dns_client : Dns_client_mirage.S)
     (Happy_eyeballs : Happy_eyeballs_mirage.S with type flow = Stack.TCP.flow) : sig
@@ -21,6 +17,6 @@ module Make
     -> Stack.TCP.t
     -> Dns_client.t
     -> Happy_eyeballs.t
-    -> Mirage_crypto_pk.Rsa.priv * Dkim.unsigned Dkim.dkim
+    -> Dkim.key * Dkim.unsigned Dkim.t
     -> unit Lwt.t
 end

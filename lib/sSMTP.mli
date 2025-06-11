@@ -74,9 +74,7 @@ val m_end :
   -> ([> `Quit ], [> error ]) Colombe.State.t
 
 val m_relay_init :
-     context
-  -> info
-  -> ([> `Quit | `Send of email ], [> error ]) Colombe.State.t
+  context -> info -> ([> `Quit | `Send of email ], [> error ]) Colombe.State.t
 
 val m_submission_init :
      context

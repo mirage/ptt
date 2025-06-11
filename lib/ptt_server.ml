@@ -2,7 +2,7 @@ let src = Logs.Src.create "ptt.server"
 
 module Log = (val Logs.src_log src)
 
-module Make (Time : Mirage_time.S) (Stack : Tcpip.Stack.V4V6) = struct
+module Make (Stack : Tcpip.Stack.V4V6) = struct
   open Lwt.Infix
 
   type service = {
@@ -21,7 +21,8 @@ module Make (Time : Mirage_time.S) (Stack : Tcpip.Stack.V4V6) = struct
     let listener flow =
       let ipaddr, port = Stack.TCP.dst flow in
       Lwt_mutex.with_lock mutex @@ fun () ->
-      Log.debug (fun m -> m "A new incoming connection: %a:%d" Ipaddr.pp ipaddr port);
+      Log.debug (fun m ->
+          m "A new incoming connection: %a:%d" Ipaddr.pp ipaddr port);
       Queue.push flow queue;
       Lwt_condition.signal condition ();
       Lwt.return_unit in
@@ -48,26 +49,28 @@ module Make (Time : Mirage_time.S) (Stack : Tcpip.Stack.V4V6) = struct
 
   let rec clean acc = function
     | [] -> acc
-    | th :: ths ->
-        match Lwt.state th with
-        | Return () -> clean acc ths
-        | Fail exn ->
-            Log.err (fun m -> m "A spawned thread failed with: %S" (Printexc.to_string exn));
-            clean acc ths
-        | Sleep -> clean (th :: acc) ths
+    | th :: ths -> (
+      match Lwt.state th with
+      | Return () -> clean acc ths
+      | Fail exn ->
+        Log.err (fun m ->
+            m "A spawned thread failed with: %S" (Printexc.to_string exn));
+        clean acc ths
+      | Sleep -> clean (th :: acc) ths)
 
   let rec terminate = function
     | [] ->
-        Log.debug (fun m -> m "The server is cleaned");
-        Lwt.return_unit
-    | th :: ths ->
-        Log.debug (fun m -> m "Unterminated tasks");
-        match Lwt.state th with
-        | Return () -> terminate ths
-        | Fail exn ->
-            Log.err (fun m -> m "A spawned thread failed with: %S" (Printexc.to_string exn));
-            terminate ths
-        | Sleep -> Lwt.pause () >>= fun () -> terminate (th :: ths)
+      Log.debug (fun m -> m "The server is cleaned");
+      Lwt.return_unit
+    | th :: ths -> (
+      Log.debug (fun m -> m "Unterminated tasks");
+      match Lwt.state th with
+      | Return () -> terminate ths
+      | Fail exn ->
+        Log.err (fun m ->
+            m "A spawned thread failed with: %S" (Printexc.to_string exn));
+        terminate ths
+      | Sleep -> Lwt.pause () >>= fun () -> terminate (th :: ths))
 
   let serve_when_ready ?stop ~handler service =
     `Initialized

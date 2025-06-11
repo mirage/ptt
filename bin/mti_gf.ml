@@ -6,21 +6,19 @@ let () = Fmt.set_style_renderer Fmt.stdout `Ansi_tty
 let () = Fmt.set_style_renderer Fmt.stderr `Ansi_tty
 let () = Logs.set_level ~all:true (Some Logs.Debug)
 let () = Logs.set_reporter reporter
-let () = Mirage_crypto_rng_unix.initialize (module Mirage_crypto_rng.Fortuna)
+let () = Mirage_crypto_rng_unix.use_default ()
 let ( <.> ) f g x = f (g x)
 
 open Rresult
 
-module Happy_eyeballs_daemon = Happy_eyeballs_mirage.Make
-  (Time) (Mclock) (Tcpip_stack_socket.V4V6)
+module Happy_eyeballs_daemon =
+  Happy_eyeballs_mirage.Make (Tcpip_stack_socket.V4V6)
 
-module Dns_client = Dns_client_mirage.Make
-  (Mirage_crypto_rng) (Time) (Mclock) (Pclock) (Tcpip_stack_socket.V4V6)
-  (Happy_eyeballs_daemon)
+module Dns_client =
+  Dns_client_mirage.Make (Tcpip_stack_socket.V4V6) (Happy_eyeballs_daemon)
 
-module Server = Mti_gf.Make
-  (Time) (Mclock) (Pclock) (Tcpip_stack_socket.V4V6)
-  (Dns_client) (Happy_eyeballs_daemon)
+module Server =
+  Mti_gf.Make (Tcpip_stack_socket.V4V6) (Dns_client) (Happy_eyeballs_daemon)
 
 let load_file filename = Bos.OS.File.read filename
 
@@ -44,8 +42,10 @@ let job ~domain locals =
   let open Lwt.Infix in
   let open Tcpip_stack_socket.V4V6 in
   let ipv4_only = false and ipv6_only = false in
-  TCP.connect ~ipv4_only ~ipv6_only Ipaddr.V4.Prefix.global None >>= fun tcpv4v6 ->
-  UDP.connect ~ipv4_only ~ipv6_only Ipaddr.V4.Prefix.global None >>= fun udpv4v6 ->
+  TCP.connect ~ipv4_only ~ipv6_only Ipaddr.V4.Prefix.global None
+  >>= fun tcpv4v6 ->
+  UDP.connect ~ipv4_only ~ipv6_only Ipaddr.V4.Prefix.global None
+  >>= fun udpv4v6 ->
   connect udpv4v6 tcpv4v6 >>= fun stack ->
   let info =
     {
@@ -65,8 +65,8 @@ let romain_calascibetta =
 
 let () =
   let locals = Ptt_map.empty ~postmaster:romain_calascibetta in
-  let domain = Colombe.Domain.Domain [ "ptt"; "fr" ] in
+  let domain = Colombe.Domain.Domain ["ptt"; "fr"] in
   Ptt_map.add
-    ~local:(`Dot_string [ "romain"; "calascibetta" ])
+    ~local:(`Dot_string ["romain"; "calascibetta"])
     romain_calascibetta locals;
   Lwt_main.run (job ~domain locals)

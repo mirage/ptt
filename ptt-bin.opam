@@ -33,3 +33,8 @@ depends: [
 build: ["dune" "build" "-p" name "-j" jobs]
 run-test: ["dune" "runtest" "-p" name "-j" jobs]
 dev-repo: "git+https://github.com/mirage/ptt.git"
+pin-depends: [
+  [ "uspf.dev"               "git+https://github.com/mirage/uspf.git#a4b90d1e99a607b2d2e8af62f32d5b211787b45d" ]
+  [ "uspf-lwt.dev"           "git+https://github.com/mirage/uspf.git#a4b90d1e99a607b2d2e8af62f32d5b211787b45d" ]
+  [ "uspf-mirage.dev"        "git+https://github.com/mirage/uspf.git#a4b90d1e99a607b2d2e8af62f32d5b211787b45d" ]
+]

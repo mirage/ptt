@@ -28,7 +28,6 @@ type error =
   | `Requested_action_not_taken of [ `Temporary | `Permanent ] ]
 
 type result = [ error | `Ok ]
-
 type t = (key * string Lwt_stream.t * result Lwt.u) Lwt_stream.t
 
 val pp_error : error Fmt.t

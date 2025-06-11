@@ -1,4 +1,4 @@
-module Make (Time : Mirage_time.S) (Stack : Tcpip.Stack.V4V6) : sig
+module Make (Stack : Tcpip.Stack.V4V6) : sig
   type service
 
   val init : port:int -> Stack.TCP.t -> service Lwt.t

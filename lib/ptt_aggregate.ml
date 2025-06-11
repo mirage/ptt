@@ -2,8 +2,7 @@ let src = Logs.Src.create "ptt.aggregate"
 
 module Log = (val Logs.src_log src)
 
-let ( <$> ) f g = fun x -> match g x with
-  | Ok x -> f x | Error _ as err -> err
+let ( <$> ) f g = fun x -> match g x with Ok x -> f x | Error _ as err -> err
 
 module By_domain = Map.Make (struct
   type t = [ `host ] Domain_name.t
@@ -44,31 +43,45 @@ let aggregate_by_domains ~info =
   let open Colombe in
   let open Forward_path in
   let fold (by_domains, by_ipaddrs) = function
-    | Postmaster ->
-      begin match info.Ptt_common.domain with
+    | Postmaster -> begin
+      match info.Ptt_common.domain with
       | Colombe.Domain.(IPv4 _ | IPv6 _ | Extension _) ->
-        Log.err (fun m -> m "The SMTP server domain is not a domain-name, impossible to add the postmaster as a recipient");
+        Log.err (fun m ->
+            m
+              "The SMTP server domain is not a domain-name, impossible to add \
+               the postmaster as a recipient");
         by_domains, by_ipaddrs
-      | Colombe.Domain.Domain ds ->
+      | Colombe.Domain.Domain ds -> (
         match Domain_name.(host <$> of_strings) ds with
         | Ok domain -> add_by_domain ~domain `Postmaster by_domains, by_ipaddrs
         | Error (`Msg _) ->
-          Log.err (fun m -> m "Invalid SMTP server domain, impossible to add the postmaster as a recipient");
-          by_domains, by_ipaddrs end
+          Log.err (fun m ->
+              m
+                "Invalid SMTP server domain, impossible to add the postmaster \
+                 as a recipient");
+          by_domains, by_ipaddrs)
+    end
     | Forward_path {Path.domain= Domain.Domain v; Path.local; _} as recipient ->
-      begin match Domain_name.(host <$> of_strings) v with
+      begin
+      match Domain_name.(host <$> of_strings) v with
       | Ok domain ->
         let local = Colombe_emile.of_local local in
         add_by_domain ~domain (`Some local) by_domains, by_ipaddrs
       | Error (`Msg msg) ->
-        Log.warn (fun m -> m "Invalid domain for %a, ignore it: %s" Forward_path.pp recipient msg);
-        by_domains, by_ipaddrs end
-    | Domain (Domain.Domain v) as recipient ->
-      begin match Domain_name.(host <$> of_strings) v with
+        Log.warn (fun m ->
+            m "Invalid domain for %a, ignore it: %s" Forward_path.pp recipient
+              msg);
+        by_domains, by_ipaddrs
+    end
+    | Domain (Domain.Domain v) as recipient -> begin
+      match Domain_name.(host <$> of_strings) v with
       | Ok domain -> add_by_domain ~domain `All by_domains, by_ipaddrs
       | Error (`Msg msg) ->
-        Log.warn (fun m -> m "Invalid domain for %a, ignore it: %s" Forward_path.pp recipient msg);
-        by_domains, by_ipaddrs end
+        Log.warn (fun m ->
+            m "Invalid domain for %a, ignore it: %s" Forward_path.pp recipient
+              msg);
+        by_domains, by_ipaddrs
+    end
     | Domain (Domain.IPv4 v4) ->
       by_domains, add_by_ipaddr (Ipaddr.V4 v4) `All by_ipaddrs
     | Domain (Domain.IPv6 v6) ->
@@ -79,19 +92,28 @@ let aggregate_by_domains ~info =
     | Forward_path {Path.domain= Domain.IPv6 v6; Path.local; _} ->
       let local = Colombe_emile.of_local local in
       by_domains, add_by_ipaddr (Ipaddr.V6 v6) (`Some local) by_ipaddrs
-    | Domain (Domain.Extension _)
-    | Forward_path {Path.domain= Domain.Extension _; _} as recipient ->
-      Log.warn (fun m -> m "We don't support domain extension, ignore %a" Forward_path.pp recipient);
+    | ( Domain (Domain.Extension _)
+      | Forward_path {Path.domain= Domain.Extension _; _} ) as recipient ->
+      Log.warn (fun m ->
+          m "We don't support domain extension, ignore %a" Forward_path.pp
+            recipient);
       by_domains, by_ipaddrs in
   List.fold_left fold (By_domain.empty, By_ipaddr.empty)
 
 let to_recipients ~info recipients =
   let by_domains, by_ipaddrs = aggregate_by_domains ~info recipients in
-  let by_domains = List.map (fun (domain, locals) ->
-    let domain = `Domain domain in
-    Ptt_sendmail.{ domain; locals }) (By_domain.bindings by_domains) in
-  let by_ipaddrs = List.map (fun (ipaddr, locals) ->
-    let domain = `Ipaddr ipaddr in
-    let locals = (locals :> [ `Some of Emile.local list | `Postmaster | `All]) in
-    Ptt_sendmail.{ domain; locals }) (By_ipaddr.bindings by_ipaddrs) in
+  let by_domains =
+    List.map
+      (fun (domain, locals) ->
+        let domain = `Domain domain in
+        Ptt_sendmail.{domain; locals})
+      (By_domain.bindings by_domains) in
+  let by_ipaddrs =
+    List.map
+      (fun (ipaddr, locals) ->
+        let domain = `Ipaddr ipaddr in
+        let locals =
+          (locals :> [ `Some of Emile.local list | `Postmaster | `All ]) in
+        Ptt_sendmail.{domain; locals})
+      (By_ipaddr.bindings by_ipaddrs) in
   List.rev_append by_domains by_ipaddrs
