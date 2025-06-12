@@ -68,7 +68,7 @@
  (name nec)
  (public_name ptt.nec)
  (modules nec)
- (libraries mirage-time mirage-clock mirage-random ptt ptt.map ptt.server
+ (libraries arc mirage-time mirage-clock mirage-random ptt ptt.map ptt.server
    dkim-mirage dns-client-mirage))
 
 (library
