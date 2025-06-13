@@ -7,6 +7,12 @@ module Log : Logs.LOG = (val Logs.src_log src)
 
 let ( $ ) f g = fun x -> f (g x)
 
+type dkim = Dkim.unsigned Dkim.t
+
+type signer =
+  | DKIM of {dkim: dkim; pk: Dkim.key}
+  | ARC of {seal: Arc.Sign.seal; msgsig: dkim; pks: Arc.key * Arc.key option}
+
 module Make
     (Stack : Tcpip.Stack.V4V6)
     (Dns_client : Dns_client_mirage.S)
@@ -17,24 +23,34 @@ struct
   module Sendmail = Ptt_sendmail.Make (Stack) (Happy_eyeballs)
   module DKIM = Dkim_mirage.Make (Dns_client)
 
+  type resolver = Internet of Dns_client.t | Local of Ipaddr.t list
+
   let resolver =
     let open Ptt_common in
-    let getmxbyname dns domain_name =
-      Dns_client.getaddrinfo dns Dns.Rr_map.Mx domain_name >|= Result.map snd
-    in
-    let gethostbyname dns domain_name =
-      let ipv4 =
-        Dns_client.gethostbyname dns domain_name
-        >|= Result.map (fun ipv4 -> Ipaddr.V4 ipv4) in
-      let ipv6 =
-        Dns_client.gethostbyname6 dns domain_name
-        >|= Result.map (fun ipv6 -> Ipaddr.V6 ipv6) in
-      Lwt.all [ipv4; ipv6] >|= function
-      | [Ok ipv4; Ok ipv6] -> Ok [ipv4; ipv6]
-      | [Ok ipv4; Error _] -> Ok [ipv4]
-      | [Error _; Ok ipv6] -> Ok [ipv6]
-      | [(Error _ as err); _] -> err
-      | [] | [_] | _ :: _ :: _ -> assert false in
+    let getmxbyname resolver mail_exchange =
+      match resolver with
+      | Internet dns ->
+        Dns_client.getaddrinfo dns Dns.Rr_map.Mx mail_exchange
+        >|= Result.map snd
+      | Local _ipaddrs ->
+        Dns.Rr_map.Mx_set.(singleton {Dns.Mx.preference= 0; mail_exchange})
+        |> Lwt.return_ok in
+    let gethostbyname resolver domain_name =
+      match resolver with
+      | Local ipaddrs -> Lwt.return_ok ipaddrs
+      | Internet dns -> (
+        let ipv4 =
+          Dns_client.gethostbyname dns domain_name
+          >|= Result.map (fun ipv4 -> Ipaddr.V4 ipv4) in
+        let ipv6 =
+          Dns_client.gethostbyname6 dns domain_name
+          >|= Result.map (fun ipv6 -> Ipaddr.V6 ipv6) in
+        Lwt.all [ipv4; ipv6] >|= function
+        | [Ok ipv4; Ok ipv6] -> Ok [ipv4; ipv6]
+        | [Ok ipv4; Error _] -> Ok [ipv4]
+        | [Error _; Ok ipv6] -> Ok [ipv6]
+        | [(Error _ as err); _] -> err
+        | [] | [_] | _ :: _ :: _ -> assert false) in
     {getmxbyname; gethostbyname}
 
   let server_job ~pool ?stop ~port stack dns server close =
@@ -71,101 +87,80 @@ struct
       end
     | Error (`Msg msg) -> Lwt.return (domain_name, `DNS_error msg)
 
-  let verify_and_sign ~info dns ~pk seal msgsig dkim stream =
-    let receiver =
-      match info.Ptt_common.domain with
-      | Colombe.Domain.Domain ds -> `Domain ds
-      | IPv4 ipv4 -> `Addr (Emile.IPv4 ipv4)
-      | IPv6 ipv6 -> `Addr (Emile.IPv6 ipv6)
-      | Extension (k, v) -> `Addr (Emile.Ext (k, v)) in
-    let stream0 = Lwt_stream.clone stream in
-    let stream1 = Lwt_stream.clone stream in
-    let stream2 = Lwt_stream.clone stream in
-    let chain =
-      let rec go decoder =
-        match Arc.Verify.decode decoder with
-        | `Queries (decoder, set) -> begin
-          match Arc.Verify.queries set with
-          | Error _ -> Lwt.return_error (`Invalid_domain_key set)
-          | Ok queries ->
-            Lwt_list.map_s (request dns) queries >>= fun responses ->
-            let decoder = Arc.Verify.response decoder responses in
-            let decoder = Result.get_ok decoder in
-            go decoder
-        end
-        | `Await decoder -> begin
-          Lwt_stream.get stream0 >>= function
-          | Some str -> go (Arc.Verify.src decoder str 0 (String.length str))
-          | None -> go (Arc.Verify.src decoder String.empty 0 0)
-        end
-        | `Malformed _ -> Lwt.return_error `Invalid_email
-        | `Chain chain -> Lwt.return_ok chain in
-      go (Arc.Verify.decoder ()) in
-    let dkim =
-      DKIM.sign ~key:pk ~newline:`CRLF dkim stream1 >>= function
+  let verify_and_sign ~info dns stream = function
+    | DKIM {dkim; pk} -> begin
+      let stream0 = Lwt_stream.clone stream in
+      DKIM.sign ~newline:`CRLF ~key:pk dkim stream0 >>= function
       | Ok dkim ->
         let new_line = "\r\n" in
         let bbh = (Dkim.signature_and_hash dkim :> string * Dkim.hash_value) in
         let dkim = Dkim.with_signature_and_hash dkim bbh in
-        Lwt.return_ok (Prettym.to_string ~new_line Dkim.Encoder.as_field dkim)
-      | Error _ as err -> Lwt.return err in
-    Lwt.both chain dkim >>= function
-    | Error _, Error _ ->
-      Log.err (fun m -> m "Impossible to sign (ARC & DKIM) the incoming email");
-      Lwt.return stream
-    | Error _, Ok dkim ->
-      Log.err (fun m ->
-          m "Impossible to add a new ARC-Set into the incoming email");
-      let prefix = Lwt_stream.of_list [dkim] in
-      Lwt.return (Lwt_stream.append prefix stream)
-    | Ok chain, dkim -> begin
-      let dkim =
-        match dkim with
-        | Ok dkim -> dkim
-        | Error _ ->
-          Log.err (fun m ->
-              m "Impossible to add a DKIM signature into the incoming email");
-          String.empty in
-      let seal chain =
-        let rec go t =
-          match Arc.Sign.sign t with
-          | `Malformed _ -> Lwt.return_error `Invalid_email
-          | `Set set -> Lwt.return_ok set
-          | `Await t -> begin
-            Lwt_stream.get stream2 >>= function
-            | Some str -> go (Arc.Sign.fill t str 0 (String.length str))
-            | None -> go (Arc.Sign.fill t String.empty 0 0)
-          end in
-        go (Arc.Sign.signer ~seal ~msgsig ~receiver (pk, None) chain) in
-      seal chain >>= function
-      | Ok set ->
-        let new_line = "\r\n" in
-        let set = Prettym.to_string ~new_line Arc.Encoder.stamp set in
-        let prefix = Lwt_stream.of_list [set; dkim] in
-        Lwt.return (Lwt_stream.append prefix stream)
-      | Error _ ->
-        Log.err (fun m -> m "Impossible to get ARC sets");
+        let dkim = Prettym.to_string ~new_line Dkim.Encoder.as_field dkim in
         let prefix = Lwt_stream.of_list [dkim] in
         Lwt.return (Lwt_stream.append prefix stream)
+      | Error _ -> Lwt.return stream
+    end
+    | ARC {seal; msgsig; pks} -> begin
+      let receiver =
+        match info.Ptt_common.domain with
+        | Colombe.Domain.Domain ds -> `Domain ds
+        | IPv4 ipv4 -> `Addr (Emile.IPv4 ipv4)
+        | IPv6 ipv6 -> `Addr (Emile.IPv6 ipv6)
+        | Extension (k, v) -> `Addr (Emile.Ext (k, v)) in
+      let stream0 = Lwt_stream.clone stream in
+      let stream1 = Lwt_stream.clone stream in
+      let chain =
+        let rec go decoder =
+          match Arc.Verify.decode decoder with
+          | `Queries (decoder, set) -> begin
+            match Arc.Verify.queries set with
+            | Error _ -> Lwt.return_error (`Invalid_domain_key set)
+            | Ok queries ->
+              Lwt_list.map_s (request dns) queries >>= fun responses ->
+              let decoder = Arc.Verify.response decoder responses in
+              let decoder = Result.get_ok decoder in
+              go decoder
+          end
+          | `Await decoder -> begin
+            Lwt_stream.get stream0 >>= function
+            | Some str -> go (Arc.Verify.src decoder str 0 (String.length str))
+            | None -> go (Arc.Verify.src decoder String.empty 0 0)
+          end
+          | `Malformed _ -> Lwt.return_error `Invalid_email
+          | `Chain chain -> Lwt.return_ok chain in
+        go (Arc.Verify.decoder ()) in
+      chain >>= function
+      | Error _ -> Lwt.return stream
+      | Ok chain -> begin
+        let seal chain =
+          let rec go t =
+            match Arc.Sign.sign t with
+            | `Malformed _ -> Lwt.return_error `Invalid_email
+            | `Set set -> Lwt.return_ok set
+            | `Await t -> begin
+              Lwt_stream.get stream1 >>= function
+              | Some str -> go (Arc.Sign.fill t str 0 (String.length str))
+              | None -> go (Arc.Sign.fill t String.empty 0 0)
+            end in
+          go (Arc.Sign.signer ~seal ~msgsig ~receiver pks chain) in
+        seal chain >>= function
+        | Ok set ->
+          let new_line = "\r\n" in
+          let set = Prettym.to_string ~new_line Arc.Encoder.stamp set in
+          let prefix = Lwt_stream.of_list [set] in
+          Lwt.return (Lwt_stream.append prefix stream)
+        | Error _ -> Lwt.return stream
+      end
     end
 
-  let logic_job ~info dns map (ic, oc) (pk, dkim) =
-    let hash =
-      let (Dkim.Hash_algorithm hash) = Dkim.hash_algorithm dkim in
-      match Digestif.hash_to_hash' hash with
-      | #Dkim.hash as hash -> hash
-      | _ -> assert false in
-    let seal =
-      Arc.Sign.seal ~algorithm:(Dkim.algorithm dkim) ~hash
-        ~selector:(Dkim.selector dkim) (Dkim.domain dkim) in
+  let logic_job ~info dns map (ic, oc) signer =
     let rec go () =
       Lwt_stream.get ic >>= function
       | None -> oc None; Lwt.return_unit
       | Some (key, stream, wk) ->
         let sign_and_transmit () =
           Lwt.catch (fun () ->
-              verify_and_sign ~info dns ~pk seal dkim dkim stream
-              >>= fun stream ->
+              verify_and_sign ~info dns stream signer >>= fun stream ->
               let sender, _ = Ptt.Msgd.from key in
               let recipients = Ptt.Msgd.recipients key in
               let recipients = List.map fst recipients in
@@ -197,6 +192,7 @@ struct
   let job
       ?(limit = 20)
       ?stop
+      ?destination
       ~locals
       ~port
       ~tls
@@ -204,7 +200,7 @@ struct
       stack
       dns
       he
-      (private_key, dkim) =
+      signer =
     let pool0 =
       Lwt_pool.create limit @@ fun () ->
       let encoder = Bytes.create Colombe.Encoder.io_buffer_size in
@@ -220,10 +216,14 @@ struct
     let pool1 = {Ptt_sendmail.pool= (fun fn -> Lwt_pool.use pool1 fn)} in
     let ic_server, stream0, close0 = Signer.create ~info in
     let oc_server, push0 = Sendmail.v ~resolver ~pool:pool1 ~info tls in
+    let resolver =
+      match destination with
+      | Some ipaddr -> Local [ipaddr]
+      | None -> Internet dns in
     Lwt.join
       [
-        server_job ~pool:pool0 ?stop ~port stack dns ic_server close0
-      ; logic_job ~info dns locals (stream0, push0) (private_key, dkim)
-      ; Sendmail.job dns he oc_server
+        server_job ~pool:pool0 ?stop ~port stack resolver ic_server close0
+      ; logic_job ~info dns locals (stream0, push0) signer
+      ; Sendmail.job resolver he oc_server
       ]
 end

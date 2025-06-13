@@ -65,6 +65,10 @@ module K = struct
     let doc = Arg.info ~doc:"Next SMTP server IP for submission" [ "destination" ] in
     Arg.(required & opt (some Mirage_runtime_network.Arg.ip_address) None doc)
 
+  let mx_destination =
+    let doc = Arg.info ~doc:"Next SMTP server IP for MX relay" [ "mx-destination" ] in
+    Arg.(value & opt (some Mirage_runtime_network.Arg.ip_address) None doc)
+
   let seed =
     let doc = Arg.info [ "seed" ] ~doc:"The seed (in base64) of the private RSA key." in
     let parser str = Base64.decode str in
@@ -77,6 +81,10 @@ module K = struct
     let ipaddr = Arg.conv (Ipaddr.Prefix.of_string, Ipaddr.Prefix.pp) in
     Arg.(value & opt_all ipaddr [] & info [ "forward-granted"] ~doc)
 
+  let with_arc =
+    let doc = "Emit an ARC-Authentication-Results instead of Authentication-Results." in
+    Arg.(value & flag & info [ "with-arc" ] ~doc)
+
   type t =
     { domain : Colombe.Domain.t
     ; postmaster : Emile.mailbox
@@ -85,14 +93,16 @@ module K = struct
     ; relay : [ `host ] Domain_name.t option
     ; seed : string option
     ; destination : Ipaddr.t
+    ; mx_destination : Ipaddr.t option
+    ; with_arc : bool
     ; forward_granted : Ipaddr.Prefix.t list }
 
-  let setup domain postmaster dns submission relay seed destination forward_granted =
-    { domain; postmaster; dns; submission; relay; seed; destination; forward_granted }
+  let setup domain postmaster dns submission relay seed destination mx_destination with_arc forward_granted =
+    { domain; postmaster; dns; submission; relay; seed; destination; mx_destination; with_arc; forward_granted }
 
   let setup =
     let open Term in
-    const setup $ domain $ postmaster $ setup_dns_certify $ submission $ relay $ seed $ destination $ forward_granted
+    const setup $ domain $ postmaster $ setup_dns_certify $ submission $ relay $ seed $ destination $ mx_destination $ with_arc $ forward_granted
 end
 
 module Format = struct
@@ -248,7 +258,9 @@ module Make
         Lwt_switch.turn_off stop >>= fun () ->
         Lwt.return result in
       let server () =
-        Elit.job server ~info ?submission:tls_submission ?relay:tls_relay (Stack.tcp stack) dns he in
+        Logs.debug (fun m -> m "Launch the elit server");
+        Elit.job server ~info ?submission:tls_submission ?relay:tls_relay ~with_arc:cfg.with_arc
+          ?mx_destination:cfg.mx_destination (Stack.tcp stack) dns he in
       Lwt.both (server ()) (wait_and_stop ()) >>= fun ((), result) ->
       loop result in
     retrieve_certs stack ?submission ?relay ~seed cfg.dns >>= loop

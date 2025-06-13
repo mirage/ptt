@@ -26,19 +26,37 @@ module K = struct
   let dns_key =
     let doc = Arg.info ~doc:"nsupdate key" [ "dns-key" ] in
     let key = Arg.conv ~docv:"HOST:HASH:DATA" Dns.Dnskey.(name_key_of_string, Fmt.(using name_key_to_string string)) in
-    Arg.(required & opt (some key) None doc)
+    Arg.(value & opt (some key) None doc)
 
   let dns_server =
     let doc = Arg.info ~doc:"dns server IP" [ "dns-server" ] in
-    Arg.(required & opt (some Mirage_runtime_network.Arg.ip_address) None doc)
+    Arg.(value & opt (some Mirage_runtime_network.Arg.ip_address) None doc)
 
   let dns_port =
     let doc = Arg.info ~doc:"dns server port" [ "dns-port" ] in
     Arg.(value & opt int 53 doc)
 
+  type dns =
+    { dns_server : Ipaddr.t
+    ; dns_port : int
+    ; dns_key : [ `raw ] Domain_name.t * Dns.Dnskey.t }
+
+  let setup_dns_server dns_server dns_port dns_key =
+    match dns_server, dns_key with
+    | Some dns_server, Some dns_key ->
+        Some { dns_server; dns_port; dns_key }
+    | _ -> None
+
+  let setup_dns_server =
+    let open Term in
+    const setup_dns_server
+    $ dns_server
+    $ dns_port
+    $ dns_key
+
   let destination =
     let doc = Arg.info ~doc:"Next SMTP server IP" [ "destination" ] in
-    Mirage_runtime.register_arg Arg.(required & opt (some Mirage_runtime_network.Arg.ip_address) None doc)
+    Arg.(value & opt (some Mirage_runtime_network.Arg.ip_address) None doc)
 
   let fields =
     let doc = Arg.info [ "fields" ] ~doc:"List of fields to sign" in
@@ -150,54 +168,83 @@ module K = struct
     let doc = "The algorithm use to encrypt/decrypt signatures." in
     let open Arg in
     value & opt algorithm `RSA & info [ "a"; "algorithm" ] ~doc ~docv:"ALGORITHM"
-  
+
   let setup_key =
     let open Term in
     const setup_key $ bits $ algorithm $ seed $ private_key |> ret
 
+  let setup_dkim pk domain selector fields timestamp expiration =
+    let algorithm = match pk with
+      | `RSA _ -> `RSA
+      | `ED25519 _ -> `ED25519 in
+    let dkim = Dkim.v
+      ~version:1 ?fields ~selector
+      ~algorithm
+      ~query:(`DNS (`TXT))
+      ?timestamp
+      ?expiration
+      (Domain_name.raw domain) in
+    Nec.DKIM {dkim; pk}
+
+  let setup_arc pk domain selector fields timestamp expiration =
+    let algorithm = match pk with
+      | `RSA _ -> `RSA
+      | `ED25519 _ -> `ED25519 in
+    let msgsig = Dkim.v
+      ~version:1 ?fields ~selector
+      ~algorithm
+      ~query:(`DNS (`TXT))
+      ?timestamp
+      ?expiration
+      (Domain_name.raw domain) in
+    let seal = Arc.Sign.seal ~algorithm ?timestamp ?expiration
+      ~selector (Domain_name.raw domain) in
+    Nec.ARC {seal; msgsig; pks= (pk, None) }
+
+  let setup_signer signer pk domain selector fields timestamp expiration =
+    match signer with
+    | `DKIM -> setup_dkim pk domain selector fields timestamp expiration
+    | `ARC -> setup_arc pk domain selector fields timestamp expiration
+
+  let signer =
+    let dkim = (`DKIM, Arg.info [ "with-dkim"] ~doc:"Sign with a DKIM-Signature") in
+    let arc = (`ARC, Arg.info ["with-arc"] ~doc:"Sign with a new ARC-Set") in
+    let open Arg in
+    value & vflag `DKIM [dkim; arc]
+
+  let setup_signer =
+    let open Term in
+    const setup_signer
+    $ signer $ setup_key $ domain $ selector $ fields $ timestamp $ expiration
+
   type t =
     { domain : [ `host ] Domain_name.t
     ; postmaster : Emile.mailbox
-    ; dns_key : [ `raw ] Domain_name.t * Dns.Dnskey.t
-    ; dns_server : Ipaddr.t
-    ; dns_port : int
-    ; fields : Mrmime.Field_name.t list option
-    ; selector : [ `raw ] Domain_name.t
-    ; timestamp : int64 option
-    ; expiration : int64 option
-    ; private_key : Dkim.key }
+    ; destination : Ipaddr.t option
+    ; dns : dns option
+    ; signer : Nec.signer }
 
-  let v domain postmaster  dns_key dns_server dns_port fields selector timestamp expiration private_key =
+  let v domain postmaster destination dns signer =
     { domain
     ; postmaster
-    ; dns_key
-    ; dns_server
-    ; dns_port
-    ; fields
-    ; selector
-    ; timestamp
-    ; expiration
-    ; private_key }
+    ; destination
+    ; dns
+    ; signer }
 
   let setup =
     let open Term in
     const v
     $ domain
     $ postmaster
-    $ dns_key
-    $ dns_server
-    $ dns_port
-    $ fields
-    $ selector
-    $ timestamp
-    $ expiration
-    $ setup_key
+    $ destination
+    $ setup_dns_server
+    $ setup_signer
 end
 
 module Make
   (Stack : Tcpip.Stack.V4V6)
-  (Dns_client : Dns_client_mirage.S)
   (Happy_eyeballs : Happy_eyeballs_mirage.S with type flow = Stack.TCP.flow)
+  (Dns_client : Dns_client_mirage.S with type Transport.stack = Stack.t * Happy_eyeballs.t)
 = struct
   (* XXX(dinosaure): this is a fake resolver which enforce the [signer] to
    * transmit **any** emails to only one and unique SMTP server. *)
@@ -221,7 +268,8 @@ module Make
 
   module DNS = Dns_mirage.Make (Stack)
 
-  let ns_update (key_name, dns_key) dkim value stack dns { K.dns_server; dns_port; _ } =
+  let ns_update dkim value he stack { K.dns_server; dns_port; dns_key= (key_name, dns_key); } =
+    let dns = Dns_client.create ~nameservers:(`Tcp, [ `Plaintext (dns_server, dns_port) ]) (stack, he) in
     ns_check dkim value dns >>= function
     | Ok `Already_registered -> Lwt.return_ok ()
     | Ok `Must_be_updated | Error _ ->
@@ -259,22 +307,21 @@ module Make
           | Error _ -> assert false
         end @@ fun res -> Stack.TCP.close flow >>= fun () -> Lwt.return res
 
-  module Fake_dns = Ptt_fake_dns.Make (struct let ipaddr = K.destination () end)
-  module Nec = Nec.Make (Stack) (Fake_dns) (Happy_eyeballs)
+  module Signer = Nec.Make (Stack) (Dns_client) (Happy_eyeballs)
 
-  let start stack dns he
-    ({ K.domain; postmaster; dns_key; fields; selector; private_key; timestamp; expiration; _ } as cfg) =
-    let dkim = Dkim.v
-      ~version:1 ?fields ~selector
-      ~algorithm:`RSA
-      ~query:(`DNS (`TXT))
-      ?timestamp
-      ?expiration
-      (Domain_name.raw domain) in
-    let value = Dkim.domain_key_of_dkim ~key:private_key dkim in
+  let start stack he dns
+    { K.domain; postmaster; dns= dns_cfg; signer; destination; } =
+    let key = match signer with
+      | Nec.DKIM { pk; _ } | Nec.ARC { pks= (pk, _); _ } -> pk in
+    let dkim = match signer with
+      | Nec.DKIM { dkim; _ }
+      | Nec.ARC { msgsig= dkim; _ } -> dkim in
+    let value = Dkim.domain_key_of_dkim ~key dkim in
     let authenticator = R.failwith_error_msg (Ca_certs_nss.authenticator ()) in
     let tls = R.failwith_error_msg (Tls.Config.client ~authenticator ()) in
-    ns_update dns_key dkim value stack dns cfg >|= R.failwith_error_msg >>= fun () ->
+    begin match dns_cfg with
+    | Some cfg -> ns_update dkim value he stack cfg >|= R.failwith_error_msg
+    | None -> Lwt.return_unit end >>= fun () ->
     let ip = Stack.ip stack in
     let ipaddr = List.hd (Stack.IP.configured_ips ip) in
     let ipaddr = Ipaddr.Prefix.address ipaddr in
@@ -285,6 +332,5 @@ module Make
       ; tls= None
       ; zone= Mrmime.Date.Zone.GMT
       ; size= 10_000_000L } in
-    Fake_dns.connect () >>= fun dns ->
-    Nec.job ~locals ~port:25 ~tls ~info (Stack.tcp stack) dns he (private_key, dkim)
+    Signer.job ?destination ~locals ~port:25 ~tls ~info (Stack.tcp stack) dns he signer
 end

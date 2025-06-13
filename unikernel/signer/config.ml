@@ -2,62 +2,16 @@
 
 open Mirage
 
-(* NOTE(dinosaure): it's like a DNS client but it uses the primary DNS server to
-   get the possible DKIM public key if it exists (like a client) or [nsupdate]
-   the primary DNS server with what we got from the command-line. *)
-let generic_dns_client timeout =
-  let open Functoria.DSL in
-  let pp_label name ppf = function
-    | None -> ()
-    | Some key -> Fmt.pf ppf "@ ~%s:%s" name key in
-  let pp_opt name ppf = function
-    | None -> ()
-    | Some key -> Fmt.pf ppf "@ ?%s:%s" name key in
-  let pop ~err x rest =
-    match (rest, x) with
-    | h :: t, Some _ -> (Some h, t)
-    | _, None -> (None, rest)
-    | _ -> err () in 
-  let packages = [ package "dns-client-mirage" ~min:"10.0.0" ~max:"11.0.0" ] in
-  let dns_server = Runtime_arg.create ~pos:__POS__ "Unikernel.K.dns_server" in
-  let dns_port = Runtime_arg.create ~pos:__POS__ "Unikernel.K.dns_port" in
-  let runtime_args = Runtime_arg.[ v dns_server; v dns_port; ] in
-  let runtime_args = match timeout with
-    | Some timeout -> runtime_args @ [ Runtime_arg.v timeout ]
-    | None -> runtime_args in
-  let pp_nameserver ppf (dns_server, dns_port) =
-    let nameserver = Fmt.str "[\"tcp:%s:%s\"]" dns_server dns_port in
-    pp_label "nameservers" ppf (Some nameserver)
-  in
-  let err () = connect_err "generic_dns_client" 6 in
-  let connect _info modname = function
-    | stackv4v6
-      :: happy_eyeballs
-      :: rest ->
-        let[@warning "-8"] Some dns_server, rest = pop ~err (Some dns_server) rest in
-        let[@warning "-8"] Some dns_port, rest = pop ~err (Some dns_port) rest in
-        let timeout, rest = pop ~err timeout rest in
-        let () = match rest with [] -> () | _ -> err () in
-        code ~pos:__POS__ {ocaml|%s.connect @[%a%a@ (%s, %s)@]|ocaml} modname
-          pp_nameserver (dns_server, dns_port) (pp_opt "timeout") timeout stackv4v6
-          happy_eyeballs
-    | _ -> err ()
-  in
-  impl ~runtime_args ~packages ~connect "Dns_client_mirage.Make"
-    (stackv4v6
-    @-> happy_eyeballs
-    @-> dns_client)
-
-let generic_dns_client ?timeout stackv4v6 happy_eyeballs =
-  generic_dns_client timeout
-  $ stackv4v6
-  $ happy_eyeballs
-
 let setup = runtime_arg ~pos:__POS__ "Unikernel.K.setup"
 
 let packages =
   [ package "randomconv"
   ; package "ptt" ~sublibs:[ "nec"; "fake-dns" ]
+  ; package "uspf" ~pin:"git+https://github.com/mirage/uspf.git#a4b90d1e99a607b2d2e8af62f32d5b211787b45d"
+  ; package "dmarc" ~pin:"git+https://github.com/dinosaure/ocaml-dmarc.git#7789e3c0835f97c3a4e43e3c58d81a23880f2773"
+  ; package "arc" ~pin:"git+https://git.robur.coop/robur/ocaml-arc.git#c0168b9eecca37bcfbfbf001c27bc496f5266250"
+  ; package "dkim" ~pin:"git+https://github.com/mirage/ocaml-dkim.git#ef005fa0e887bee1340da9c0b25110910c6d9cb4"
+  ; package "dkim-mirage" ~pin:"git+https://github.com/mirage/ocaml-dkim.git#ef005fa0e887bee1340da9c0b25110910c6d9cb4"
   ; package "dns"
   ; package "dns-client"
   ; package "dns-mirage"
@@ -70,7 +24,7 @@ let runtime_args = [ setup ]
 
 let signer =
   main ~runtime_args ~packages "Unikernel.Make" @@
-  stackv4v6 @-> dns_client @-> happy_eyeballs @-> job
+  stackv4v6 @-> happy_eyeballs @-> dns_client @-> job
 
 let stack = generic_stackv4v6 default_network
 let he = generic_happy_eyeballs stack
@@ -78,4 +32,4 @@ let dns = generic_dns_client stack he
 
 let () =
   register "signer"
-    [ signer $ stack $ dns $ he ]
+    [ signer $ stack $ he $ dns ]
