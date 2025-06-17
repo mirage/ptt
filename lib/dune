@@ -41,8 +41,7 @@
  (name ptt_server)
  (public_name ptt.server)
  (modules ptt_server)
- (libraries lwt tls-mirage bigstringaf mirage-time mirage-flow tcpip mimic
-   ptt))
+ (libraries lwt tls-mirage bigstringaf mirage-flow tcpip mimic ptt))
 
 (library
  (name ptt_fake_dns)
@@ -54,36 +53,31 @@
  (name lipap)
  (public_name ptt.lipap)
  (modules lipap)
- (libraries mirage-time mirage-clock mirage-random ptt ptt.map ptt.server
-   dns-client-mirage))
+ (libraries ptt ptt.map ptt.server dns-client-mirage))
 
 (library
  (name mti_gf)
  (public_name ptt.mti-gf)
  (modules mti_gf)
- (libraries mirage-time mirage-clock mirage-random ptt ptt.map ptt.server
-   dns-client-mirage))
+ (libraries ptt ptt.map ptt.server dns-client-mirage))
 
 (library
  (name nec)
  (public_name ptt.nec)
  (modules nec)
- (libraries mirage-time mirage-clock mirage-random ptt ptt.map ptt.server
-   dkim-mirage dns-client-mirage))
+ (libraries arc ptt ptt.map ptt.server dkim-mirage dns-client-mirage))
 
 (library
  (name hm)
  (public_name ptt.hm)
  (modules hm)
- (libraries mirage-time mirage-clock mirage-random ptt ptt.map ptt.server
-   uspf-mirage))
+ (libraries ptt ptt.map ptt.server uspf-mirage))
 
 (library
  (name elit)
  (public_name ptt.elit)
  (modules elit)
- (libraries mirage-time mirage-clock mirage-random ptt ptt.map ptt.server
-   dns-client-mirage uspf-mirage))
+ (libraries ptt ptt.map ptt.server dns-client-mirage arc dmarc))
 
 (library
  (name ptt_value)
@@ -95,5 +89,4 @@
  (name spartacus)
  (public_name ptt.spartacus)
  (modules spartacus)
- (libraries mirage-time mirage-clock mirage-random ptt ptt.map ptt.server
-   spamtacus-mirage dns-client-mirage))
+ (libraries ptt ptt.map ptt.server spamtacus-mirage dns-client-mirage))

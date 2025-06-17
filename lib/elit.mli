@@ -24,6 +24,8 @@ module Make
     -> info:Ptt_common.info
     -> ?submission:Tls.Config.server
     -> ?relay:Tls.Config.server
+    -> ?with_arc:bool
+    -> ?mx_destination:Ipaddr.t
     -> Stack.TCP.t
     -> Dns_client.t
     -> Happy_eyeballs.t

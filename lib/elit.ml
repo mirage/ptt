@@ -6,6 +6,8 @@ let src = Logs.Src.create "ptt.elit"
 module Log : Logs.LOG = (val Logs.src_log src)
 
 let ( $ ) f g = fun x -> f (g x)
+let msgf fmt = Fmt.kstr (fun msg -> `Msg msg) fmt
+let error_msgf fmt = Fmt.kstr (fun msg -> Error (`Msg msg)) fmt
 
 module Make
     (Stack : Tcpip.Stack.V4V6)
@@ -14,17 +16,17 @@ module Make
 struct
   module Server = Ptt_server.Make (Stack)
   module Sendmail = Ptt_sendmail.Make (Stack) (Happy_eyeballs)
-  module Uspf_client = Uspf_mirage.Make (Dns_client)
+  (* module Uspf_client = Uspf_mirage.Make (Dns_client) *)
 
   module Local = struct
     module Submission = Ptt.Submission.Make (Stack)
 
     let submission_resolver =
       let open Ptt_common in
-      let getmxbyname _ipaddr mail_exchange =
+      let getmxbyname _ipaddrs mail_exchange =
         Dns.Rr_map.Mx_set.(singleton {Dns.Mx.preference= 0; mail_exchange})
         |> Lwt.return_ok in
-      let gethostbyname ipaddr _domain_name = Lwt.return_ok ipaddr in
+      let gethostbyname ipaddrs _domain_name = Lwt.return_ok ipaddrs in
       {getmxbyname; gethostbyname}
 
     let submission_job
@@ -140,24 +142,34 @@ struct
   module Out = struct
     module Relay = Ptt.Relay.Make (Stack)
 
+    type resolver = Internet of Dns_client.t | Local of Ipaddr.t list
+
     let mail_exchange_resolver =
       let open Ptt_common in
-      let getmxbyname dns domain_name =
-        Dns_client.getaddrinfo dns Dns.Rr_map.Mx domain_name >|= Result.map snd
-      in
-      let gethostbyname dns domain_name =
-        let ipv4 =
-          Dns_client.gethostbyname dns domain_name
-          >|= Result.map (fun ipv4 -> Ipaddr.V4 ipv4) in
-        let ipv6 =
-          Dns_client.gethostbyname6 dns domain_name
-          >|= Result.map (fun ipv6 -> Ipaddr.V6 ipv6) in
-        Lwt.all [ipv4; ipv6] >|= function
-        | [Ok ipv4; Ok ipv6] -> Ok [ipv4; ipv6]
-        | [Error _; Ok ipv6] -> Ok [ipv6]
-        | [Ok ipv4; Error _] -> Ok [ipv4]
-        | [(Error _ as err); _] -> err
-        | [] | [_] | _ :: _ :: _ -> assert false in
+      let getmxbyname resolver mail_exchange =
+        match resolver with
+        | Internet dns ->
+          Dns_client.getaddrinfo dns Dns.Rr_map.Mx mail_exchange
+          >|= Result.map snd
+        | Local _ipaddrs ->
+          Dns.Rr_map.Mx_set.(singleton {Dns.Mx.preference= 0; mail_exchange})
+          |> Lwt.return_ok in
+      let gethostbyname resolver domain_name =
+        match resolver with
+        | Local ipaddrs -> Lwt.return_ok ipaddrs
+        | Internet dns -> (
+          let ipv4 =
+            Dns_client.gethostbyname dns domain_name
+            >|= Result.map (fun ipv4 -> Ipaddr.V4 ipv4) in
+          let ipv6 =
+            Dns_client.gethostbyname6 dns domain_name
+            >|= Result.map (fun ipv6 -> Ipaddr.V6 ipv6) in
+          Lwt.all [ipv4; ipv6] >|= function
+          | [Ok ipv4; Ok ipv6] -> Ok [ipv4; ipv6]
+          | [Error _; Ok ipv6] -> Ok [ipv6]
+          | [Ok ipv4; Error _] -> Ok [ipv4]
+          | [(Error _ as err); _] -> err
+          | [] | [_] | _ :: _ :: _ -> assert false) in
       {getmxbyname; gethostbyname}
 
     let mail_exchange_job ~pool ?stop ?(port = 25) stack dns server close =
@@ -183,13 +195,6 @@ struct
       let job = job >|= close in
       job
 
-    let stream_of_field (field_name : Mrmime.Field_name.t) unstrctrd =
-      Lwt_stream.of_list
-        [
-          (field_name :> string); ": "; Unstrctrd.to_utf_8_string unstrctrd
-        ; "\r\n"
-        ]
-
     let forward_granted ipaddr allowed_to_forward =
       List.exists
         (fun prefix -> Ipaddr.Prefix.mem ipaddr prefix)
@@ -204,34 +209,139 @@ struct
           && Ptt_map.exists ~local map in
       List.for_all for_all recipients
 
-    let verify ~info ~sender ~ipaddr dns stream =
+    let is_arc_seal =
+      let open Mrmime.Field_name in
+      equal (v "ARC-Seal")
+
+    let get_unstrctrd_exn : type a. a Mrmime.Field.t -> a -> Unstrctrd.t =
+     fun w v ->
+      match w with
+      | Mrmime.Field.Unstructured ->
+        let fold acc = function
+          | #Unstrctrd.elt as elt -> elt :: acc
+          | _ -> acc in
+        let unstrctrd = List.fold_left fold [] v in
+        Result.get_ok (Unstrctrd.of_list (List.rev unstrctrd))
+      | _ -> assert false
+
+    let get_arc_signature :
+           Unstrctrd.t
+        -> (int * Dkim.signed Dkim.t * Dkim.map, [> `Msg of string ]) result =
+     fun unstrctrd ->
+      let ( let* ) = Result.bind in
+      let* m = Dkim.of_unstrctrd_to_map unstrctrd in
+      let none = msgf "Missing i field" in
+      let* i = Option.to_result ~none (Dkim.get_key "i" m) in
+      let* t = Dkim.map_to_t m in
+      try
+        let i = int_of_string i in
+        Ok (i, t, m)
+      with _exn -> error_msgf "Invalid Agent or User Identifier"
+
+    let p =
+      let open Mrmime in
+      let unstructured = Field.(Witness Unstructured) in
+      let open Field_name in
+      Map.empty
+      |> Map.add date unstructured
+      |> Map.add from unstructured
+      |> Map.add sender unstructured
+      |> Map.add reply_to unstructured
+      |> Map.add (v "To") unstructured
+      |> Map.add cc unstructured
+      |> Map.add bcc unstructured
+      |> Map.add subject unstructured
+      |> Map.add message_id unstructured
+      |> Map.add comments unstructured
+      |> Map.add content_type unstructured
+      |> Map.add content_encoding unstructured
+
+    let verify ?(with_arc = false) ~info ~sender ~ipaddr dns stream =
+      Log.debug (fun m -> m "Verify the incoming email");
+      let open Lwt.Syntax in
+      let stream0 = Lwt_stream.clone stream in
+      let stream1 = Lwt_stream.clone stream in
+      let decoder = Mrmime.Hd.decoder p in
+      let rec get_last_uid uid =
+        let open Mrmime in
+        match Hd.decode decoder with
+        | `Field field ->
+          let (Field.Field (fn, w, v)) = Location.prj field in
+          if is_arc_seal fn then
+            match get_arc_signature (get_unstrctrd_exn w v) with
+            | Ok (uid', _, _) -> get_last_uid (Int.max uid uid')
+            | Error _ -> get_last_uid uid
+          else get_last_uid uid
+        | `Malformed _ | `End _ ->
+          Lwt.return uid
+          (* XXX(dinosaure): if it fails, the second loop [go] will fail also. *)
+        | `Await -> (
+          Lwt_stream.get stream1 >>= function
+          | Some str ->
+            Hd.src decoder str 0 (String.length str);
+            get_last_uid uid
+          | None ->
+            Hd.src decoder String.empty 0 0;
+            get_last_uid uid) in
+      let rec go decoder =
+        match Dmarc.Verify.decode decoder with
+        | #Dmarc.Verify.error as err -> Lwt.return_error err
+        | `Info value -> Lwt.return_ok value
+        | `Query (decoder, domain_name, Dns.Rr_map.K record) ->
+          let* response =
+            Dns_client.get_resource_record dns record domain_name in
+          go (Dmarc.Verify.response decoder record response)
+        | `Await decoder -> (
+          Lwt_stream.get stream0 >>= function
+          | Some str -> go (Dmarc.Verify.src decoder str 0 (String.length str))
+          | None -> go (Dmarc.Verify.src decoder String.empty 0 0)) in
       let ctx =
         Uspf.empty |> Uspf.with_ip ipaddr |> fun ctx ->
-        Option.fold ~none:ctx
-          ~some:(fun v -> Uspf.with_sender (`MAILFROM v) ctx)
-          sender in
-      Uspf_client.get_and_check dns ctx >>= fun result ->
-      let result =
-        match result with None -> `Permerror | Some value -> value in
-      let receiver =
-        match info.Ptt_common.domain with
-        | Colombe.Domain.Domain ds -> `Domain ds
-        | IPv4 ipv4 -> `Addr (Emile.IPv4 ipv4)
-        | IPv6 ipv6 -> `Addr (Emile.IPv6 ipv6)
-        | Extension (k, v) -> `Addr (Emile.Ext (k, v)) in
-      let field_name, unstrctrd = Uspf.to_field ~ctx ~receiver result in
-      let stream =
-        Lwt_stream.append (stream_of_field field_name unstrctrd) stream in
-      Lwt.return (`Ok stream)
+        let some = fun v -> Uspf.with_sender (`MAILFROM v) ctx in
+        Option.fold ~none:ctx ~some sender in
+      let dkims_are_valid dkims =
+        let fn = function Dmarc.DKIM.Pass _ -> true | _ -> false in
+        List.for_all fn dkims in
+      Lwt.both (get_last_uid 0) (go (Dmarc.Verify.decoder ~ctx ())) >>= function
+      | uid, Ok ((_, dkims, _) as results) when dkims_are_valid dkims ->
+        let receiver =
+          match info.Ptt_common.domain with
+          | Colombe.Domain.Domain ds -> `Domain ds
+          | IPv4 ipv4 -> `Addr (Emile.IPv4 ipv4)
+          | IPv6 ipv6 -> `Addr (Emile.IPv6 ipv6)
+          | Extension (k, v) -> `Addr (Emile.Ext (k, v)) in
+        let encoder =
+          match with_arc with
+          | true -> Arc.Encoder.stamp_results ~receiver ~uid:(succ uid)
+          | false ->
+            let encoder ppf v =
+              let open Prettym in
+              eval ppf
+                [
+                  string $ "Authentication-Results"; char $ ':'; spaces 1
+                ; !!(Dmarc.Encoder.field ~receiver)
+                ]
+                v in
+            encoder in
+        let authentication_results = Prettym.to_string encoder results in
+        let prefix = Lwt_stream.of_list [authentication_results] in
+        Lwt.return (`Ok (Lwt_stream.append prefix stream))
+      | _, Ok _ ->
+        Log.warn (fun m -> m "DKIM-Signatures of the incoming email failed");
+        Lwt.return `Aborted
+      | _, Error err ->
+        Log.warn (fun m -> m "DMAR error: %a" Dmarc.Verify.pp_error err);
+        Lwt.return `Aborted
 
-    let mail_exchange_logic_job ~info ~map ~allowed_to_forward dns (ic, oc) =
+    let mail_exchange_logic_job
+        ~info ~map ~allowed_to_forward ~with_arc dns (ic, oc_local, oc_inter) =
       let sender =
         let local = `Dot_string ["ptt"; "elit"] in
         Some Colombe.Path.{local; domain= info.Ptt_common.domain; rest= []}
       in
       let rec go () =
         Lwt_stream.get ic >>= function
-        | None -> oc None; Lwt.return_unit
+        | None -> oc_local None; oc_inter None; Lwt.return_unit
         | Some (key, stream, wk) -> (
           let id = Ptt_common.id_to_messageID ~info (Ptt.Msgd.id key) in
           Log.debug (fun m ->
@@ -248,21 +358,27 @@ struct
                 real_recipients);
           let real_recipients =
             Ptt_aggregate.to_recipients ~info real_recipients in
+          Log.debug (fun m ->
+              m "forward email granted? %b"
+                (forward_granted (Ptt.Msgd.ipaddr key) allowed_to_forward));
           begin
             if forward_granted (Ptt.Msgd.ipaddr key) allowed_to_forward then
               Lwt.return (`Ok stream)
             else
-              verify ~info
+              verify ~with_arc ~info
                 ~sender:(fst (Ptt.Msgd.from key))
                 ~ipaddr:(Ptt.Msgd.ipaddr key) dns stream
           end
           >>= function
           | #Ptt.Msgd.error as err ->
             Log.warn (fun m ->
-                m "Can not verify SPF informations from %a for %a, discard it!"
+                m
+                  "Can not verify {,DM}ARC informations from %a for %a, \
+                   discard it!"
                   Colombe.Reverse_path.pp
                   (fst (Ptt.Msgd.from key))
                   Mrmime.MessageID.pp id);
+            Log.warn (fun m -> m "%a" Ptt.Msgd.pp_error err);
             Lwt.wakeup_later wk err;
             Lwt.pause () >>= go
           | `Ok stream ->
@@ -282,6 +398,13 @@ struct
               forward_granted src allowed_to_forward
               || only_registered_recipients ~info map fake_recipients
             then begin
+              let to_internet =
+                forward_granted src allowed_to_forward
+                && not (only_registered_recipients ~info map fake_recipients)
+              in
+              let oc = if to_internet then oc_inter else oc_local in
+              Log.debug (fun m ->
+                  m "Send the incoming email to Internet? %b" to_internet);
               List.iter (oc $ Option.some) elts;
               Log.debug (fun m ->
                   m
@@ -310,32 +433,65 @@ struct
         ?port
         ~tls
         ~info
+        ?destination
+        ?(with_arc = false)
         ?(forward_granted = [])
         stack
         dns
         he =
+      let resolver = mail_exchange_resolver in
+      let push_local, push_inter, job =
+        match destination with
+        | None ->
+          let pool0 =
+            Lwt_pool.create limit @@ fun () ->
+            let encoder = Bytes.create 0x1000 in
+            let decoder = Bytes.create 0x1000 in
+            let queue = Ke.Rke.create ~capacity:0x800 Bigarray.char in
+            Lwt.return (encoder, decoder, queue) in
+          let pool0 = {Ptt_sendmail.pool= (fun fn -> Lwt_pool.use pool0 fn)} in
+          let oc_server, push0 = Sendmail.v ~resolver ~pool:pool0 ~info tls in
+          push0, push0, Sendmail.job (Internet dns) he oc_server
+        | Some ipaddr ->
+          let pool0 =
+            Lwt_pool.create limit @@ fun () ->
+            let encoder = Bytes.create 0x1000 in
+            let decoder = Bytes.create 0x1000 in
+            let queue = Ke.Rke.create ~capacity:0x800 Bigarray.char in
+            Lwt.return (encoder, decoder, queue) in
+          let pool0 = {Ptt_sendmail.pool= (fun fn -> Lwt_pool.use pool0 fn)} in
+          let pool1 =
+            Lwt_pool.create limit @@ fun () ->
+            let encoder = Bytes.create 0x1000 in
+            let decoder = Bytes.create 0x1000 in
+            let queue = Ke.Rke.create ~capacity:0x800 Bigarray.char in
+            Lwt.return (encoder, decoder, queue) in
+          let pool1 = {Ptt_sendmail.pool= (fun fn -> Lwt_pool.use pool1 fn)} in
+          let local_server, push0 = Sendmail.v ~resolver ~pool:pool0 ~info tls in
+          let inter_server, push1 = Sendmail.v ~resolver ~pool:pool1 ~info tls in
+          let job =
+            Lwt.join
+              [
+                Sendmail.job (Local [ipaddr]) he local_server
+              ; Sendmail.job (Internet dns) he inter_server
+              ] in
+          push0, push1, job in
       let pool0 =
         Lwt_pool.create limit @@ fun () ->
         let encoder = Bytes.create 0x7ff in
         let decoder = Bytes.create 0x7ff in
         let queue = Ke.Rke.create ~capacity:0x800 Bigarray.char in
         Lwt.return (encoder, decoder, queue) in
-      let pool1 =
-        Lwt_pool.create limit @@ fun () ->
-        let encoder = Bytes.create 0x7ff in
-        let decoder = Bytes.create 0x7ff in
-        let queue = Ke.Rke.create ~capacity:0x800 Bigarray.char in
-        Lwt.return (encoder, decoder, queue) in
-      let pool1 = {Ptt_sendmail.pool= (fun fn -> Lwt_pool.use pool1 fn)} in
       let ic_server, stream0, close0 = Relay.create ~info in
-      let oc_server, push0 =
-        Sendmail.v ~resolver:mail_exchange_resolver ~pool:pool1 ~info tls in
       let allowed_to_forward = forward_granted in
+      let dns : Dns_client.t = dns in
       Lwt.join
         [
-          mail_exchange_job ~pool:pool0 ?stop ?port stack dns ic_server close0
-        ; mail_exchange_logic_job ~info ~map:locals ~allowed_to_forward dns
-            (stream0, push0); Sendmail.job dns he oc_server
+          mail_exchange_job ~pool:pool0 ?stop ?port stack (Internet dns)
+            ic_server close0
+        ; mail_exchange_logic_job ~with_arc ~info ~map:locals
+            ~allowed_to_forward dns
+            (stream0, push_local, push_inter); job
         ]
   end
 
@@ -388,7 +544,13 @@ struct
     ; forward_granted
     }
 
-  let job ?stop t ~info ?submission ?relay stack dns he =
+  let job
+      ?stop t ~info ?submission ?relay ?with_arc ?mx_destination stack dns he =
+    let with_arc =
+      match with_arc, mx_destination with
+      | None, None -> false
+      | None, Some _ -> true
+      | Some value, _ -> value in
     if Option.is_some info.Ptt_common.tls then
       Log.warn (fun m ->
           m "Discard the TLS server configuration from the [info] value");
@@ -400,6 +562,7 @@ struct
           ~destination:[t.destination] stack he t.random t.hash t.authentication
           t.mechanisms
       ; Out.job ?stop ~locals:t.locals ~tls:t.tls ~info:relay
+          ?destination:mx_destination ~with_arc
           ~forward_granted:t.forward_granted stack dns he
       ]
 end

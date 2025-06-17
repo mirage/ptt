@@ -59,4 +59,6 @@ pin-depends: [
   [ "uspf.dev"               "git+https://github.com/mirage/uspf.git#a4b90d1e99a607b2d2e8af62f32d5b211787b45d" ]
   [ "uspf-lwt.dev"           "git+https://github.com/mirage/uspf.git#a4b90d1e99a607b2d2e8af62f32d5b211787b45d" ]
   [ "uspf-mirage.dev"        "git+https://github.com/mirage/uspf.git#a4b90d1e99a607b2d2e8af62f32d5b211787b45d" ]
+  [ "dmarc.dev"              "git+https://github.com/dinosaure/ocaml-dmarc.git#266d89d8941719c2edb05074630d92abc50e262b" ]
+  [ "arc.dev"                "git+https://github.com/robur-coop/ocaml-arc.git#c0168b9eecca37bcfbfbf001c27bc496f5266250" ]
 ]
