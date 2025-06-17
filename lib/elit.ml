@@ -313,7 +313,16 @@ struct
         let encoder =
           match with_arc with
           | true -> Arc.Encoder.stamp_results ~receiver ~uid:(succ uid)
-          | false -> Dmarc.Encoder.field ~receiver in
+          | false ->
+            let encoder ppf v =
+              let open Prettym in
+              eval ppf
+                [
+                  string $ "Authentication-Results"; char $ ':'; spaces 1
+                ; !!(Dmarc.Encoder.field ~receiver)
+                ]
+                v in
+            encoder in
         let authentication_results = Prettym.to_string encoder results in
         let prefix = Lwt_stream.of_list [authentication_results] in
         Lwt.return (`Ok (Lwt_stream.append prefix stream))
