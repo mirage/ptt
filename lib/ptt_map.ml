@@ -15,10 +15,6 @@ type t = {
 
 and local = [ `Dot_string of string list | `String of string ]
 
-let pp_local ppf = function
-  | `Dot_string vs -> Fmt.string ppf (String.concat "." vs)
-  | `String v -> Fmt.pf ppf "%S" v
-
 let postmaster {postmaster; _} = postmaster
 let empty ~postmaster = {postmaster; map= Hashtbl.create 256}
 
@@ -52,11 +48,6 @@ module Set = Set.Make (Colombe.Forward_path)
 let expand ~info t recipients =
   let open Colombe in
   let open Forward_path in
-  Log.debug (fun m -> m "current database:");
-  Log.debug (fun m ->
-      m "@[<hov>%a@]"
-        Fmt.(Dump.hashtbl pp_local (Dump.list Colombe.Forward_path.pp))
-        t.map);
   List.map
     (function
       | Postmaster ->

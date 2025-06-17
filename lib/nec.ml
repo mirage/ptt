@@ -135,7 +135,8 @@ struct
         let seal chain =
           let rec go t =
             match Arc.Sign.sign t with
-            | `Malformed _ -> Lwt.return_error `Invalid_email
+            | `Malformed _ | `Missing_authentication_results ->
+              Lwt.return_error `Invalid_email
             | `Set set -> Lwt.return_ok set
             | `Await t -> begin
               Lwt_stream.get stream1 >>= function

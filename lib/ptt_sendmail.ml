@@ -126,10 +126,10 @@ struct
   let sendmail ?(last_option = false) he t ~ipaddrs elt =
     let ( let* ) = Lwt.bind in
     let destination = `Ipaddrs ipaddrs in
-    Log.debug (fun m ->
-        m "try to send an email to: @[<hov>%a@]"
-          Fmt.(Dump.list Ipaddr.pp)
-          ipaddrs);
+    Log.debug (fun m -> m "try to send an email to:");
+    List.iter
+      (fun ipaddr -> Log.debug (fun m -> m "- %a" Ipaddr.pp ipaddr))
+      ipaddrs;
     let backup = Lwt_stream.clone elt.data in
     let consumed, stream = to_stream elt.data in
     let recipients = recipients_to_forward_paths elt.recipients in

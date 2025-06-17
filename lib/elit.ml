@@ -325,14 +325,14 @@ struct
         Lwt.return `Aborted
 
     let mail_exchange_logic_job
-        ~info ~map ~allowed_to_forward ~with_arc dns (ic, oc) =
+        ~info ~map ~allowed_to_forward ~with_arc dns (ic, oc_local, oc_inter) =
       let sender =
         let local = `Dot_string ["ptt"; "elit"] in
         Some Colombe.Path.{local; domain= info.Ptt_common.domain; rest= []}
       in
       let rec go () =
         Lwt_stream.get ic >>= function
-        | None -> oc None; Lwt.return_unit
+        | None -> oc_local None; oc_inter None; Lwt.return_unit
         | Some (key, stream, wk) -> (
           let id = Ptt_common.id_to_messageID ~info (Ptt.Msgd.id key) in
           Log.debug (fun m ->
@@ -350,7 +350,7 @@ struct
           let real_recipients =
             Ptt_aggregate.to_recipients ~info real_recipients in
           Log.debug (fun m ->
-              m "Verify the incoming email? %b"
+              m "forward email granted? %b"
                 (forward_granted (Ptt.Msgd.ipaddr key) allowed_to_forward));
           begin
             if forward_granted (Ptt.Msgd.ipaddr key) allowed_to_forward then
@@ -389,6 +389,13 @@ struct
               forward_granted src allowed_to_forward
               || only_registered_recipients ~info map fake_recipients
             then begin
+              let to_internet =
+                forward_granted src allowed_to_forward
+                && not (only_registered_recipients ~info map fake_recipients)
+              in
+              let oc = if to_internet then oc_inter else oc_local in
+              Log.debug (fun m ->
+                  m "Send the incoming email to Internet? %b" to_internet);
               List.iter (oc $ Option.some) elts;
               Log.debug (fun m ->
                   m
@@ -417,38 +424,65 @@ struct
         ?port
         ~tls
         ~info
-        ~destination
+        ?destination
         ?(with_arc = false)
         ?(forward_granted = [])
         stack
         dns
         he =
+      let resolver = mail_exchange_resolver in
+      let push_local, push_inter, job =
+        match destination with
+        | None ->
+          let pool0 =
+            Lwt_pool.create limit @@ fun () ->
+            let encoder = Bytes.create 0x1000 in
+            let decoder = Bytes.create 0x1000 in
+            let queue = Ke.Rke.create ~capacity:0x800 Bigarray.char in
+            Lwt.return (encoder, decoder, queue) in
+          let pool0 = {Ptt_sendmail.pool= (fun fn -> Lwt_pool.use pool0 fn)} in
+          let oc_server, push0 = Sendmail.v ~resolver ~pool:pool0 ~info tls in
+          push0, push0, Sendmail.job (Internet dns) he oc_server
+        | Some ipaddr ->
+          let pool0 =
+            Lwt_pool.create limit @@ fun () ->
+            let encoder = Bytes.create 0x1000 in
+            let decoder = Bytes.create 0x1000 in
+            let queue = Ke.Rke.create ~capacity:0x800 Bigarray.char in
+            Lwt.return (encoder, decoder, queue) in
+          let pool0 = {Ptt_sendmail.pool= (fun fn -> Lwt_pool.use pool0 fn)} in
+          let pool1 =
+            Lwt_pool.create limit @@ fun () ->
+            let encoder = Bytes.create 0x1000 in
+            let decoder = Bytes.create 0x1000 in
+            let queue = Ke.Rke.create ~capacity:0x800 Bigarray.char in
+            Lwt.return (encoder, decoder, queue) in
+          let pool1 = {Ptt_sendmail.pool= (fun fn -> Lwt_pool.use pool1 fn)} in
+          let local_server, push0 = Sendmail.v ~resolver ~pool:pool0 ~info tls in
+          let inter_server, push1 = Sendmail.v ~resolver ~pool:pool1 ~info tls in
+          let job =
+            Lwt.join
+              [
+                Sendmail.job (Local [ipaddr]) he local_server
+              ; Sendmail.job (Internet dns) he inter_server
+              ] in
+          push0, push1, job in
       let pool0 =
         Lwt_pool.create limit @@ fun () ->
         let encoder = Bytes.create 0x7ff in
         let decoder = Bytes.create 0x7ff in
         let queue = Ke.Rke.create ~capacity:0x800 Bigarray.char in
         Lwt.return (encoder, decoder, queue) in
-      let pool1 =
-        Lwt_pool.create limit @@ fun () ->
-        let encoder = Bytes.create 0x7ff in
-        let decoder = Bytes.create 0x7ff in
-        let queue = Ke.Rke.create ~capacity:0x800 Bigarray.char in
-        Lwt.return (encoder, decoder, queue) in
-      let pool1 = {Ptt_sendmail.pool= (fun fn -> Lwt_pool.use pool1 fn)} in
       let ic_server, stream0, close0 = Relay.create ~info in
-      let oc_server, push0 =
-        Sendmail.v ~resolver:mail_exchange_resolver ~pool:pool1 ~info tls in
       let allowed_to_forward = forward_granted in
-      let destination : resolver = destination in
       let dns : Dns_client.t = dns in
       Lwt.join
         [
           mail_exchange_job ~pool:pool0 ?stop ?port stack (Internet dns)
             ic_server close0
         ; mail_exchange_logic_job ~with_arc ~info ~map:locals
-            ~allowed_to_forward dns (stream0, push0)
-        ; Sendmail.job destination he oc_server
+            ~allowed_to_forward dns
+            (stream0, push_local, push_inter); job
         ]
   end
 
@@ -503,14 +537,10 @@ struct
 
   let job
       ?stop t ~info ?submission ?relay ?with_arc ?mx_destination stack dns he =
-    let mx_destination =
-      match mx_destination with
-      | None -> Out.Internet dns
-      | Some ipaddr -> Out.Local [ipaddr] in
     let with_arc =
       match with_arc, mx_destination with
-      | None, Out.Internet _ -> false
-      | None, Out.Local _ -> true
+      | None, None -> false
+      | None, Some _ -> true
       | Some value, _ -> value in
     if Option.is_some info.Ptt_common.tls then
       Log.warn (fun m ->
@@ -523,7 +553,7 @@ struct
           ~destination:[t.destination] stack he t.random t.hash t.authentication
           t.mechanisms
       ; Out.job ?stop ~locals:t.locals ~tls:t.tls ~info:relay
-          ~destination:mx_destination ~with_arc
+          ?destination:mx_destination ~with_arc
           ~forward_granted:t.forward_granted stack dns he
       ]
 end
