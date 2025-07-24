@@ -1,6 +1,10 @@
 open Colombe.State
 open Colombe
 
+let src = Logs.Src.create "ptt.ssmtp"
+
+module Log = (val Logs.src_log src : Logs.LOG)
+
 let ( <.> ) f g x = f (g x)
 
 module Value = struct
@@ -17,6 +21,8 @@ module Value = struct
           Encoder.write v encoder;
           Encoder.write "\r\n" encoder;
           Encoder.flush (fun _ -> Encoder.Done) encoder in
+        Log.debug (fun m -> m "Encode %d byte(s)" (String.length v));
+        Log.debug (fun m -> m "@[<hov>%a@]" (Hxd_string.pp Hxd.default) v);
         Encoder.safe k encoder
       | PP_220 -> Reply.Encoder.response (`PP_220 v) encoder
       | PP_221 -> Reply.Encoder.response (`PP_221 v) encoder

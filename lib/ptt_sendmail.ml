@@ -114,6 +114,11 @@ struct
         consumed := true;
         Lwt_stream.get stream )
 
+  let pp_error ppf = function
+    | #Sendmail_with_starttls.error as err ->
+      Sendmail_with_starttls.pp_error ppf err
+    | `Msg msg -> Fmt.string ppf msg
+
   (* NOTE(dinosaure): to ensure that we are able to inject a fake DNS resolver,
      we must use an IP address as a destination to avoid the resolution mechanism
      of happy-eyeballs! *)
@@ -121,6 +126,10 @@ struct
   let sendmail ?(last_option = false) he t ~ipaddrs elt =
     let ( let* ) = Lwt.bind in
     let destination = `Ipaddrs ipaddrs in
+    Log.debug (fun m -> m "try to send an email to:");
+    List.iter
+      (fun ipaddr -> Log.debug (fun m -> m "- %a" Ipaddr.pp ipaddr))
+      ipaddrs;
     let backup = Lwt_stream.clone elt.data in
     let consumed, stream = to_stream elt.data in
     let recipients = recipients_to_forward_paths elt.recipients in
@@ -156,6 +165,7 @@ struct
         let debug = Lwt_stream.clone backup in
         let* debug = Lwt_stream.to_list debug in
         let debug = String.concat "" debug in
+        Log.err (fun m -> m "Got an error while sending email: %a" pp_error err);
         Log.debug (fun m -> m "Incoming bad email:");
         Log.debug (fun m -> m "@[<hov>%a@]" (Hxd_string.pp Hxd.default) debug);
         let* forward_path = guess_return_path backup in
@@ -176,11 +186,6 @@ struct
             recipients Colombe.Reverse_path.pp elt.sender);
       Lwt.return_unit
     | Some _forward_path -> Lwt.return_unit (* TODO *)
-
-  let pp_error ppf = function
-    | #Sendmail_with_starttls.error as err ->
-      Sendmail_with_starttls.pp_error ppf err
-    | `Msg msg -> Fmt.string ppf msg
 
   let error_while_sending_email elt (forward_path, err) =
     match forward_path with
@@ -225,7 +230,14 @@ struct
         | Error _ as err -> Lwt.return err)
     end
     >>= function
-    | Error _ -> no_mail_exchange_service elt
+    | Error (`Msg msg) ->
+      let pp_domain ppf = function
+        | `Ipaddr ipaddr -> Ipaddr.pp ppf ipaddr
+        | `Domain domain -> Domain_name.pp ppf domain in
+      Log.err (fun m ->
+          m "Impossible to resolve the destination (%a): %s." pp_domain
+            elt.recipients.domain msg);
+      no_mail_exchange_service elt
     | Ok mxs ->
       if Mxs.is_empty mxs then no_mail_exchange_service elt
       else

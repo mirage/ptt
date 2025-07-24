@@ -18,7 +18,6 @@ depends: [
   "colombe"           {>= "0.11.0"}
   "received"          {>= "0.5.1"}
   "sendmail"          {>= "0.11.0"}
-  "sendmail-lwt"      {>= "0.11.0"}
   "sendmail-mirage"
   "mimic"
   "domain-name"
@@ -40,10 +39,11 @@ depends: [
   "lwt"               {>= "5.4.0"}
   "mirage-clock"      {>= "3.1.0"}
   "mirage-flow"       {>= "2.0.1"}
-  "mirage-random"     {>= "2.0.0"}
   "mirage-time"       {>= "2.0.1"}
   "uspf"
   "uspf-mirage"
+  "dmarc"
+  "arc"
   "data-encoding"     {>= "0.7"}
   "ptime"
   "spamtacus-mirage"
@@ -59,4 +59,12 @@ pin-depends: [
   [ "uspf.dev"               "git+https://github.com/mirage/uspf.git#a4b90d1e99a607b2d2e8af62f32d5b211787b45d" ]
   [ "uspf-lwt.dev"           "git+https://github.com/mirage/uspf.git#a4b90d1e99a607b2d2e8af62f32d5b211787b45d" ]
   [ "uspf-mirage.dev"        "git+https://github.com/mirage/uspf.git#a4b90d1e99a607b2d2e8af62f32d5b211787b45d" ]
+  [ "dmarc.dev"              "git+https://github.com/dinosaure/ocaml-dmarc.git#7789e3c0835f97c3a4e43e3c58d81a23880f2773" ]
+  [ "public-suffix.dev"      "git+https://github.com/dinosaure/ocaml-dmarc.git#7789e3c0835f97c3a4e43e3c58d81a23880f2773" ]
+  [ "arc.dev"                "git+https://github.com/robur-coop/ocaml-arc.git#2ea6849a809b4abe4e7b37543e9459e1f7e9938a" ]
+  [ "dkim.dev"               "git+https://github.com/mirage/ocaml-dkim.git#a497c0890ee077eecd691d0c87388d6c5404f66c" ]
+  [ "dkim-mirage.dev"        "git+https://github.com/mirage/ocaml-dkim.git#a497c0890ee077eecd691d0c87388d6c5404f66c" ]
+  [ "colombe.dev"            "git+https://github.com/mirage/colombe.git#fada7c8b2125e5b87e63f6e1d10a99443386aa9a" ]
+  [ "sendmail.dev"           "git+https://github.com/mirage/colombe.git#fada7c8b2125e5b87e63f6e1d10a99443386aa9a" ]
+  [ "sendmail-mirage.dev"    "git+https://github.com/mirage/colombe.git#fada7c8b2125e5b87e63f6e1d10a99443386aa9a" ]
 ]
