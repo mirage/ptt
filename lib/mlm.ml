@@ -6,10 +6,12 @@
 type t = {
   name : string ;
   moderators : string list ;
+  (* TODO use map (or LRU) for the pending_subscriptions and pending_moderator_subscriptions *)
   pending_subscriptions : ([ `Awaiting_moderation | `Awaiting_confirmation ] * string * string) list ;
   pending_moderator_subscriptions : ([ `Awaiting_moderation | `Awaiting_confirmation ] * string * string) list ;
   subscription_moderated : bool ;
   subscribers : string list ;
+  (* TODO use maps for the bounces and moderator_bounces *)
   bounces : (int * int * string) list ;
   moderator_bounces : (int * int * string) list ;
   moderated : bool ;
@@ -17,6 +19,7 @@ type t = {
   footer : string option ;
   welcome : string option ;
   goodbye : string option ;
+  (* TODO use map (or LRU) for the pending_mails *)
   pending_mails : (string * string) list ;
   who_can_post : [ `Moderators | `Subscribers | `Public ] ;
   who_is_moderated : [ `Moderators | `Subscribers | `Public ] ;
