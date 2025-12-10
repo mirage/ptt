@@ -26,12 +26,22 @@ type t = {
   counter : int ;
 }
 
+let template_subscription_confirmation =
+  "Please reply to this mail to confirm your subscription"
+
+let template_subscription_moderation email_address =
+  Fmt.str "%S would like to be subscribed to this mailing list, please reply to this mail to confirm" email_address
+
+let template_moderation email_address subject =
+  Fmt.str "A mail from %S with the subject %S was received. Please reply to this email to distribute the mail."
+    email_address subject
+
 (* The only event we have is an incoming mail, to which we react (or not) *)
 let subsc_req name queue from =
   let id = gen_random () in
   let queue = List.filter (fun (_, _, from') -> not (String.equal from from')) queue in
   let queue = (`Awaiting_confirmation, id, from) :: queue in
-  let mail = name ^ "-subscribe-" ^ id, [ from ], "Please reply to this mail to confirm your subscription" in
+  let mail = name ^ "-subscribe-" ^ id, [ from ], template_subscription_confirmation in
   queue, mail
 
 let subscription_request t from =
@@ -48,7 +58,7 @@ let subscr_confirm name queue moderated moderators subscribers welcome from rcpt
   | [ _subscription ], rest ->
     if moderated then
       let id' = gen_random () in
-      let mail = name ^ "-subscribe-" ^ id', moderators, Fmt.str "%s would like to be subscribed to this mailing list, please reply to this mail to confirm" from in
+      let mail = name ^ "-subscribe-" ^ id', moderators, template_subscription_moderation from in
       let queue = (`Awaiting_moderation, id', from) :: rest in
       queue, None, Some mail
     else
@@ -180,7 +190,8 @@ let forward t from mail =
       in
       if need_to_queue then
         let id = gen_random () in
-        let email = t.name ^ "-moderate-" ^ id, t.moderators, "Please reply to let this mail go through" in
+        let subject = find_subject mail in
+        let email = t.name ^ "-moderate-" ^ id, t.moderators, template_moderation from subject in
         let pending_mails = (id, mail) :: t.pending_mails in
         { t with pending_mails }, [ email ]
       else

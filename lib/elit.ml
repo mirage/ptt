@@ -372,12 +372,16 @@ struct
               m "forward email granted? %b"
                 (forward_granted (Ptt.Msgd.ipaddr key) cfg.allowed_to_forward));
           begin
+            (* HANNES here, we can dispatch for admin commands *)
             if forward_granted (Ptt.Msgd.ipaddr key) cfg.allowed_to_forward then
               Lwt.return (`Ok stream)
             else
+              (* DINOSAURE: dmarc to arc, then verify will be fine! *)
+              (* DOES _both_ things *)
               verify cfg
                 ~sender:(fst (Ptt.Msgd.from key))
                 ~ipaddr:(Ptt.Msgd.ipaddr key) dns stream
+              (* ARC is signature about the email, you trust on the last ARC sets *)
           end
           >>= function
           | #Ptt.Msgd.error as err ->
@@ -402,10 +406,13 @@ struct
               } in
             let elts = List.map fn real_recipients in
             let src = Ptt.Msgd.ipaddr key in
+            (* HERE, get our administrative stuff! *)
             if
               forward_granted src cfg.allowed_to_forward
               || only_registered_recipients ~info cfg.locals fake_recipients
             then begin
+              (* oc_inter and oc_local are both a job to send to a specific destination,
+                 use oc_local to get it DMARC signed *)
               let to_internet =
                 forward_granted src cfg.allowed_to_forward
                 && not
