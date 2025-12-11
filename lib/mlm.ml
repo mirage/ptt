@@ -60,8 +60,7 @@ let moderator_subscription_request t from =
   let pending_moderator_subscriptions, mail = subsc_req (t.name ^ "-owners") t.pending_moderator_subscriptions from in
   { t with pending_moderator_subscriptions }, Some mail
 
-let subscr_confirm name queue moderated moderators subscribers welcome from rcpt =
-  let id = extract rcpt in
+let subscr_confirm name queue moderated moderators subscribers welcome from id =
   match List.partition (function (`Awaiting_confirmation, id', from') -> String.equal id id' && String.equal from from' | _ -> false) queue with
   | [ _subscription ], rest ->
     if moderated then
@@ -71,20 +70,19 @@ let subscr_confirm name queue moderated moderators subscribers welcome from rcpt
       queue, None, Some mail
     else
       let subscribers = from :: subscribers in
-      let mail = Option.map (fun txt -> name ^ "-owner", [ from ], txt) welcome in
+      let mail = Option.map (fun txt -> name ^ "-owners", [ from ], txt) welcome in
       queue, Some subscribers, mail
   | _ ->
     match List.partition (function (`Awaiting_moderation, id', orig_from) -> String.equal id id' && List.mem from moderators | _ -> false) queue with
     | [ _subscription ], rest ->
       let subscribers = from :: subscribers in
-      let mail = Option.map (fun txt -> name ^ "-owner", [ from ], txt) welcome in
+      let mail = Option.map (fun txt -> name ^ "-owners", [ from ], txt) welcome in
       rest, Some subscribers, mail
     | _ ->
       (* ignore or should we send something out? *)
       queue, None, None
 
-let reject_subscr name queue moderators from rcpt =
-  let id = extract rcpt in
+let reject_subscr name queue moderators from id =
   match List.partition (function (`Awaiting_moderation, id', orig_from) -> String.equal id id' && List.mem from moderators | _ -> false) queue with
   | [ _subscription ], rest ->
     (* should we send something out? *)
@@ -93,9 +91,9 @@ let reject_subscr name queue moderators from rcpt =
     (* ignore or should we send something out? *)
     queue
 
-let subscription_confirmation t from rcpt =
+let subscription_confirmation t from id =
   let pending_subscriptions, subscribers, mail =
-    subscr_confirm t.name t.pending_subscriptions t.subscription_moderated t.moderators t.subscribers t.welcome from rcpt
+    subscr_confirm t.name t.pending_subscriptions t.subscription_moderated t.moderators t.subscribers t.welcome from id
   in
   (match subscribers with
    | None -> ()
@@ -103,15 +101,15 @@ let subscription_confirmation t from rcpt =
   let subscribers = Option.value ~default:t.subscribers subscribers in
   { t with pending_subscriptions ; subscribers }, mail
 
-let reject_subscription_confirmation t from rcpt =
+let reject_subscription_confirmation t from id =
   let pending_subscriptions =
-    reject_subscr t.name t.pending_subscriptions t.moderators from rcpt
+    reject_subscr t.name t.pending_subscriptions t.moderators from id
   in
   { t with pending_subscriptions }, None
 
-let moderator_subscription_confirmation t from rcpt =
+let moderator_subscription_confirmation t from id =
   let pending_moderator_subscriptions, moderators, mail =
-    subscr_confirm (t.name ^ "-owners") t.pending_moderator_subscriptions true t.moderators t.moderators (Some ("Welcome to the owners of " ^ t.name)) from rcpt
+    subscr_confirm (t.name ^ "-owners") t.pending_moderator_subscriptions true t.moderators t.moderators (Some ("Welcome to the owners of " ^ t.name)) from id
   in
   (match moderators with
    | None -> ()
@@ -119,16 +117,16 @@ let moderator_subscription_confirmation t from rcpt =
   let moderators = Option.value ~default:t.moderators moderators in
   { t with pending_moderator_subscriptions ; moderators }, mail
 
-let reject_moderator_subscription_confirmation t from rcpt =
+let reject_moderator_subscription_confirmation t from id =
   let pending_moderator_subscriptions =
-    reject_subscr (t.name ^ "-owners") t.pending_moderator_subscriptions t.moderators from rcpt
+    reject_subscr (t.name ^ "-owners") t.pending_moderator_subscriptions t.moderators from id
   in
   { t with pending_moderator_subscriptions }, None
 
 let unsub name subscribers goodbye from =
   let subscribers' = List.filter (fun n -> not (String.equal n from)) subscribers in
   if List.length subscribers' < List.length subscribers then
-    let mail = Option.map (fun txt -> name ^ "-owner", [from ], txt) goodbye in
+    let mail = Option.map (fun txt -> name ^ "-owners", [from ], txt) goodbye in
     subscribers', mail
   else
     subscribers, None
@@ -145,27 +143,42 @@ let moderator_unsubscribe t from =
      Logs.info (fun m -> m "Unsubscription from the mailing list %s-owners" t.name));
   { t with moderators }, mail
 
+let extract_id_mail address =
+  let mail_equal_is_at address =
+    String.concat "@" (String.split_on_char '=' address)
+  in
+  match String.split_on_char '-' address with
+  | id :: mail ->
+    (match int_of_string_opt id with
+     | Some id -> Ok (id, mail_equal_is_at (String.concat '-' mail))
+     | None -> Error "couldn't find the id")
+  | _ -> Error "couldn't extract id and mail address"
+
 let bounce_logic name subscribers bounces from rcpt =
-  let id, mail = extract_id_mail rcpt in
-  if List.mem mail subscribers then
-    let score =
-      let (score, old_id, _) =
-        Option.value ~default:(0, -1, mail)
-          (List.find_opt (fun (_, _, f) -> String.equal mail f) bounces)
+  match extract_id_mail rcpt with
+  | Ok (id, mail) ->
+    if List.mem mail subscribers then
+      let score =
+        let (score, old_id, _) =
+          Option.value ~default:(0, -1, mail)
+            (List.find_opt (fun (_, _, f) -> String.equal mail f) bounces)
+        in
+        if old_id = -1 || old_id = pred id then
+          score + 1
+        else
+          1
       in
-      if old_id = -1 || old_id = pred id then
-        score + 1
+      let b_without = List.filter (fun (_, _, f) -> not (String.equal mail f)) bounces in
+      if score >= 5 then
+        let subscribers, _email = unsub name subscribers None mail in
+        b_without, subscribers
       else
-        1
-    in
-    let b_without = List.filter (fun (_, _, f) -> not (String.equal mail f)) bounces in
-    if score >= 5 then
-      let subscribers, _email = unsub name subscribers None mail in
-      b_without, subscribers
+        let bounces = (id, score, mail) :: b_without in
+        bounces, subscribers
     else
-      let bounces = (id, score, mail) :: b_without in
       bounces, subscribers
-  else
+  | Error msg ->
+    Logs.warn (fun m -> m "bounce %s: %s" rcpt msg);
     bounces, subscribers
 
 let bounce t from rcpt =
@@ -184,18 +197,18 @@ let moderator_bounce t from rcpt =
      Logs.info (fun m -> m "Unsubscription from the mailing list %s-owners (bounced)" t.name));
   { t with moderators ; moderator_bounces }, None
 
+let mail_at_is_equal address = String.concat "=" (String.split_on_char '@' address)
+
 let forward_mail t mail =
   let from mail =
-    let mail_at_equal = String.replace "@" "=" mail in
-    t.name ^ "-return-" ^ string_of_int t.counter ^ "-" ^ mail
+    t.name ^ "-return-" ^ string_of_int t.counter ^ "-" ^ mail_at_is_equal mail
   in
   let email = t.headers ^ mail ^ Option.value ~default:"" t.footer in
   let mails = List.map (fun subscriber -> from subscriber, [ subscriber ], email) t.subscribers in
   { t with counter = t.counter + 1 }, mails
 
-let moderate_accept t from rcpt =
+let moderate_accept t from id =
   if List.mem from t.moderators then
-    let id = extract_id rcpt in
     match List.partition (fun (id', _mail) -> String.equal id id') t.pending_mails with
     | [ (_, mail) ], rest ->
       let t = { t with pending_mails = rest } in
@@ -204,9 +217,8 @@ let moderate_accept t from rcpt =
   else
     t, []
 
-let moderate_reject t from rcpt =
+let moderate_reject t from id =
   if List.mem from t.moderators then
-    let id = extract_id rcpt in
     match List.partition (fun (id', _mail) -> String.equal id id') t.pending_mails with
     | [ (_, mail) ], rest ->
       let t = { t with pending_mails = rest } in
@@ -245,41 +257,121 @@ let forward t from mail =
 (* We ultimately need to figure out from the incoming mail whether it is an
    administrative command (and we handle this after checking) or not. We may
    need to reply by sending some mails. *)
-let incoming t email =
-  let from = find_from email
-  and rcpt = find_rcpt email
+let incoming t key stream =
+  let ( let* ) = Result.bind in
+  let from, something = Msgd.from key
+  and recipients = Msgd.recipients key
+  in
+  let pp_list_s_opt =
+    Fmt.(list ~sep:(any ", ") (pair ~sep:(any "-") string (option ~none:"N/A") string))
+  in
+  let* from =
+    if something <> [] then
+      (Logs.warn (fun m -> m "from is more than a reverse_path: %a"
+                     pp_list_s_opt something);
+       Error ())
+    else if from = None then
+      (Logs.warn (fun m -> m "from is None");
+       Error ())
+    else if from.Colombe.Path.rest = [] then
+      let local = match from.local with `String s -> s | `Dot_string xs -> String.concat "." xs in
+      let domain = Colome.Domain.to_string from.domain in
+      Ok (local ^ "@" ^ domain)
+    else
+      (Logs.warn (fun m -> m "from has rest");
+       Error ())
+  in
+  let* rcpt = match recipients with
+    | [ (Colombe.Forward_path.Forward_path p, []) ] ->
+      (* should ensure that domain is good *)
+      if p.Colombe.Path.rest = [] then
+        let local_part = match p.local with
+          | `String s -> s
+          | `Dot_string xs -> String.concat "." xs
+        in
+        Ok local_part
+      else begin
+        Logs.warn (fun m -> m "recipient has some domains");
+        Error ()
+      end
+    | [ (fp, []) ] ->
+      Logs.warn (fun m -> m "expected a forward path recipient, got %a"
+                    Colombe.Forward_path.pp fp);
+      Error ()
+    | [ _, things ] ->
+      Logs.warn (fun m -> m "expected only a forward path recipient: %a"
+                    pp_list_s_opt things);
+      Error ()
+    | xs ->
+      Logs.warn (fun m -> m "expected a single recipient: %a"
+                    Fmt.(list ~sep:(any ", ") Colombe.Forward_path.pp)
+                    (List.map fst xs));
+      Error ()
+  in
+  let* leftovers =
+    let rcpt_parts = String.split_on_char '-' rcpt in
+    let name_parts = String.split_on_char '-' t.name in
+    let rec parts a b = match a, b with
+      | [], xs -> Ok xs
+      | a::atl, b::btl ->
+        if String.equal a b then
+          parts atl btl
+        else
+          (Logs.warn (fun m -> m "rcpt %s doesn't match mailing list name %s" rcpt t.name);
+           Error ())
+      | _, [] ->
+        Logs.warn (fun m -> m "rcpt %s does not match the mailing list name %s" rcpt t.name);
+        Error ()
+    in
+    parts name_parts rcpt_parts
   in
   let opt_to_list (t, mail) = t, Option.to_list mail in
-  match rcpt with
-  | x when String.starts_with ~prefix:(t.name ^ "-subscribe-accept") x ->
-    subscription_confirmation t from rcpt |> opt_to_list
-  | x when String.starts_with ~prefix:(t.name ^ "-subscribe-reject") x ->
-    reject_subscription_confirmation t from rcpt |> opt_to_list
-  | x when String.starts_with ~prefix:(t.name ^ "-subscribe-") x ->
-    subscription_confirmation t from rcpt |> opt_to_list
-  | x when String.starts_with ~prefix:(t.name ^ "-subscribe") x ->
-    subscription_request t from |> opt_to_list
-  | x when String.starts_with ~prefix:(t.name ^ "-owners-subscribe-accept") x ->
-    moderator_subscription_confirmation t from rcpt |> opt_to_list
-  | x when String.starts_with ~prefix:(t.name ^ "-owners-subscribe-reject") x ->
-    reject_moderator_subscription_confirmation t from rcpt |> opt_to_list
-  | x when String.starts_with ~prefix:(t.name ^ "-owners-subscribe-") x ->
-    moderator_subscription_confirmation t from rcpt |> opt_to_list
-  | x when String.starts_with ~prefix:(t.name ^ "-owners-subscribe") x ->
-    moderator_subscription_request t from |> opt_to_list
-  | x when String.starts_with ~prefix:(t.name ^ "-unsubscribe") x ->
-    unsubscribe t from |> opt_to_list
-  | x when String.starts_with ~prefix:(t.name ^ "-owners-unsubscribe") x ->
-    moderator_unsubscribe t from |> opt_to_list
-  | x when String.starts_with ~prefix:(t.name ^ "-return-") x ->
-    bounce t from rcpt |> opt_to_list
-  | x when String.starts_with ~prefix:(t.name ^ "-owners-return-") x ->
-    moderator_bounce t from rcpt |> opt_to_list
-  | x when String.starts_with ~prefix:(t.name ^ "-moderate-accept-") x ->
-    moderate_accept t from rcpt
-  | x when String.starts_with ~prefix:(t.name ^ "-moderate-reject-") x ->
-    moderate_reject t from rcpt
-  | x when String.starts_with ~prefix:t.name x ->
-    forward t from email
-  | _ -> assert false
+  let t, to_send =
+    match leftovers with
+    | "subscribe" :: "accept" :: id ->
+      let id = String.concat "-" id in
+      subscription_confirmation t from id |> opt_to_list
+    | "subscribe" :: "reject" :: id ->
+      let id = String.concat "-" id in
+      reject_subscription_confirmation t from id |> opt_to_list
+    | "subscribe" :: id ->
+      let id = String.concat "-" id in
+      subscription_confirmation t from id |> opt_to_list
+    | "subscribe" :: [] ->
+      subscription_request t from |> opt_to_list
+    | "owners" :: "subscribe" :: "reject" :: id ->
+      let id = String.concat "-" id in
+      moderator_subscription_confirmation t from id |> opt_to_list
+    | "owners" :: "subscribe" :: "accept" :: id ->
+      let id = String.concat "-" id in
+      reject_moderator_subscription_confirmation t from id |> opt_to_list
+    | "owners" :: "subscribe" :: id ->
+      let id = String.concat "-" id in
+      moderator_subscription_confirmation t from id |> opt_to_list
+    | "owners" :: "subscribe" :: [] ->
+      moderator_subscription_request t from |> opt_to_list
+    | "unsubscribe" :: [] ->
+      unsubscribe t from |> opt_to_list
+    | "owners" :: "unsubscribe" :: [] ->
+      moderator_unsubscribe t from |> opt_to_list
+    | "return" :: id ->
+      let id = String.concat "-" id in
+      bounce t from id |> opt_to_list
+    | "owners" :: "return" :: id ->
+      let id = String.concat "-" id in
+      moderator_bounce t from id |> opt_to_list
+    | "moderate" :: "accept" :: id ->
+      let id = String.concat "-" id in
+      moderate_accept t from id
+    | "moderate" :: "reject" :: id ->
+      let id = String.concat "-" id in
+      moderate_reject t from id
+    | [] -> forward t from stream
+    | x ->
+      let id = String.concat "-" x in
+      (* TODO: demote log level? send a bounce back? *)
+      Logs.warn (fun m -> m "received mail to %s, which is not handled" id);
+      t, []
+  in
+  Ok (t, to_send)
 
