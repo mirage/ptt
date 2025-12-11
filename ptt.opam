@@ -48,6 +48,7 @@ depends: [
   "ptime"
   "spamtacus-mirage"
   "ipaddr"            {>= "5.0.1"}
+  "uuidm"             {>= "0.9.10"}
 ]
 build: ["dune" "build" "-p" name "-j" jobs]
 run-test: ["dune" "runtest" "-p" name "-j" jobs]
