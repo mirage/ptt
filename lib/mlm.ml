@@ -26,17 +26,25 @@ type t = {
   counter : int ;
 }
 
+(* TODO actually initialize with something random *)
+let random_state = Random.State.make_self_init ()
+
+let gen_random () = Uuidm.v4_gen random_state () |> Uuidm.to_string
+
 let template_subscription_confirmation =
   "Please reply to this mail to confirm your subscription"
 
-let template_subscription_moderation email_address =
-  Fmt.str "%S would like to be subscribed to this mailing list, please reply to this mail to confirm" email_address
+let accept_deny prefix =
+  let id = gen_random () in
+  id, prefix ^ "-accept-" ^ id, prefix ^ "-reject-" ^ id
 
-let template_moderation email_address subject =
-  Fmt.str "A mail from %S with the subject %S was received. Please reply to this email to distribute the mail."
-    email_address subject
+let template_subscription_moderation email_address accept deny =
+  Fmt.str "%S would like to be subscribed to this mailing list. If you accept, please send an empty mail to <%s> (you can reply to this email). If you reject, please send an empty mail to <%s>." email_address accept deny
 
-(* The only event we have is an incoming mail, to which we react (or not) *)
+let template_moderation email_address subject accept deny =
+  Fmt.str "A mail from %S with the subject %S was received. Please send an empty mail to <%s> to distribute this mail (you can reply to this email). If you want to reject, please send an empty mail to <%s>."
+    email_address subject accept deny
+
 let subsc_req name queue from =
   let id = gen_random () in
   let queue = List.filter (fun (_, _, from') -> not (String.equal from from')) queue in
@@ -57,8 +65,8 @@ let subscr_confirm name queue moderated moderators subscribers welcome from rcpt
   match List.partition (function (`Awaiting_confirmation, id', from') -> String.equal id id' && String.equal from from' | _ -> false) queue with
   | [ _subscription ], rest ->
     if moderated then
-      let id' = gen_random () in
-      let mail = name ^ "-subscribe-" ^ id', moderators, template_subscription_moderation from in
+      let id', accept, deny = accept_deny (name ^ "-subscribe") in
+      let mail = accept, moderators, template_subscription_moderation from accept deny in
       let queue = (`Awaiting_moderation, id', from) :: rest in
       queue, None, Some mail
     else
@@ -75,6 +83,16 @@ let subscr_confirm name queue moderated moderators subscribers welcome from rcpt
       (* ignore or should we send something out? *)
       queue, None, None
 
+let reject_subscr name queue moderators from rcpt =
+  let id = extract rcpt in
+  match List.partition (function (`Awaiting_moderation, id', orig_from) -> String.equal id id' && List.mem from moderators | _ -> false) queue with
+  | [ _subscription ], rest ->
+    (* should we send something out? *)
+    rest
+  | _ ->
+    (* ignore or should we send something out? *)
+    queue
+
 let subscription_confirmation t from rcpt =
   let pending_subscriptions, subscribers, mail =
     subscr_confirm t.name t.pending_subscriptions t.subscription_moderated t.moderators t.subscribers t.welcome from rcpt
@@ -85,6 +103,12 @@ let subscription_confirmation t from rcpt =
   let subscribers = Option.value ~default:t.subscribers subscribers in
   { t with pending_subscriptions ; subscribers }, mail
 
+let reject_subscription_confirmation t from rcpt =
+  let pending_subscriptions =
+    reject_subscr t.name t.pending_subscriptions t.moderators from rcpt
+  in
+  { t with pending_subscriptions }, None
+
 let moderator_subscription_confirmation t from rcpt =
   let pending_moderator_subscriptions, moderators, mail =
     subscr_confirm (t.name ^ "-owners") t.pending_moderator_subscriptions true t.moderators t.moderators (Some ("Welcome to the owners of " ^ t.name)) from rcpt
@@ -94,6 +118,12 @@ let moderator_subscription_confirmation t from rcpt =
    | Some _ -> Logs.info (fun m -> m "New subscription to the mailing list %s-owners" t.name));
   let moderators = Option.value ~default:t.moderators moderators in
   { t with pending_moderator_subscriptions ; moderators }, mail
+
+let reject_moderator_subscription_confirmation t from rcpt =
+  let pending_moderator_subscriptions =
+    reject_subscr (t.name ^ "-owners") t.pending_moderator_subscriptions t.moderators from rcpt
+  in
+  { t with pending_moderator_subscriptions }, None
 
 let unsub name subscribers goodbye from =
   let subscribers' = List.filter (fun n -> not (String.equal n from)) subscribers in
@@ -163,13 +193,24 @@ let forward_mail t mail =
   let mails = List.map (fun subscriber -> from subscriber, [ subscriber ], email) t.subscribers in
   { t with counter = t.counter + 1 }, mails
 
-let moderate t from rcpt =
+let moderate_accept t from rcpt =
   if List.mem from t.moderators then
     let id = extract_id rcpt in
     match List.partition (fun (id', _mail) -> String.equal id id') t.pending_mails with
     | [ (_, mail) ], rest ->
       let t = { t with pending_mails = rest } in
       forward_mail t mail
+    | _ -> t, []
+  else
+    t, []
+
+let moderate_reject t from rcpt =
+  if List.mem from t.moderators then
+    let id = extract_id rcpt in
+    match List.partition (fun (id', _mail) -> String.equal id id') t.pending_mails with
+    | [ (_, mail) ], rest ->
+      let t = { t with pending_mails = rest } in
+      t, []
     | _ -> t, []
   else
     t, []
@@ -189,9 +230,9 @@ let forward t from mail =
         | `Moderators -> true
       in
       if need_to_queue then
-        let id = gen_random () in
+        let id, accept, deny = accept_deny (t.name ^ "-moderate") in
         let subject = find_subject mail in
-        let email = t.name ^ "-moderate-" ^ id, t.moderators, template_moderation from subject in
+        let email = accept, t.moderators, template_moderation from subject accept deny in
         let pending_mails = (id, mail) :: t.pending_mails in
         { t with pending_mails }, [ email ]
       else
@@ -210,10 +251,18 @@ let incoming t email =
   in
   let opt_to_list (t, mail) = t, Option.to_list mail in
   match rcpt with
+  | x when String.starts_with ~prefix:(t.name ^ "-subscribe-accept") x ->
+    subscription_confirmation t from rcpt |> opt_to_list
+  | x when String.starts_with ~prefix:(t.name ^ "-subscribe-reject") x ->
+    reject_subscription_confirmation t from rcpt |> opt_to_list
   | x when String.starts_with ~prefix:(t.name ^ "-subscribe-") x ->
     subscription_confirmation t from rcpt |> opt_to_list
   | x when String.starts_with ~prefix:(t.name ^ "-subscribe") x ->
     subscription_request t from |> opt_to_list
+  | x when String.starts_with ~prefix:(t.name ^ "-owners-subscribe-accept") x ->
+    moderator_subscription_confirmation t from rcpt |> opt_to_list
+  | x when String.starts_with ~prefix:(t.name ^ "-owners-subscribe-reject") x ->
+    reject_moderator_subscription_confirmation t from rcpt |> opt_to_list
   | x when String.starts_with ~prefix:(t.name ^ "-owners-subscribe-") x ->
     moderator_subscription_confirmation t from rcpt |> opt_to_list
   | x when String.starts_with ~prefix:(t.name ^ "-owners-subscribe") x ->
@@ -226,6 +275,10 @@ let incoming t email =
     bounce t from rcpt |> opt_to_list
   | x when String.starts_with ~prefix:(t.name ^ "-owners-return-") x ->
     moderator_bounce t from rcpt |> opt_to_list
+  | x when String.starts_with ~prefix:(t.name ^ "-moderate-accept-") x ->
+    moderate_accept t from rcpt
+  | x when String.starts_with ~prefix:(t.name ^ "-moderate-reject-") x ->
+    moderate_reject t from rcpt
   | x when String.starts_with ~prefix:t.name x ->
     forward t from email
   | _ -> assert false
