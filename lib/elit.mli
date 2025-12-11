@@ -1,5 +1,7 @@
 type 'k cfg
 
+module SM : sig include Map.S with type key = string end
+
 module Make
     (Stack : Tcpip.Stack.V4V6)
     (Dns_client : Dns_client_mirage.S)
@@ -21,6 +23,7 @@ module Make
     -> 'k Digestif.hash
     -> 'k iter
     -> Ipaddr.t
+    -> Mlm.t SM.t
     -> 'k cfg Lwt.t
 
   val job :

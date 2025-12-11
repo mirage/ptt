@@ -409,14 +409,51 @@ struct
                 Some local_part
               | _ -> None
             in
+            let send mails =
+              let to_send =
+                List.map (fun (from, rcpts, data) ->
+                    let sender =
+                      match Colombe.Path.of_string from with
+                      | Ok sender -> Some sender
+                      | Error `Msg msg ->
+                        Logs.err (fun m -> m "sender %s is bad: %s" from msg);
+                        None
+                    in
+                    List.map (fun add ->
+                        let stream, push = Lwt_stream.create () in
+                        push (Some data) ; push None ;
+                        let recipients =
+                          match List.rev (String.split_on_char '@' add) with
+                          | domain :: local ->
+                            let domain =
+                              `Domain (Domain_name.host_exn (Domain_name.of_string_exn domain))
+                            and locals =
+                              `Some [ [ `String (String.concat "@" (List.rev local)) ] ]
+                            in
+                            Ptt_sendmail.{ domain ; locals }
+                          | _ -> assert false
+                        in
+                        { Ptt_sendmail.sender
+                        ; recipients
+                        ; data = stream
+                        ; policies = []
+                        ; id })
+                      rcpts) mails
+              in
+              List.iter (oc_local $ Option.some) (List.flatten to_send)
+            in
             match rcpt with
             | Some add when SM.mem add cfg.lists ->
               let mlm = SM.find add cfg.lists in
-              (match Mlm.incoming mlm key stream with
-               | Error () -> Lwt.return_unit
+              Lwt_stream.fold (fun data acc -> data :: acc) stream [] >>= fun mail ->
+              let mail = String.concat "\n" (List.rev mail) in
+              (match Mlm.incoming mlm key mail with
+               | Error () -> ()
                | Ok (mlm', outs) ->
                  cfg.lists <- SM.update add (fun _ -> Some mlm') cfg.lists;
-                 send outs)
+                 send outs);
+              Lwt.wakeup_later wk `Ok;
+              Lwt.return_unit
             | _ ->
             let fn recipients =
               {

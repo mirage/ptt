@@ -382,6 +382,7 @@ let incoming t key stream =
       let id = String.concat "-" id in
       moderate_reject t from id
     | [] -> forward t from stream
+    (* TODO: should "owners" be distributed to the moderators? *)
     | x ->
       let id = String.concat "-" x in
       (* TODO: demote log level? send a bounce back? *)
@@ -389,4 +390,3 @@ let incoming t key stream =
       t, []
   in
   Ok (t, to_send)
-
