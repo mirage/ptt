@@ -272,50 +272,30 @@ let forward t from mail =
    need to reply by sending some mails. *)
 let incoming t key stream =
   let ( let* ) = Result.bind in
-  let from, something = Ptt.Msgd.from key
+  let from, _ = Ptt.Msgd.from key
   and recipients = Ptt.Msgd.recipients key
   in
-  let pp_list_s_opt =
-    Fmt.(list ~sep:(any ", ") (pair ~sep:(any "-")
-                                 string (option ~none:(any "N/A") string)))
-  in
   let* from =
-    if something <> [] then
-      (Logs.warn (fun m -> m "from is more than a reverse_path: %a"
-                     pp_list_s_opt something);
-       Error ())
-    else if from = None then
+    match from with
+    | None ->
       (Logs.warn (fun m -> m "from is None");
        Error ())
-    else match from with
-      | Some p when p.Colombe.Path.rest = [] ->
-        let local = match p.local with `String s -> s | `Dot_string xs -> String.concat "." xs in
-        let domain = Colombe.Domain.to_string p.domain in
-        Ok (local ^ "@" ^ domain)
-      | _ ->
-        (Logs.warn (fun m -> m "from has rest");
-         Error ())
+    | Some p ->
+      let local = match p.local with `String s -> s | `Dot_string xs -> String.concat "." xs in
+      let domain = Colombe.Domain.to_string p.domain in
+      Ok (local ^ "@" ^ domain)
   in
   let* rcpt = match recipients with
-    | [ (Colombe.Forward_path.Forward_path p, []) ] ->
+    | [ (Colombe.Forward_path.Forward_path p, _) ] ->
       (* should ensure that domain is good *)
-      if p.Colombe.Path.rest = [] then
-        let local_part = match p.local with
-          | `String s -> s
-          | `Dot_string xs -> String.concat "." xs
-        in
-        Ok local_part
-      else begin
-        Logs.warn (fun m -> m "recipient has some domains");
-        Error ()
-      end
-    | [ (fp, []) ] ->
+      let local_part = match p.local with
+        | `String s -> s
+        | `Dot_string xs -> String.concat "." xs
+      in
+      Ok local_part
+    | [ (fp, _) ] ->
       Logs.warn (fun m -> m "expected a forward path recipient, got %a"
                     Colombe.Forward_path.pp fp);
-      Error ()
-    | [ _, things ] ->
-      Logs.warn (fun m -> m "expected only a forward path recipient: %a"
-                    pp_list_s_opt things);
       Error ()
     | xs ->
       Logs.warn (fun m -> m "expected a single recipient: %a"
