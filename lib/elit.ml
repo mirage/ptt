@@ -428,7 +428,12 @@ struct
                             let domain =
                               `Domain (Domain_name.host_exn (Domain_name.of_string_exn domain))
                             and locals =
-                              `Some [ [ `String (String.concat "@" (List.rev local)) ] ]
+                              let data = String.concat "@" (List.rev local) in
+                              let email = match String.index_opt data '"' with
+                                | None -> `Atom data
+                                | Some _ -> `String data
+                              in
+                              `Some [ [ email ] ]
                             in
                             Ptt_sendmail.{ domain ; locals }
                           | _ -> assert false
