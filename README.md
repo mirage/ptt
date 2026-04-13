@@ -1,5 +1,9 @@
 # PTT - Poste, Télégraphe et Téléphone
 
+**NOTE**: this repository is obsolete. If you would like to follow more about
+ptt, you should check https://github.com/robur-coop/ptt. It's a complete
+rewrite with our new TCP/IP stack and our Miou scheduler.
+
 `ptt` is a suit of tools to deploy a full SMTP service. The current available
 design is:
 
