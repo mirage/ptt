@@ -9,6 +9,8 @@ let ( $ ) f g = fun x -> f (g x)
 let msgf fmt = Fmt.kstr (fun msg -> `Msg msg) fmt
 let error_msgf fmt = Fmt.kstr (fun msg -> Error (`Msg msg)) fmt
 
+module SM = Map.Make(String)
+
 type 'k cfg = {
     limit: int
   ; info: Ptt_common.info
@@ -27,6 +29,7 @@ type 'k cfg = {
   ; sender: Colombe.Reverse_path.t
   ; allowed_to_forward: Ipaddr.Prefix.t list
   ; on_admin: sender:Colombe.Reverse_path.t -> string Lwt_stream.t -> unit Lwt.t
+  ; mutable lists : Mlm.t SM.t
 }
 
 module Make
@@ -372,12 +375,16 @@ struct
               m "forward email granted? %b"
                 (forward_granted (Ptt.Msgd.ipaddr key) cfg.allowed_to_forward));
           begin
+            (* HANNES here, we can dispatch for admin commands *)
             if forward_granted (Ptt.Msgd.ipaddr key) cfg.allowed_to_forward then
               Lwt.return (`Ok stream)
             else
+              (* DINOSAURE: dmarc to arc, then verify will be fine! *)
+              (* DOES _both_ things *)
               verify cfg
                 ~sender:(fst (Ptt.Msgd.from key))
                 ~ipaddr:(Ptt.Msgd.ipaddr key) dns stream
+              (* ARC is signature about the email, you trust on the last ARC sets *)
           end
           >>= function
           | #Ptt.Msgd.error as err ->
@@ -392,6 +399,67 @@ struct
             Lwt.wakeup_later wk err;
             Lwt.pause () >>= go
           | `Ok stream ->
+            let rcpt =
+              match fake_recipients with
+              | [ Colombe.Forward_path.Forward_path p ] ->
+                let local_part = match p.Colombe.Path.local with
+                  | `String s -> s
+                  | `Dot_string xs -> String.concat "." xs
+                in
+                Some local_part
+              | _ -> None
+            in
+            let send mails =
+              let to_send =
+                List.map (fun (from, rcpts, data) ->
+                    let sender =
+                      match Colombe.Path.of_string from with
+                      | Ok sender -> Some sender
+                      | Error `Msg msg ->
+                        Logs.err (fun m -> m "sender %s is bad: %s" from msg);
+                        None
+                    in
+                    List.map (fun add ->
+                        let stream, push = Lwt_stream.create () in
+                        push (Some data) ; push None ;
+                        let recipients =
+                          match List.rev (String.split_on_char '@' add) with
+                          | domain :: local ->
+                            let domain =
+                              `Domain (Domain_name.host_exn (Domain_name.of_string_exn domain))
+                            and locals =
+                              let data = String.concat "@" (List.rev local) in
+                              let email = match String.index_opt data '"' with
+                                | None -> `Atom data
+                                | Some _ -> `String data
+                              in
+                              `Some [ [ email ] ]
+                            in
+                            Ptt_sendmail.{ domain ; locals }
+                          | _ -> assert false
+                        in
+                        { Ptt_sendmail.sender
+                        ; recipients
+                        ; data = stream
+                        ; policies = []
+                        ; id })
+                      rcpts) mails
+              in
+              List.iter (oc_local $ Option.some) (List.flatten to_send)
+            in
+            match rcpt with
+            | Some add when SM.mem add cfg.lists ->
+              let mlm = SM.find add cfg.lists in
+              Lwt_stream.fold (fun data acc -> data :: acc) stream [] >>= fun mail ->
+              let mail = String.concat "\n" (List.rev mail) in
+              (match Mlm.incoming mlm key mail with
+               | Error () -> ()
+               | Ok (mlm', outs) ->
+                 cfg.lists <- SM.update add (fun _ -> Some mlm') cfg.lists;
+                 send outs);
+              Lwt.wakeup_later wk `Ok;
+              Lwt.return_unit
+            | _ ->
             let fn recipients =
               {
                 Ptt_sendmail.sender= cfg.sender
@@ -402,10 +470,13 @@ struct
               } in
             let elts = List.map fn real_recipients in
             let src = Ptt.Msgd.ipaddr key in
+            (* HERE, get our administrative stuff! *)
             if
               forward_granted src cfg.allowed_to_forward
               || only_registered_recipients ~info cfg.locals fake_recipients
             then begin
+              (* oc_inter and oc_local are both a job to send to a specific destination,
+                 use oc_local to get it DMARC signed *)
               let to_internet =
                 forward_granted src cfg.allowed_to_forward
                 && not
@@ -507,7 +578,8 @@ struct
       ?(on_admin = ignore_admin)
       hash
       iter
-      submit_destination =
+      submit_destination
+      lists =
     let admin =
       let local = `Dot_string ["admin"] in
       let domain = info.Ptt_common.domain in
@@ -554,6 +626,7 @@ struct
     ; admin
     ; sender
     ; on_admin
+    ; lists
     }
 
   let job ?stop cfg ?submission ?relay stack dns he =

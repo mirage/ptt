@@ -76,8 +76,8 @@
 (library
  (name elit)
  (public_name ptt.elit)
- (modules elit)
- (libraries ptt ptt.map ptt.server dns-client-mirage arc dmarc))
+ (modules elit mlm)
+ (libraries ptt ptt.map ptt.server dns-client-mirage arc dmarc uuidm))
 
 (library
  (name ptt_value)
