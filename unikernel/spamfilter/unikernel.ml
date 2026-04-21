@@ -33,18 +33,15 @@ module K = struct
 end
 
 module Make
-  (Time : Mirage_time.S)
-  (Mclock : Mirage_clock.MCLOCK)
-  (Pclock : Mirage_clock.PCLOCK)
   (Stack : Tcpip.Stack.V4V6)
   (Happy_eyeballs : Happy_eyeballs_mirage.S with type flow = Stack.TCP.flow)
 = struct
 
-  module Nss = Ca_certs_nss.Make (Pclock)
+  module Nss = Ca_certs_nss
   module Fake_dns = Ptt_fake_dns.Make (struct let ipaddr = K.destination () end)
-  module Spam_filter = Spartacus.Make (Time) (Mclock) (Pclock) (Stack) (Fake_dns) (Happy_eyeballs)
+  module Spam_filter = Spartacus.Make (Stack) (Fake_dns) (Happy_eyeballs)
 
-  let start _time _mclock _pclock stack he { K.domain; postmaster }=
+  let start stack he { K.domain; postmaster }=
     let authenticator = R.failwith_error_msg (Nss.authenticator ()) in
     let tls = R.failwith_error_msg (Tls.Config.client ~authenticator ()) in
     let ip = Stack.ip stack in

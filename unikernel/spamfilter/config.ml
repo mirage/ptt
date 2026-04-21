@@ -1,4 +1,4 @@
-(* mirage >= 4.8.0 & < 4.9.0 *)
+(* mirage >= 4.8.0 & < 4.11.0 *)
 
 open Mirage
 
@@ -14,14 +14,11 @@ let runtime_args = [ setup ]
 
 let spamfilter =
   main ~runtime_args ~packages "Unikernel.Make" @@
-  time @-> mclock @-> pclock @-> stackv4v6 @-> happy_eyeballs @-> job
+  stackv4v6 @-> happy_eyeballs @-> job
 
-let time = default_time
-let mclock = default_monotonic_clock
-let pclock = default_posix_clock
 let stack = generic_stackv4v6 default_network
 let he = generic_happy_eyeballs stack
 
 let () =
   register "spamfilter"
-    [ spamfilter $ time $ mclock $ pclock $ stack $ he ]
+    [ spamfilter $ stack $ he ]
